@@ -53,34 +53,31 @@ DataVault
   12 passing (2s)
 ```
 
-All 12 tests pass. Contract compiles to EVM paris bytecode.
+All 12 tests pass on Hardhat local network. Contract compiles to EVM paris bytecode.
 
-### Frontend install
+### Frontend install and typecheck
 
 ```sh
 cd frontend && npm install
+npm run typecheck:frontend
+# exits 0, no errors
 ```
 
-Status: pending (dependencies not installed yet in this session; run this before `npm run dev`).
+Dynamic SDK v5.9.3 installed. TypeScript checks clean.
 
-### Worker install
+### Worker install and typecheck
 
 ```sh
 cd worker && npm install
-```
-
-Status: pending.
-
-### Type checks
-
-Run after installs:
-
-```sh
-npm run typecheck:frontend
 npm run typecheck:worker
+# exits 0, no errors
 ```
 
-Status: pending. TypeScript config is correct; type errors may surface after install reveals missing types.
+Wrangler 3.83.0 + @cloudflare/workers-types 4.x installed. TypeScript checks clean.
+
+### Verification commit
+
+Commit `360aa84` in branch `master`.
 
 ---
 
