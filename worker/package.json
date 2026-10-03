@@ -1,0 +1,20 @@
+{
+  "name": "datavault-worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply datavault-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply datavault-db"
+  },
+  "dependencies": {
+    "viem": "^2.21.19"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241022.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.83.0"
+  }
+}

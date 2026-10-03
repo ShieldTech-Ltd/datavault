@@ -1,0 +1,31 @@
+name = "datavault"
+main = "src/index.ts"
+compatibility_date = "2024-10-01"
+
+# Serve the built React app as static assets.
+# Run `npm run build` in ../frontend before deploying.
+[assets]
+directory = "../frontend/dist"
+binding = "ASSETS"
+
+[[r2_buckets]]
+binding = "COLLECTION_STORE"
+bucket_name = "datavault-collections"
+preview_bucket_name = "datavault-collections-preview"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "datavault-db"
+# Replace with the ID returned by: wrangler d1 create datavault-db
+database_id = "PLACEHOLDER_REPLACE_AFTER_D1_CREATE"
+
+[vars]
+# Non-secret config: override in .dev.vars for local development
+CONTRACT_ADDRESS = ""
+MONAD_RPC_URL = "https://testnet-rpc.monad.xyz"
+MODEL_PROVIDER = "openai"
+CHAIN_ID = "10143"
+
+# Secrets (never put in wrangler.toml):
+# Set via: wrangler secret put SETTLEMENT_PRIVATE_KEY
+# Set via: wrangler secret put MODEL_API_KEY

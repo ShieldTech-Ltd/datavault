@@ -1,0 +1,191 @@
+# DataVault Query License
+
+Paid, controlled AI access to private knowledge collections.
+
+An owner uploads a private Markdown document, sets a per-query price, and registers policy on Monad testnet. A buyer signs a Monad transaction placing payment in escrow. The Cloudflare Worker verifies payment and current policy, retrieves relevant passages from private R2 storage, calls a real AI model, returns a cited answer, and settles escrow to the owner. The owner can pause access at any time.
+
+**Hackathon:** Monad Metropolis  
+**Track:** Trust, Identity and AI Infrastructure  
+**Deadline:** 14 October 2026 at 04:59 GMT+1
+
+---
+
+## What this is not
+
+- It does not detect AI use of content outside this service.
+- Content hashes are integrity references only. They do not prove copyright ownership.
+- Revoking access blocks future queries through this service. It cannot erase answers already delivered.
+- Selected passages are sent to the model provider to generate answers. Owners are told this before uploading.
+- This is not production-ready software.
+
+---
+
+## Repository structure
+
+```
+contracts/          Solidity contract and Hardhat tests
+  DataVault.sol     registerCollection, updatePolicy, openQuery, settleQuery, refundExpired
+  test/             12 unit tests (all passing)
+frontend/           React + Vite + TypeScript UI
+  src/
+    lib/            Dynamic SDK config, viem contract client
+    components/     ConnectButton, OwnerDashboard, BuyerDashboard
+worker/             Cloudflare Worker API
+  src/
+    lib/            policy.ts, model.ts, r2.ts, d1.ts, types.ts
+    routes/         collections.ts, queries.ts
+  migrations/       D1 SQL schema
+scripts/            Hardhat deploy script
+demo/               Team-authored UK Practical Guide (sample knowledge collection)
+docs/               Build status and decision records
+shared/             Shared ABI constant
+```
+
+---
+
+## Prerequisites
+
+- Node.js 18+ (v25 works with a Hardhat warning)
+- npm 9+
+- Cloudflare account with Workers, R2, and D1 enabled
+- Dynamic account at app.dynamic.xyz
+- Monad testnet wallet with test MON
+- AI model API key (OpenAI or Kimi)
+
+---
+
+## Setup
+
+### 1. Install dependencies
+
+```sh
+npm run install:all
+```
+
+This installs root (Hardhat), frontend, and worker dependencies.
+
+### 2. Configure the frontend
+
+```sh
+cp frontend/.env.example frontend/.env
+```
+
+Fill in:
+- `VITE_DYNAMIC_ENVIRONMENT_ID` from app.dynamic.xyz
+- `VITE_CONTRACT_ADDRESS` after deploying the contract (Step 4)
+
+### 3. Configure the Worker
+
+```sh
+cp worker/.dev.vars.example worker/.dev.vars
+```
+
+Fill in:
+- `CONTRACT_ADDRESS` after deployment
+- `SETTLEMENT_PRIVATE_KEY` (funded Monad testnet key)
+- `MODEL_API_KEY`
+
+Create D1 database:
+
+```sh
+cd worker
+npx wrangler d1 create datavault-db
+```
+
+Copy the returned `database_id` into `worker/wrangler.toml`.
+
+Apply the schema locally:
+
+```sh
+npm run db:migrate:local
+```
+
+### 4. Compile and deploy the contract
+
+```sh
+cp .env.example .env
+# Set DEPLOYER_PRIVATE_KEY in .env
+npm run compile
+npm run deploy:testnet
+```
+
+Copy the deployed address into `frontend/.env` and `worker/.dev.vars`.
+
+### 5. Run local development
+
+Terminal 1: Worker API on port 8787
+
+```sh
+cd worker && npm run dev
+```
+
+Terminal 2: Frontend on port 5173 (proxies /api to Worker)
+
+```sh
+cd frontend && npm run dev
+```
+
+Open http://localhost:5173.
+
+---
+
+## Build and deploy to Cloudflare
+
+```sh
+# Build the frontend
+npm run build:frontend
+
+# Deploy the Worker (serves the built frontend as static assets)
+cd worker && npm run deploy
+```
+
+---
+
+## Type checking
+
+```sh
+npm run typecheck:frontend
+npm run typecheck:worker
+```
+
+---
+
+## Contract tests
+
+```sh
+npm run test:contracts
+```
+
+12 tests covering registerCollection, updatePolicy, openQuery, settleQuery, refundExpired, replay protection, and timeout refund.
+
+---
+
+## Environment variables reference
+
+### Frontend (.env)
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_DYNAMIC_ENVIRONMENT_ID` | Dynamic SDK environment |
+| `VITE_CONTRACT_ADDRESS` | Deployed DataVault contract |
+| `VITE_CHAIN_ID` | Monad testnet chain ID (default: 10143) |
+| `VITE_CHAIN_RPC_URL` | Monad RPC (default: https://testnet-rpc.monad.xyz) |
+
+### Worker (.dev.vars for local, `wrangler secret put` for production)
+
+| Variable | Purpose |
+|----------|---------|
+| `CONTRACT_ADDRESS` | Deployed DataVault contract |
+| `MONAD_RPC_URL` | Monad RPC endpoint |
+| `SETTLEMENT_PRIVATE_KEY` | Key used by Worker to call settleQuery |
+| `MODEL_API_KEY` | AI model provider key |
+| `MODEL_PROVIDER` | `openai` or `kimi` |
+| `MODEL_API_BASE` | API base URL (default: OpenAI) |
+| `MODEL_NAME` | Model name (default: gpt-4o-mini) |
+
+---
+
+## Ownership
+
+**Tanvir:** Solidity contracts, Worker API, R2 and D1, payment state machine, security checks, AI model integration.  
+**Ritik:** React frontend, Dynamic SDK sign-in flow, owner and buyer UX, demo video editing.

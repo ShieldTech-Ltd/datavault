@@ -1,0 +1,166 @@
+import type { Env } from "../lib/types";
+import { getCollectionRow, insertQuery, updateQuerySettled, updateQueryOutcome, getQueryRow, requestIdExists } from "../lib/d1";
+import { getOnChainCollection } from "../lib/policy";
+import { retrievePassages } from "../lib/r2";
+import { callModel } from "../lib/model";
+import { createWalletClient, http, parseAbi, type Address } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+
+// ── POST /api/queries/prepare ─────────────────────────────────────
+
+export async function handlePrepare(req: Request, env: Env): Promise<Response> {
+  const { collectionId } = await req.json<{ collectionId: string; question: string }>();
+  if (!collectionId) return new Response("Missing collectionId", { status: 400 });
+
+  const col = await getCollectionRow(collectionId, env);
+  if (!col) return new Response("Collection not found", { status: 404 });
+  if (!col.active) return new Response("Collection is paused", { status: 403 });
+
+  // Read the authoritative price from on-chain when the contract is deployed.
+  // Fall back to a placeholder during local development.
+  let priceWei = "0";
+  if (env.CONTRACT_ADDRESS) {
+    const onChain = await getOnChainCollection(collectionId as `0x${string}`, env);
+    if (!onChain) return new Response("Collection not found on-chain", { status: 404 });
+    if (!onChain.active) return new Response("Collection is paused on-chain", { status: 403 });
+    priceWei = onChain.price.toString();
+  }
+
+  const priceDisplay = priceWei === "0"
+    ? "0 (dev mode)"
+    : (Number(priceWei) / 1e18).toFixed(6);
+
+  return new Response(
+    JSON.stringify({
+      collectionId,
+      priceWei,
+      priceDisplay,
+      collectionName: col.collection_name,
+    }),
+    { headers: { "Content-Type": "application/json" } },
+  );
+}
+
+// ── POST /api/queries/execute ─────────────────────────────────────
+
+export async function handleExecute(req: Request, env: Env): Promise<Response> {
+  const { requestId, collectionId, question, buyerAddress } = await req.json<{
+    requestId: string;
+    collectionId: string;
+    question: string;
+    txHash: string;
+    buyerAddress: string;
+  }>();
+
+  if (!requestId || !collectionId || !question || !buyerAddress) {
+    return new Response("Missing required fields", { status: 400 });
+  }
+
+  // Replay protection: reject if this requestId has already been processed
+  if (await requestIdExists(requestId, env)) {
+    return new Response("Duplicate requestId", { status: 409 });
+  }
+
+  // Read current on-chain policy
+  let currentPolicyVersion = 1;
+  if (env.CONTRACT_ADDRESS) {
+    const onChain = await getOnChainCollection(collectionId as `0x${string}`, env);
+    if (!onChain) return new Response("Collection not found on-chain", { status: 404 });
+    if (!onChain.active) {
+      return new Response(
+        JSON.stringify({ error: "Collection is paused. Escrow not opened; no payment taken." }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    currentPolicyVersion = onChain.policyVersion;
+  }
+
+  // Record the request in D1 before retrieval (idempotency anchor)
+  await insertQuery({ request_id: requestId, collection_id: collectionId, buyer_address: buyerAddress, policy_version: currentPolicyVersion }, env);
+
+  try {
+    // Retrieve relevant passages from private R2 (no public URL)
+    const { passages, passageIds } = await retrievePassages(collectionId, question, env);
+
+    if (passages.length === 0) {
+      await updateQueryOutcome(requestId, "failed", env);
+      return new Response("No relevant passages found", { status: 422 });
+    }
+
+    // Call the real AI model with passages as context
+    const { answer, passages: citedPassages, responseDigest } = await callModel(question, passages, env);
+
+    // Settle escrow on-chain: release payment to the collection owner
+    let settleTxHash = "local-dev-no-contract";
+    if (env.CONTRACT_ADDRESS && env.SETTLEMENT_PRIVATE_KEY) {
+      settleTxHash = await settleOnChain(requestId as `0x${string}`, env);
+    }
+
+    await updateQuerySettled(requestId, settleTxHash, passageIds, responseDigest, env);
+
+    return new Response(
+      JSON.stringify({
+        answer,
+        passages: citedPassages,
+        requestId,
+        txHash: settleTxHash,
+        receiptUrl: `/api/queries/${requestId}/receipt`,
+      }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  } catch (err: unknown) {
+    await updateQueryOutcome(requestId, "failed", env);
+    const msg = err instanceof Error ? err.message : String(err);
+    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { "Content-Type": "application/json" } });
+  }
+}
+
+// ── GET /api/queries/:id/receipt ──────────────────────────────────
+
+export async function handleReceipt(env: Env, requestId: string): Promise<Response> {
+  const row = await getQueryRow(requestId, env);
+  if (!row) return new Response("Not found", { status: 404 });
+
+  return new Response(
+    JSON.stringify({
+      requestId: row.request_id,
+      collectionId: row.collection_id,
+      buyerAddress: row.buyer_address,
+      txHash: row.tx_hash,
+      policyVersion: row.policy_version,
+      passageIds: JSON.parse(row.passage_ids),
+      responseDigest: row.response_digest,
+      outcome: row.outcome,
+      createdAt: row.created_at,
+      settledAt: row.settled_at,
+    }),
+    { headers: { "Content-Type": "application/json" } },
+  );
+}
+
+// ── On-chain settlement ───────────────────────────────────────────
+
+async function settleOnChain(requestId: `0x${string}`, env: Env): Promise<string> {
+  const account = privateKeyToAccount(env.SETTLEMENT_PRIVATE_KEY as `0x${string}`);
+  const chain = {
+    id: Number(env.CHAIN_ID) || 10143,
+    name: "Monad Testnet",
+    nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
+    rpcUrls: { default: { http: [env.MONAD_RPC_URL] } },
+  } as const;
+
+  const walletClient = createWalletClient({ account, chain, transport: http() });
+  const settleAbi = parseAbi(["function settleQuery(bytes32 requestId) external"]);
+
+  const { encodeFunctionData } = await import("viem");
+  const data = encodeFunctionData({ abi: settleAbi, functionName: "settleQuery", args: [requestId] });
+
+  const hash = await walletClient.sendTransaction({
+    to: env.CONTRACT_ADDRESS as Address,
+    data,
+    chain,
+    account,
+  });
+
+  return hash;
+}

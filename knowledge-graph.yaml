@@ -1,0 +1,311 @@
+project:
+  name: DataVault Query License
+  tagline: "Paid, controlled AI access to private knowledge collections"
+  track: Trust, Identity & AI Infrastructure
+  bounty: Dynamic SDK ($5,000)
+  hackathon: Monad Metropolis
+  deadline: "2026-10-14T04:59:00+01:00"
+  freeze: "2026-10-12"
+  repo: separate from DUSK project
+
+# ─────────────────────────────────────────────
+# PROBLEM
+# ─────────────────────────────────────────────
+problem:
+  core: >
+    AI companies use human-created content (photos, code, writing, voice)
+    to train and run models. Creators receive no payment and gave no consent.
+    Getty Images, NYT, and GitHub developers are all suing AI companies.
+    The EU AI Act requires documented consent trails. No technical fix exists yet.
+  why_unsolved_before: >
+    On Ethereum, one consent transaction costs $0.50 and takes 12 seconds.
+    At 10 million AI requests per day, the consent layer costs $5M in gas.
+    The math does not work on any chain except Monad.
+  why_monad_fixes_it: >
+    On Monad, one transaction costs $0.001 and confirms in under 1 second.
+    10 million requests per day costs $10,000 total. The math works.
+    This product is impossible to build economically on any other chain.
+
+# ─────────────────────────────────────────────
+# SOLUTION
+# ─────────────────────────────────────────────
+solution:
+  summary: >
+    An owner uploads a private knowledge collection (document, guide, dataset).
+    They set a per-query price and register policy on Monad.
+    A buyer signs a Monad transaction placing payment in escrow.
+    The system verifies payment, retrieves relevant passages, calls a real AI model,
+    returns a cited answer, and settles escrow to the owner.
+    The owner can pause access at any time, blocking future queries immediately.
+  what_it_is_not:
+    - Does not detect all AI use of someone's content across the internet
+    - Does not prove copyright ownership (hash is integrity reference, not proof)
+    - Cannot erase AI outputs already delivered
+    - Cannot force unrelated AI companies to comply
+    - Is not production-ready after the hackathon
+  what_it_proves:
+    - Consent plus payment at inference time is technically viable on Monad
+    - The mechanism works end-to-end in a real deployed product
+    - Monad is the only chain where this is economically feasible
+
+# ─────────────────────────────────────────────
+# ARCHITECTURE
+# ─────────────────────────────────────────────
+architecture:
+  layers:
+    - name: Frontend
+      tech: React + Vite served as Cloudflare Worker Static Assets
+      owner: Ritik
+      responsibilities:
+        - Owner dashboard (upload collection, set price, pause/resume)
+        - Buyer dashboard (ask question, sign payment, view answer and receipt)
+        - Dynamic SDK integration for sign-in and wallet signing
+
+    - name: API Gate
+      tech: Cloudflare Workers
+      owner: Tanvir
+      responsibilities:
+        - Serve React app as static assets
+        - POST /api/collections (register collection)
+        - POST /api/collections/:id/upload (upload to private R2)
+        - POST /api/queries/prepare (return price quote)
+        - POST /api/queries/execute (verify payment, retrieve, call model, settle)
+        - GET /api/queries/:id/receipt (return receipt)
+        - Check on-chain policy before every retrieval
+        - Replay protection via unique request IDs
+        - Store credentials in Worker secrets, never expose R2 public URL
+
+    - name: Storage
+      tech: Cloudflare R2 (private) + Cloudflare D1
+      owner: Tanvir
+      responsibilities:
+        - R2: store private collection documents
+        - D1: store request state, receipts, collection metadata
+
+    - name: Smart Contracts
+      tech: Solidity on Monad testnet
+      owner: Tanvir
+      functions:
+        - registerCollection(collectionId, owner, price, policyVersion, active)
+        - updatePolicy(collectionId, price, active)
+        - openQuery(requestId, collectionId, escrowAmount)
+        - settleQuery(requestId, recipient)
+        - refundExpired(requestId)
+      storage_on_chain:
+        - collection ID, owner address, price, policy version, active status
+        - request ID, escrow state, receipt commitment
+      never_on_chain:
+        - prompts
+        - source passages
+        - model answers
+
+    - name: Wallet and Identity
+      tech: Dynamic SDK
+      owner: Ritik
+      usage:
+        - Embedded wallets for owners and buyers (no crypto knowledge needed)
+        - Sign Monad testnet transactions from the browser
+        - Custom EVM network configuration for Monad
+      dynamic_primitives_used:
+        - embedded_wallets: true
+        - agent_wallets: false
+        - delegated_access: verify feasibility on day 1 before committing
+      bounty_note: >
+        Dynamic bounty bonus requires combining multiple primitives.
+        Embedded wallets plus signing is the baseline.
+        Add agent wallets or delegated access only if confirmed working on Monad testnet.
+
+    - name: AI Model
+      tech: Kimi API (first choice) or any real model provider (fallback)
+      owner: Tanvir
+      note: >
+        Verify Kimi API access on day 1. If unavailable, switch to another
+        real provider immediately. Do not simulate AI queries or payments.
+        Passages retrieved from R2 are sent to the model. Tell owners this explicitly.
+
+# ─────────────────────────────────────────────
+# DATA FLOW
+# ─────────────────────────────────────────────
+data_flow:
+  owner_setup:
+    - Sign in with Dynamic (embedded wallet created)
+    - Upload Markdown guide to private R2 bucket
+    - Set price and active status
+    - Worker calls registerCollection on Monad contract
+    - Collection ID and policy version stored on-chain
+
+  buyer_query:
+    - Sign in with Dynamic (embedded wallet created)
+    - Ask question, receive price quote from Worker
+    - Sign Monad transaction: openQuery with escrow payment
+    - Worker verifies transaction and current on-chain policy
+    - Worker retrieves relevant passages from private R2
+    - Worker calls real AI model with passages as context
+    - Model returns cited answer
+    - Worker calls settleQuery, escrow released to owner
+    - Receipt stored in D1 with request ID, policy version, tx hash, passage IDs, response digest
+
+  revocation:
+    - Owner calls updatePolicy(active=false) on Monad
+    - Worker checks policy before every retrieval
+    - All future queries denied immediately
+    - Already delivered answers are not affected
+
+  failure_handling:
+    - Model failure: answer withheld, buyer can call refundExpired after timeout
+    - Worker timeout: same as model failure
+    - Settlement failure: retry logic, escalate to refund path
+    - Replay attack: D1 request ID uniqueness check blocks duplicate execution
+    - Insufficient payment: Worker rejects before retrieval
+
+# ─────────────────────────────────────────────
+# TEAM AND TIMELINE
+# ─────────────────────────────────────────────
+team:
+  - name: Tanvir
+    owns:
+      - Solidity contracts
+      - Cloudflare Worker API
+      - R2 and D1 integration
+      - Payment state machine
+      - Security checks and replay protection
+      - AI model integration
+
+  - name: Ritik
+    owns:
+      - React frontend
+      - Dynamic SDK sign-in flow
+      - Owner and buyer UX
+      - Demo video editing
+
+timeline:
+  - dates: "Oct 3-4"
+    milestone: Feasibility gate
+    tasks:
+      - Create separate DataVault repo (not inside DUSK)
+      - Confirm Cloudflare deployment access
+      - Confirm Dynamic sign-in and signed Monad transaction working
+      - Confirm contract deployment on Monad testnet
+      - Confirm real model API access (Kimi or fallback)
+      - Write demo knowledge collection (clear, no sensitive data)
+      - If any critical integration fails, reduce demo scope immediately
+
+  - dates: "Oct 4-6"
+    milestone: Payments and gate
+    tasks:
+      - Implement and test escrow contract
+      - Deploy contract to Monad testnet
+      - Build Worker API
+      - R2 private storage integration
+      - D1 request state
+      - Policy checks
+      - Payment verification
+
+  - dates: "Oct 6-8"
+    milestone: Working product
+    tasks:
+      - Owner and buyer screens
+      - Dynamic auth and embedded wallet signing
+      - Real model retrieval with citations
+      - Receipt history
+
+  - dates: "Oct 9-10"
+    milestone: Failure paths
+    tasks:
+      - Revocation flow
+      - Stale policy detection
+      - Replay protection
+      - Insufficient payment handling
+      - Model failure path
+      - Worker timeout handling
+      - Settlement failure and refund path
+      - Fix all issues before adding polish
+
+  - dates: "Oct 11-12"
+    milestone: Public demo and freeze
+    tasks:
+      - Deploy site and contract publicly
+      - Publish setup instructions and repo links
+      - Run complete flow from clean browser
+      - Capture real demo footage
+      - Write Dynamic bounty submission description
+      - Freeze all changes
+
+  - dates: "Oct 13-14"
+    milestone: Submission buffer
+    tasks:
+      - Check every required portal field
+      - Submit well before Oct 14 04:59 GMT+1
+
+# ─────────────────────────────────────────────
+# DEMO SCRIPT (90 seconds)
+# ─────────────────────────────────────────────
+demo:
+  tool: Higgsfield for visual opening, real app footage for everything else
+  rule: Do not generate or fake app screens, wallet prompts, AI answers, or transactions
+  steps:
+    1: Owner sets price and enables the collection
+    2: Buyer asks a real question, Dynamic wallet signs escrow payment
+    3: Cited AI answer appears, Monad transaction visible, receipt shown
+    4: Owner pauses collection, next buyer request denied before retrieval
+    5: Voiceover states the limitation plainly
+
+# ─────────────────────────────────────────────
+# DONE CRITERIA
+# ─────────────────────────────────────────────
+done_means:
+  - Public website deployed
+  - Working Monad contract deployed to testnet
+  - Dynamic sign-in and real transaction signing working
+  - Private gated retrieval working
+  - Real AI model answer with citations
+  - Successful settlement and failure refund paths both tested
+  - Inspectable receipt in UI
+  - Public repo with setup instructions
+  - Demo video matches the live product exactly
+
+# ─────────────────────────────────────────────
+# KEY RISKS
+# ─────────────────────────────────────────────
+risks:
+  - risk: Kimi API access unavailable
+    mitigation: Switch to OpenAI or Anthropic on day 1, make no Kimi claim
+    priority: critical
+
+  - risk: Dynamic agent wallet delegation not confirmed on Monad testnet
+    mitigation: Do not make it deadline-critical, use embedded wallets plus signing as baseline
+    priority: high
+
+  - risk: Escrow settlement edge cases discovered late
+    mitigation: Oct 9-10 dedicated to failure paths, not polish
+    priority: high
+
+  - risk: Demo content (knowledge collection) too narrow for judges
+    mitigation: Use universally relatable content, not niche UK guide
+    priority: medium
+
+  - risk: Submission write-up left to last minute
+    mitigation: Write Dynamic integration description on Oct 12 during freeze
+    priority: medium
+
+# ─────────────────────────────────────────────
+# PITCH FRAMING
+# ─────────────────────────────────────────────
+pitch:
+  hook: >
+    You post photos on Instagram. Meta uses those photos to train their AI.
+    Someone types your name and gets a realistic image of you.
+    You never agreed. You got paid nothing. Meta made millions.
+    This is happening right now to millions of people.
+    There are lawsuits but no technical fix. Until now.
+  monad_line: >
+    On Ethereum this costs $5 million per day in gas fees. On Monad it costs $10,000.
+    DataVault only exists because of Monad.
+  limitation_line: >
+    This controls access through participating services.
+    It does not stop every AI company today.
+    It is the infrastructure that makes ethical AI economics possible.
+  market: >
+    AI training data market: $2.3 billion in 2024, growing 35% per year.
+    EU AI Act compliance is a mandatory requirement for every AI company in Europe.
+    DataVault is the consent and payment rail for that market.
