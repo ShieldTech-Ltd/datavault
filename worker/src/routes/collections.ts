@@ -2,7 +2,7 @@ import { keccak256, toBytes } from "viem";
 import type { Env } from "../lib/types";
 import { storeCollection } from "../lib/r2";
 import { insertCollection, getCollectionRow } from "../lib/d1";
-import { buildRegisterCalldata } from "../lib/policy";
+import { buildRegisterCalldata, verifyUploadSignature } from "../lib/policy";
 
 export async function handleRegisterCollection(req: Request, env: Env): Promise<Response> {
   const formData = await req.formData();
@@ -54,6 +54,9 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
   );
 }
 
+// The client must sign: `datavault-upload:<collectionId>:<sha256(body)>:<timestamp>`
+// and send x-signature and x-timestamp headers alongside the body.
+// This prevents any party other than the registered owner from overwriting the collection.
 export async function handleUploadCollection(
   req: Request,
   env: Env,
@@ -62,13 +65,39 @@ export async function handleUploadCollection(
   const col = await getCollectionRow(collectionId, env);
   if (!col) return new Response("Collection not found", { status: 404 });
 
-  const ownerHeader = req.headers.get("x-owner-address") ?? "";
-  if (ownerHeader.toLowerCase() !== col.owner_address.toLowerCase()) {
-    return new Response("Forbidden", { status: 403 });
+  const signature = req.headers.get("x-signature") ?? "";
+  const timestampStr = req.headers.get("x-timestamp") ?? "";
+  const timestamp = parseInt(timestampStr, 10);
+
+  if (!signature || !timestamp || isNaN(timestamp)) {
+    return new Response("Missing x-signature or x-timestamp header", { status: 401 });
   }
 
   const body = await req.text();
+  if (!body.trim()) return new Response("Empty body", { status: 400 });
+
+  const contentHash = await sha256Hex(body);
+
+  const valid = await verifyUploadSignature(
+    col.owner_address,
+    collectionId,
+    contentHash,
+    timestamp,
+    signature,
+  );
+
+  if (!valid) {
+    return new Response("Invalid or expired signature", { status: 403 });
+  }
+
   await storeCollection(collectionId, body, env);
 
   return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }

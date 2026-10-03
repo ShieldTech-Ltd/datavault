@@ -1,6 +1,6 @@
 import type { Env } from "../lib/types";
 import { getCollectionRow, insertQuery, updateQuerySettled, updateQueryOutcome, getQueryRow, requestIdExists } from "../lib/d1";
-import { getOnChainCollection } from "../lib/policy";
+import { getOnChainCollection, getOnChainQuery } from "../lib/policy";
 import { retrievePassages } from "../lib/r2";
 import { callModel } from "../lib/model";
 import { createWalletClient, http, parseAbi, type Address } from "viem";
@@ -44,7 +44,7 @@ export async function handlePrepare(req: Request, env: Env): Promise<Response> {
 // ── POST /api/queries/execute ─────────────────────────────────────
 
 export async function handleExecute(req: Request, env: Env): Promise<Response> {
-  const { requestId, collectionId, question, buyerAddress } = await req.json<{
+  const { requestId, collectionId, question } = await req.json<{
     requestId: string;
     collectionId: string;
     question: string;
@@ -52,7 +52,7 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     buyerAddress: string;
   }>();
 
-  if (!requestId || !collectionId || !question || !buyerAddress) {
+  if (!requestId || !collectionId || !question) {
     return new Response("Missing required fields", { status: 400 });
   }
 
@@ -61,21 +61,52 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     return new Response("Duplicate requestId", { status: 409 });
   }
 
-  // Read current on-chain policy
+  // Read current on-chain policy for this collection
   let currentPolicyVersion = 1;
+  let currentPrice = BigInt(0);
   if (env.CONTRACT_ADDRESS) {
     const onChain = await getOnChainCollection(collectionId as `0x${string}`, env);
     if (!onChain) return new Response("Collection not found on-chain", { status: 404 });
     if (!onChain.active) {
       return new Response(
-        JSON.stringify({ error: "Collection is paused. Escrow not opened; no payment taken." }),
+        JSON.stringify({ error: "Collection is paused." }),
         { status: 403, headers: { "Content-Type": "application/json" } },
       );
     }
     currentPolicyVersion = onChain.policyVersion;
+    currentPrice = onChain.price;
   }
 
-  // Record the request in D1 before retrieval (idempotency anchor)
+  // Verify the escrow exists on-chain. Derive the buyer from the chain, not from the request body.
+  // This ensures no caller can trigger a model call or retrieval without having actually paid.
+  let buyerAddress = "local-dev";
+  if (env.CONTRACT_ADDRESS) {
+    const escrow = await getOnChainQuery(requestId as `0x${string}`, env);
+
+    if (!escrow) {
+      return new Response("Escrow not found on-chain. Call openQuery first.", { status: 402 });
+    }
+    if (escrow.state !== 0) {
+      return new Response("Escrow already finalised.", { status: 409 });
+    }
+    if (escrow.collectionId.toLowerCase() !== collectionId.toLowerCase()) {
+      return new Response("Escrow collectionId mismatch.", { status: 400 });
+    }
+    if (escrow.amount < currentPrice) {
+      return new Response("Escrow amount below collection price.", { status: 402 });
+    }
+    if (escrow.policyVersion !== currentPolicyVersion) {
+      return new Response(
+        "Policy version changed since escrow was opened. The buyer should call refundExpired.",
+        { status: 409 },
+      );
+    }
+
+    buyerAddress = escrow.buyer;
+  }
+
+  // Record the request in D1 before retrieval (idempotency anchor).
+  // buyerAddress is derived from on-chain escrow, not from the request body.
   await insertQuery({ request_id: requestId, collection_id: collectionId, buyer_address: buyerAddress, policy_version: currentPolicyVersion }, env);
 
   try {

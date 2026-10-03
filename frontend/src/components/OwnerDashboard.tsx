@@ -4,6 +4,27 @@ import { isEthereumWallet } from "@dynamic-labs/ethereum";
 import { DATAVAULT_ABI, CONTRACT_ADDRESS } from "@/lib/contract";
 import { encodeFunctionData, parseEther } from "viem";
 
+async function sha256Hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// Signs the upload message so the Worker can verify ownership without trusting a header.
+// Message format mirrors policy.ts verifyUploadSignature.
+async function signUpload(
+  walletClient: { signMessage: (args: { message: string }) => Promise<`0x${string}`> },
+  collectionId: string,
+  content: string,
+): Promise<{ signature: string; timestamp: number; contentHash: string }> {
+  const timestamp = Date.now();
+  const contentHash = await sha256Hex(content);
+  const message = `datavault-upload:${collectionId}:${contentHash}:${timestamp}`;
+  const signature = await walletClient.signMessage({ message });
+  return { signature, timestamp, contentHash };
+}
+
 type Status = "idle" | "loading" | "success" | "error";
 
 interface PolicyState {
@@ -54,6 +75,29 @@ export default function OwnerDashboard() {
       setPolicy({ collectionId, price: priceEth, active: true, policyVersion: 1 });
       setStatus("success");
       setMessage(`Registered. Tx: ${txHash}`);
+    } catch (err: unknown) {
+      setStatus("error");
+      setMessage(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleReupload() {
+    if (!primaryWallet || !file || !policy) return;
+    setStatus("loading");
+    setMessage("Signing upload...");
+    try {
+      if (!isEthereumWallet(primaryWallet)) throw new Error("Not an Ethereum wallet");
+      const walletClient = await primaryWallet.getWalletClient();
+      const content = await file.text();
+      const { signature, timestamp } = await signUpload(walletClient, policy.collectionId, content);
+      const res = await fetch(`/api/collections/${policy.collectionId}/upload`, {
+        method: "POST",
+        body: content,
+        headers: { "Content-Type": "text/markdown", "x-signature": signature, "x-timestamp": String(timestamp) },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setStatus("success");
+      setMessage("Collection content updated.");
     } catch (err: unknown) {
       setStatus("error");
       setMessage(err instanceof Error ? err.message : String(err));
@@ -140,13 +184,24 @@ export default function OwnerDashboard() {
           </div>
           <div>Status: {policy.active ? "Active" : "Paused"} (policy v{policy.policyVersion})</div>
           <div>Price: {policy.price} MON per query</div>
-          <button
-            onClick={handleTogglePause}
-            disabled={pausing}
-            style={{ ...styles.button, marginTop: "0.75rem", background: policy.active ? "#ef4444" : "#22c55e" }}
-          >
-            {pausing ? "Signing..." : policy.active ? "Pause Access" : "Resume Access"}
-          </button>
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
+            <button
+              onClick={handleTogglePause}
+              disabled={pausing}
+              style={{ ...styles.button, background: policy.active ? "#ef4444" : "#22c55e" }}
+            >
+              {pausing ? "Signing..." : policy.active ? "Pause Access" : "Resume Access"}
+            </button>
+            {file && (
+              <button
+                onClick={handleReupload}
+                disabled={status === "loading"}
+                style={{ ...styles.button, background: "#64748b" }}
+              >
+                Update Content (signed)
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
