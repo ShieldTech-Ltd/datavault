@@ -318,7 +318,9 @@ export default function BuyerDashboard() {
     try {
       const walletClient = await primaryWallet.getWalletClient();
       const { signature, timestamp } = await signAuth(walletClient, "datavault-answer", req.requestId);
-      const res = await fetch(`/api/queries/${req.requestId}/answer?signature=${encodeURIComponent(signature)}&timestamp=${timestamp}&buyerAddress=${walletAddress}`);
+      const res = await fetch(`/api/queries/${req.requestId}/answer`, {
+        headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
+      });
       if (!res.ok) throw new Error(await res.text());
       const data = (await res.json()) as { answer: string; citedPassageIds: string[]; outcome: string };
       inFlightRef.current = { requestId: req.requestId, openTxHash: req.openTxHash, openedAt: req.openedAt };
