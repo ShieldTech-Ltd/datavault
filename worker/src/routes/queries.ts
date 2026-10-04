@@ -133,7 +133,7 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
       return new Response(
         JSON.stringify({
           answer: existing.answer_text ?? "",
-          passages: JSON.parse(existing.passage_ids),
+          passageIds: JSON.parse(existing.passage_ids),
           requestId,
           txHash: existing.tx_hash ?? "pending",
           receiptUrl: `/api/queries/${requestId}/receipt`,
@@ -174,12 +174,14 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
       return new Response("No relevant passages found", { status: 422 });
     }
 
-    const { answer, passages: citedPassages, responseDigest } = await callModel(question as string, passages, env);
+    const { answer, citedPassages, citedPassageIds, responseDigest, isInsufficientEvidence } =
+      await callModel(question as string, passages, passageIds, env);
 
     // Persist answer BEFORE broadcasting the settlement tx.
     // If the Worker crashes after settle but before response delivery, the buyer
     // can recover via GET /api/queries/:id/answer.
-    await updateQueryAnswerRecorded(requestId as string, answer, passageIds, responseDigest, env);
+    // Store only the cited passage IDs, not all retrieved ones.
+    await updateQueryAnswerRecorded(requestId as string, answer, citedPassageIds, responseDigest, env);
 
     // Recheck policy immediately before settlement
     const preSettlePolicy = await getOnChainCollection(collectionId as `0x${string}`, env);
@@ -196,12 +198,14 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
       settleTxHash = await settleOnChain(requestId as `0x${string}`, env);
     }
 
-    await updateQuerySettled(requestId as string, settleTxHash, passageIds, responseDigest, env);
+    await updateQuerySettled(requestId as string, settleTxHash, citedPassageIds, responseDigest, env);
 
     return new Response(
       JSON.stringify({
         answer,
-        passages: citedPassages,
+        passages: citedPassages,       // array of { id, text, version }
+        passageIds: citedPassageIds,   // versioned IDs matching receipt
+        isInsufficientEvidence,
         requestId,
         txHash: settleTxHash,
         receiptUrl: `/api/queries/${requestId}/receipt`,
