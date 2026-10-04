@@ -34,11 +34,20 @@ export interface CollectionRow {
 //   pending -> running -> answer_recorded -> settled
 //                     \-> failed
 //   pending -> refundable  (set externally when timeout observed)
+// outcome state machine:
+//   pending -> running -> answer_recorded -> settlement_pending -> settled
+//                     \-> failed
+//   pending -> refundable  (set externally when timeout observed)
 export interface QueryRow {
   request_id: string;
   collection_id: string;
   buyer_address: string;
-  tx_hash: string | null;
+  open_tx_hash: string | null;
+  settle_tx_hash: string | null;
+  refund_tx_hash: string | null;
+  chain_id: number | null;
+  contract_address: string | null;
+  content_hash: string | null;
   policy_version: number;
   question_digest: string;
   passage_ids: string;
