@@ -41,6 +41,7 @@ export interface QueryRow {
 
 export interface OnChainCollection {
   owner: string;
+  operator: string;
   price: bigint;
   policyVersion: number;
   active: boolean;

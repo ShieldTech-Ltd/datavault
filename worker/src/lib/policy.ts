@@ -11,7 +11,7 @@ export interface OnChainQuery {
 }
 
 const COLLECTION_ABI = parseAbi([
-  "function getCollection(bytes32 collectionId) external view returns (tuple(address owner, uint256 price, uint32 policyVersion, bool active))",
+  "function getCollection(bytes32 collectionId) external view returns (tuple(address owner, address operator, uint256 price, uint32 policyVersion, bool active))",
 ]);
 
 function buildChain(env: Env) {
@@ -40,9 +40,10 @@ export async function getOnChainCollection(
       abi: COLLECTION_ABI,
       functionName: "getCollection",
       args: [collectionId],
-    }) as { owner: string; price: bigint; policyVersion: number; active: boolean };
+    }) as { owner: string; operator: string; price: bigint; policyVersion: number; active: boolean };
     return {
       owner: result.owner,
+      operator: result.operator,
       price: result.price,
       policyVersion: result.policyVersion,
       active: result.active,
@@ -117,10 +118,11 @@ export async function verifyUploadSignature(
 export async function buildRegisterCalldata(
   collectionId: `0x${string}`,
   priceWei: bigint,
+  operator: `0x${string}`,
 ): Promise<`0x${string}`> {
   const { encodeFunctionData } = await import("viem");
-  const abi = parseAbi(["function registerCollection(bytes32 collectionId, uint256 price) external"]);
-  return encodeFunctionData({ abi, functionName: "registerCollection", args: [collectionId, priceWei] });
+  const abi = parseAbi(["function registerCollection(bytes32 collectionId, uint256 price, address operator) external"]);
+  return encodeFunctionData({ abi, functionName: "registerCollection", args: [collectionId, priceWei, operator] });
 }
 
 export async function buildSettleCalldata(requestId: `0x${string}`): Promise<`0x${string}`> {
