@@ -17,6 +17,7 @@ export async function handlePrepare(req: Request, env: Env): Promise<Response> {
 
   const col = await getCollectionRow(collectionId, env);
   if (!col) return new Response("Collection not found", { status: 404 });
+  if (col.status !== "confirmed") return new Response("Collection is not yet confirmed on-chain", { status: 403 });
   if (!col.active) return new Response("Collection is paused", { status: 403 });
 
   // Read the authoritative price from on-chain when the contract is deployed.

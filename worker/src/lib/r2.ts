@@ -1,12 +1,25 @@
 import type { Env } from "./types";
 
+// Stores content at an immutable versioned key (by content hash) and updates
+// the 'latest' pointer. A changed document gets a new versioned key, preserving
+// the old version for any in-flight queries that already opened escrow against it.
 export async function storeCollection(
   collectionId: string,
   content: string,
+  contentHash: string,
   env: Env,
 ): Promise<void> {
-  await env.COLLECTION_STORE.put(`collections/${collectionId}/document.md`, content, {
+  const versionKey = `collections/${collectionId}/v/${contentHash}.md`;
+  const latestKey  = `collections/${collectionId}/latest`;
+
+  await env.COLLECTION_STORE.put(versionKey, content, {
     httpMetadata: { contentType: "text/markdown" },
+    customMetadata: { collectionId, contentHash },
+  });
+
+  // Update the latest pointer so retrievePassages always reads the current version
+  await env.COLLECTION_STORE.put(latestKey, contentHash, {
+    httpMetadata: { contentType: "text/plain" },
     customMetadata: { collectionId },
   });
 }
@@ -16,8 +29,13 @@ export async function retrievePassages(
   query: string,
   env: Env,
 ): Promise<{ passages: string[]; passageIds: string[] }> {
-  const obj = await env.COLLECTION_STORE.get(`collections/${collectionId}/document.md`);
-  if (!obj) throw new Error("Collection not found in storage");
+  // Resolve the latest content hash pointer, then fetch the versioned object.
+  const latestObj = await env.COLLECTION_STORE.get(`collections/${collectionId}/latest`);
+  if (!latestObj) throw new Error("Collection not found in storage");
+  const contentHash = (await latestObj.text()).trim();
+
+  const obj = await env.COLLECTION_STORE.get(`collections/${collectionId}/v/${contentHash}.md`);
+  if (!obj) throw new Error("Collection content version not found in storage");
 
   const content = await obj.text();
   const chunks = splitIntoChunks(content, 600);

@@ -24,6 +24,9 @@ export interface CollectionRow {
   content_hash: string;
   policy_version: number;
   active: number;
+  status: "staging" | "confirmed" | "orphaned";
+  staged_at: number | null;
+  confirmed_tx: string | null;
   created_at: number;
 }
 
