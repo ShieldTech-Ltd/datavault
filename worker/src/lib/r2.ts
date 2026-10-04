@@ -28,7 +28,7 @@ export async function retrievePassages(
   collectionId: string,
   query: string,
   env: Env,
-): Promise<{ passages: string[]; passageIds: string[] }> {
+): Promise<{ passages: string[]; passageIds: string[]; contentHash: string }> {
   // Resolve the latest content hash pointer, then fetch the versioned object.
   const latestObj = await env.COLLECTION_STORE.get(`collections/${collectionId}/latest`);
   if (!latestObj) throw new Error("Collection not found in storage");
@@ -55,9 +55,12 @@ export async function retrievePassages(
   scored.sort((a, b) => b.score - a.score);
 
   const top = scored.slice(0, 4);
+  // Prefix passage IDs with the contentHash so citations are pinned to the
+  // exact content version and remain verifiable after re-uploads.
   return {
     passages: top.map((t) => t.chunk),
-    passageIds: top.map((t) => t.id),
+    passageIds: top.map((t) => `${contentHash}:${t.id}`),
+    contentHash,
   };
 }
 
