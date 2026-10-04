@@ -1,6 +1,6 @@
 import type { Env } from "./lib/types";
 import { handleRegisterCollection, handleUploadCollection, handleConfirmCollection } from "./routes/collections";
-import { handlePrepare, handleExecute, handleReceipt } from "./routes/queries";
+import { handlePrepare, handleExecute, handleReceipt, handleAnswerRecovery } from "./routes/queries";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -39,6 +39,9 @@ export default {
         } else if (method === "GET" && path.match(/^\/api\/queries\/[^/]+\/receipt$/)) {
           const id = path.split("/")[3];
           res = await handleReceipt(env, id);
+        } else if (method === "GET" && path.match(/^\/api\/queries\/[^/]+\/answer$/)) {
+          const id = path.split("/")[3];
+          res = await handleAnswerRecovery(request, env, id);
         } else {
           res = new Response("Not found", { status: 404 });
         }

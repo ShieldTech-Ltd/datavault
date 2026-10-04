@@ -30,6 +30,10 @@ export interface CollectionRow {
   created_at: number;
 }
 
+// outcome state machine:
+//   pending -> running -> answer_recorded -> settled
+//                     \-> failed
+//   pending -> refundable  (set externally when timeout observed)
 export interface QueryRow {
   request_id: string;
   collection_id: string;
@@ -39,7 +43,10 @@ export interface QueryRow {
   question_digest: string;
   passage_ids: string;
   response_digest: string | null;
+  answer_text: string | null;
   outcome: string;
+  claimed_at: number | null;
+  lease_expires_at: number | null;
   created_at: number;
   settled_at: number | null;
 }
