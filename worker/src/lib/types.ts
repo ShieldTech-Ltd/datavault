@@ -36,6 +36,7 @@ export interface QueryRow {
   buyer_address: string;
   tx_hash: string | null;
   policy_version: number;
+  question_digest: string;
   passage_ids: string;
   response_digest: string | null;
   outcome: string;

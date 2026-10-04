@@ -48,14 +48,14 @@ export async function getCollectionRow(
 // ── Queries ───────────────────────────────────────────────────────
 
 export async function insertQuery(
-  row: Pick<QueryRow, "request_id" | "collection_id" | "buyer_address" | "policy_version">,
+  row: Pick<QueryRow, "request_id" | "collection_id" | "buyer_address" | "policy_version"> & { question_digest: string },
   env: Env,
 ): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO queries (request_id, collection_id, buyer_address, policy_version, passage_ids, outcome, created_at)
-     VALUES (?, ?, ?, ?, '[]', 'pending', ?)`,
+    `INSERT INTO queries (request_id, collection_id, buyer_address, policy_version, question_digest, passage_ids, outcome, created_at)
+     VALUES (?, ?, ?, ?, ?, '[]', 'pending', ?)`,
   )
-    .bind(row.request_id, row.collection_id, row.buyer_address, row.policy_version, Date.now())
+    .bind(row.request_id, row.collection_id, row.buyer_address, row.policy_version, row.question_digest, Date.now())
     .run();
 }
 

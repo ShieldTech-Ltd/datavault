@@ -1,5 +1,5 @@
 import type { Env } from "../lib/types";
-import { getCollectionRow, insertQuery, updateQuerySettled, updateQueryOutcome, getQueryRow, requestIdExists } from "../lib/d1";
+import { getCollectionRow, insertQuery, updateQuerySettled, updateQueryOutcome, getQueryRow } from "../lib/d1";
 import { getOnChainCollection, getOnChainQuery } from "../lib/policy";
 import { retrievePassages } from "../lib/r2";
 import { callModel } from "../lib/model";
@@ -48,6 +48,14 @@ export async function handlePrepare(req: Request, env: Env): Promise<Response> {
 // ── POST /api/queries/execute ─────────────────────────────────────
 
 export async function handleExecute(req: Request, env: Env): Promise<Response> {
+  // CONTRACT_ADDRESS is required for execute. Never allow unpaid execution in any environment.
+  if (!env.CONTRACT_ADDRESS) {
+    return new Response(
+      JSON.stringify({ error: "Service unavailable: contract not configured on this deployment." }),
+      { status: 503, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   const { allowed, retryAfter } = await checkRateLimit(callerIdentity(req), "execute", env);
   if (!allowed) return new Response(JSON.stringify({ error: "Too many requests" }), {
     status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(retryAfter) },
@@ -62,60 +70,93 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
 
   if (!isValidBytes32(requestId)) return error400("requestId must be a 0x-prefixed 32-byte hex string");
   if (!isValidBytes32(collectionId)) return error400("collectionId must be a 0x-prefixed 32-byte hex string");
-  if (!isValidQuestion(question)) return error400(`question must be a non-empty string up to 500 characters`);
+  if (!isValidQuestion(question)) return error400("question must be a non-empty string up to 500 characters");
 
-  // Replay protection: reject if this requestId has already been processed
-  if (await requestIdExists(requestId, env)) {
-    return new Response("Duplicate requestId", { status: 409 });
+  // Compute the question digest before any D1 or chain reads.
+  // This value is stored on first insert and checked on any retry so the
+  // question cannot be swapped to redirect a paid escrow to a different answer.
+  const questionDigest = await sha256Hex(question as string);
+
+  // Replay protection: if the requestId already exists, check the question digest matches.
+  // A duplicate with the same digest is a safe retry (idempotent). A different digest
+  // means an attacker is trying to substitute a different question onto a paid escrow.
+  const existing = await getQueryRow(requestId as string, env);
+  if (existing) {
+    if (existing.question_digest !== questionDigest) {
+      return new Response(
+        JSON.stringify({ error: "requestId already used with a different question." }),
+        { status: 409, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (existing.outcome === "settled") {
+      return new Response(
+        JSON.stringify({ error: "Request already settled." }),
+        { status: 409, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    // Any other duplicate (pending, failed) is a replay: reject
+    return new Response(
+      JSON.stringify({ error: "Duplicate requestId." }),
+      { status: 409, headers: { "Content-Type": "application/json" } },
+    );
   }
 
   // Read current on-chain policy for this collection
-  let currentPolicyVersion = 1;
-  let currentPrice = BigInt(0);
-  if (env.CONTRACT_ADDRESS) {
-    const onChain = await getOnChainCollection(collectionId as `0x${string}`, env);
-    if (!onChain) return new Response("Collection not found on-chain", { status: 404 });
-    if (!onChain.active) {
-      return new Response(
-        JSON.stringify({ error: "Collection is paused." }),
-        { status: 403, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    currentPolicyVersion = onChain.policyVersion;
-    currentPrice = onChain.price;
+  const onChain = await getOnChainCollection(collectionId as `0x${string}`, env);
+  if (!onChain) return new Response("Collection not found on-chain", { status: 404 });
+  if (!onChain.active) {
+    return new Response(
+      JSON.stringify({ error: "Collection is paused." }),
+      { status: 403, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  const currentPolicyVersion = onChain.policyVersion;
+  const currentPrice = onChain.price;
+
+  // Verify the escrow on-chain. Buyer identity is derived from the chain, not the request body.
+  const escrow = await getOnChainQuery(requestId as `0x${string}`, env);
+
+  if (!escrow) {
+    return new Response("Escrow not found on-chain. Call openQuery first.", { status: 402 });
+  }
+  if (escrow.state !== 0) {
+    return new Response("Escrow already finalised.", { status: 409 });
+  }
+  if (escrow.collectionId.toLowerCase() !== (collectionId as string).toLowerCase()) {
+    return new Response("Escrow collectionId mismatch.", { status: 400 });
+  }
+  if (escrow.amount < currentPrice) {
+    return new Response("Escrow amount below collection price.", { status: 402 });
+  }
+  if (escrow.policyVersion !== currentPolicyVersion) {
+    return new Response(
+      "Policy version changed since escrow was opened. Call refundExpired to recover payment.",
+      { status: 409 },
+    );
   }
 
-  // Verify the escrow exists on-chain. Derive the buyer from the chain, not from the request body.
-  // This ensures no caller can trigger a model call or retrieval without having actually paid.
-  let buyerAddress = "local-dev";
-  if (env.CONTRACT_ADDRESS) {
-    const escrow = await getOnChainQuery(requestId as `0x${string}`, env);
-
-    if (!escrow) {
-      return new Response("Escrow not found on-chain. Call openQuery first.", { status: 402 });
-    }
-    if (escrow.state !== 0) {
-      return new Response("Escrow already finalised.", { status: 409 });
-    }
-    if (escrow.collectionId.toLowerCase() !== collectionId.toLowerCase()) {
-      return new Response("Escrow collectionId mismatch.", { status: 400 });
-    }
-    if (escrow.amount < currentPrice) {
-      return new Response("Escrow amount below collection price.", { status: 402 });
-    }
-    if (escrow.policyVersion !== currentPolicyVersion) {
-      return new Response(
-        "Policy version changed since escrow was opened. The buyer should call refundExpired.",
-        { status: 409 },
-      );
-    }
-
-    buyerAddress = escrow.buyer;
+  // Reject expired escrows. The buyer can already call refundExpired on-chain;
+  // the Worker should not attempt settlement on a window that has passed.
+  const REFUND_TIMEOUT_S = 600n; // 10 minutes, mirrors the contract constant
+  const nowS = BigInt(Math.floor(Date.now() / 1000));
+  if (nowS >= escrow.openedAt + REFUND_TIMEOUT_S) {
+    return new Response(
+      JSON.stringify({ error: "Escrow timeout has elapsed. Call refundExpired to recover payment." }),
+      { status: 409, headers: { "Content-Type": "application/json" } },
+    );
   }
 
-  // Record the request in D1 before retrieval (idempotency anchor).
-  // buyerAddress is derived from on-chain escrow, not from the request body.
-  await insertQuery({ request_id: requestId, collection_id: collectionId, buyer_address: buyerAddress, policy_version: currentPolicyVersion }, env);
+  const buyerAddress = escrow.buyer;
+
+  // Record the request in D1 before retrieval. The question_digest binds the question
+  // to this requestId so any future retry with a different question is rejected above.
+  await insertQuery({
+    request_id: requestId as string,
+    collection_id: collectionId as string,
+    buyer_address: buyerAddress,
+    policy_version: currentPolicyVersion,
+    question_digest: questionDigest,
+  }, env);
 
   try {
     // Retrieve relevant passages from private R2 (no public URL)
@@ -129,9 +170,21 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     // Call the real AI model with passages as context
     const { answer, passages: citedPassages, responseDigest } = await callModel(question, passages, env);
 
+    // Recheck policy immediately before settlement. If the owner paused or changed
+    // the price between retrieval and now, abort rather than settle stale state.
+    // The buyer can call refundExpired if the policy version changed.
+    const preSettlePolicy = await getOnChainCollection(collectionId as `0x${string}`, env);
+    if (!preSettlePolicy || !preSettlePolicy.active || preSettlePolicy.policyVersion !== currentPolicyVersion) {
+      await updateQueryOutcome(requestId as string, "failed", env);
+      return new Response(
+        JSON.stringify({ error: "Collection policy changed before settlement. Call refundExpired to recover payment." }),
+        { status: 409, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
     // Settle escrow on-chain: release payment to the collection owner
-    let settleTxHash = "local-dev-no-contract";
-    if (env.CONTRACT_ADDRESS && env.SETTLEMENT_PRIVATE_KEY) {
+    let settleTxHash = "no-settlement-key";
+    if (env.SETTLEMENT_PRIVATE_KEY) {
       settleTxHash = await settleOnChain(requestId as `0x${string}`, env);
     }
 
@@ -176,6 +229,15 @@ export async function handleReceipt(env: Env, requestId: string): Promise<Respon
     }),
     { headers: { "Content-Type": "application/json" } },
   );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────
+
+async function sha256Hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 // ── On-chain settlement ───────────────────────────────────────────
