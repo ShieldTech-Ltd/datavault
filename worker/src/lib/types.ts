@@ -8,6 +8,7 @@ export interface Env {
   MONAD_RPC_URL: string;
   MODEL_PROVIDER: string;
   CHAIN_ID: string;
+  ALLOWED_ORIGINS?: string; // comma-separated list of allowed request origins
 
   // Secrets (set via wrangler secret put)
   SETTLEMENT_PRIVATE_KEY: string;

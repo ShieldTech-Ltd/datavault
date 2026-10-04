@@ -4,19 +4,34 @@ import type { Env } from "../lib/types";
 import { storeCollection } from "../lib/r2";
 import { insertCollection, getCollectionRow } from "../lib/d1";
 import { buildRegisterCalldata, verifyUploadSignature } from "../lib/policy";
+import {
+  isValidAddress, isValidBytes32, isValidPriceWei, isValidSignature,
+  isValidTimestamp, checkContentLength, LIMITS,
+  error400, error401, error403, error413,
+} from "../lib/validation";
+import { checkRateLimit, callerIdentity } from "../lib/ratelimit";
 
 export async function handleRegisterCollection(req: Request, env: Env): Promise<Response> {
+  const sizeErr = checkContentLength(req);
+  if (sizeErr) return sizeErr;
+
+  const { allowed, retryAfter } = await checkRateLimit(callerIdentity(req), "register", env);
+  if (!allowed) return new Response(JSON.stringify({ error: "Too many requests" }), {
+    status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(retryAfter) },
+  });
+
   const formData = await req.formData();
   const file = formData.get("file") as File | string | null;
   const priceWeiStr = formData.get("priceWei") as string | null;
   const ownerAddress = formData.get("ownerAddress") as string | null;
 
-  if (!file || typeof file === "string" || !priceWeiStr || !ownerAddress) {
-    return new Response("Missing file, priceWei, or ownerAddress", { status: 400 });
-  }
+  if (!file || typeof file === "string") return error400("Missing or invalid file field");
+  if (!isValidAddress(ownerAddress)) return error400("ownerAddress must be a 0x-prefixed 20-byte hex address");
+  if (!isValidPriceWei(priceWeiStr)) return error400("priceWei must be a positive integer string no larger than 10 MON");
 
   const content = await (file as File).text();
-  if (!content.trim()) return new Response("Empty file", { status: 400 });
+  if (!content.trim()) return error400("File is empty");
+  if (new TextEncoder().encode(content).length > LIMITS.MAX_UPLOAD_BYTES) return error413();
 
   const priceWei = BigInt(priceWeiStr as string);
   const contentHash = keccak256(toBytes(content));
@@ -72,6 +87,11 @@ export async function handleUploadCollection(
   env: Env,
   collectionId: string,
 ): Promise<Response> {
+  if (!isValidBytes32(collectionId)) return error400("Invalid collectionId path segment");
+
+  const sizeErr = checkContentLength(req);
+  if (sizeErr) return sizeErr;
+
   const col = await getCollectionRow(collectionId, env);
   if (!col) return new Response("Collection not found", { status: 404 });
 
@@ -79,12 +99,12 @@ export async function handleUploadCollection(
   const timestampStr = req.headers.get("x-timestamp") ?? "";
   const timestamp = parseInt(timestampStr, 10);
 
-  if (!signature || !timestamp || isNaN(timestamp)) {
-    return new Response("Missing x-signature or x-timestamp header", { status: 401 });
-  }
+  if (!isValidSignature(signature)) return error401("x-signature header is missing or malformed");
+  if (!isValidTimestamp(timestamp)) return error401("x-timestamp header is missing, invalid, or expired");
 
   const body = await req.text();
-  if (!body.trim()) return new Response("Empty body", { status: 400 });
+  if (!body.trim()) return error400("Request body is empty");
+  if (new TextEncoder().encode(body).length > LIMITS.MAX_UPLOAD_BYTES) return error413();
 
   const contentHash = await sha256Hex(body);
 
@@ -96,9 +116,7 @@ export async function handleUploadCollection(
     signature,
   );
 
-  if (!valid) {
-    return new Response("Invalid or expired signature", { status: 403 });
-  }
+  if (!valid) return error403("Invalid or expired signature");
 
   await storeCollection(collectionId, body, env);
 
