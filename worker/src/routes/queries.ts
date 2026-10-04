@@ -5,12 +5,15 @@ import { retrievePassages } from "../lib/r2";
 import { callModel } from "../lib/model";
 import { createWalletClient, http, parseAbi, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { isValidBytes32, isValidQuestion, error400 } from "../lib/validation";
+import { checkRateLimit, callerIdentity } from "../lib/ratelimit";
 
 // ── POST /api/queries/prepare ─────────────────────────────────────
 
 export async function handlePrepare(req: Request, env: Env): Promise<Response> {
-  const { collectionId } = await req.json<{ collectionId: string; question: string }>();
-  if (!collectionId) return new Response("Missing collectionId", { status: 400 });
+  const body = await req.json<{ collectionId: unknown; question: unknown }>();
+  const { collectionId } = body;
+  if (!isValidBytes32(collectionId)) return error400("collectionId must be a 0x-prefixed 32-byte hex string");
 
   const col = await getCollectionRow(collectionId, env);
   if (!col) return new Response("Collection not found", { status: 404 });
@@ -44,17 +47,21 @@ export async function handlePrepare(req: Request, env: Env): Promise<Response> {
 // ── POST /api/queries/execute ─────────────────────────────────────
 
 export async function handleExecute(req: Request, env: Env): Promise<Response> {
-  const { requestId, collectionId, question } = await req.json<{
-    requestId: string;
-    collectionId: string;
-    question: string;
-    txHash: string;
-    buyerAddress: string;
-  }>();
+  const { allowed, retryAfter } = await checkRateLimit(callerIdentity(req), "execute", env);
+  if (!allowed) return new Response(JSON.stringify({ error: "Too many requests" }), {
+    status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(retryAfter) },
+  });
 
-  if (!requestId || !collectionId || !question) {
-    return new Response("Missing required fields", { status: 400 });
-  }
+  const body = await req.json<{
+    requestId: unknown;
+    collectionId: unknown;
+    question: unknown;
+  }>();
+  const { requestId, collectionId, question } = body;
+
+  if (!isValidBytes32(requestId)) return error400("requestId must be a 0x-prefixed 32-byte hex string");
+  if (!isValidBytes32(collectionId)) return error400("collectionId must be a 0x-prefixed 32-byte hex string");
+  if (!isValidQuestion(question)) return error400(`question must be a non-empty string up to 500 characters`);
 
   // Replay protection: reject if this requestId has already been processed
   if (await requestIdExists(requestId, env)) {
@@ -149,6 +156,7 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
 // ── GET /api/queries/:id/receipt ──────────────────────────────────
 
 export async function handleReceipt(env: Env, requestId: string): Promise<Response> {
+  if (!isValidBytes32(requestId)) return error400("Invalid requestId path segment");
   const row = await getQueryRow(requestId, env);
   if (!row) return new Response("Not found", { status: 404 });
 

@@ -10,10 +10,13 @@ export default {
 
     // ── API routes ────────────────────────────────────────────────
     if (path.startsWith("/api/")) {
-      const cors = {
-        "Access-Control-Allow-Origin": "*",
+      const origin = request.headers.get("Origin") ?? "";
+      const allowedOrigin = resolveAllowedOrigin(origin, env);
+      const cors: Record<string, string> = {
+        "Access-Control-Allow-Origin": allowedOrigin,
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, x-owner-address",
+        "Access-Control-Allow-Headers": "Content-Type, x-signature, x-timestamp",
+        "Vary": "Origin",
       };
 
       if (method === "OPTIONS") return new Response(null, { headers: cors });
@@ -54,3 +57,24 @@ export default {
     return env.ASSETS.fetch(request);
   },
 };
+
+// Returns the request's Origin if it is in the allowlist, otherwise falls back
+// to the Worker's own origin. This prevents credentialed cross-origin abuse
+// while still supporting localhost dev and the deployed frontend.
+function resolveAllowedOrigin(requestOrigin: string, env: Env): string {
+  // ALLOWED_ORIGINS is an optional comma-separated list set in wrangler.toml vars.
+  // If absent, only same-origin (empty Origin header) and localhost are permitted.
+  const raw = env.ALLOWED_ORIGINS ?? "";
+  const allowed = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  // Always allow localhost origins in development
+  const isLocalhost = /^https?:\/\/localhost(:\d+)?$/.test(requestOrigin);
+  if (isLocalhost || allowed.includes(requestOrigin)) return requestOrigin;
+
+  // Fall back to a null origin so browsers reject credentialed requests from
+  // unknown origins rather than reflecting an arbitrary origin.
+  return "null";
+}
