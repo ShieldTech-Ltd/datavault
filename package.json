@@ -5,10 +5,17 @@
   "description": "DataVault Query License – Monad Metropolis hackathon",
   "scripts": {
     "compile": "hardhat compile",
-    "test": "hardhat test",
+    "test:contracts": "hardhat test",
     "deploy:testnet": "hardhat run scripts/deploy.js --network monadTestnet",
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
-    "node": "hardhat node"
+    "node": "hardhat node",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:worker": "cd worker && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "typecheck:frontend": "cd frontend && npm run typecheck",
+    "typecheck:worker": "cd worker && npm run typecheck",
+    "install:all": "npm install && cd frontend && npm install && cd ../worker && npm install",
+    "db:migrate:local": "cd worker && npm run db:migrate:local"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
