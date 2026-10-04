@@ -51,7 +51,13 @@ export async function getCollectionRow(
 // false if another caller already inserted the row.
 // Uses INSERT OR IGNORE so the operation is a single atomic step in SQLite.
 export async function claimQuery(
-  row: Pick<QueryRow, "request_id" | "collection_id" | "buyer_address" | "policy_version"> & { question_digest: string },
+  row: Pick<QueryRow, "request_id" | "collection_id" | "buyer_address" | "policy_version"> & {
+    question_digest: string;
+    open_tx_hash?: string;
+    chain_id?: number;
+    contract_address?: string;
+    content_hash?: string;
+  },
   env: Env,
   leaseMs = 60_000,
 ): Promise<boolean> {
@@ -59,12 +65,15 @@ export async function claimQuery(
   const result = await env.DB.prepare(
     `INSERT OR IGNORE INTO queries
        (request_id, collection_id, buyer_address, policy_version, question_digest,
+        open_tx_hash, chain_id, contract_address, content_hash,
         passage_ids, outcome, claimed_at, lease_expires_at, created_at)
-     VALUES (?, ?, ?, ?, ?, '[]', 'pending', ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'pending', ?, ?, ?)`,
   )
     .bind(
       row.request_id, row.collection_id, row.buyer_address, row.policy_version,
-      row.question_digest, now, now + leaseMs, now,
+      row.question_digest,
+      row.open_tx_hash ?? null, row.chain_id ?? null, row.contract_address ?? null, row.content_hash ?? null,
+      now, now + leaseMs, now,
     )
     .run();
   return result.meta.changes === 1;
@@ -99,18 +108,40 @@ export async function updateQueryAnswerRecorded(
     .run();
 }
 
+export async function updateQuerySettlementPending(
+  requestId: string,
+  settleTxHash: string,
+  env: Env,
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE queries SET outcome = 'settlement_pending', settle_tx_hash = ? WHERE request_id = ?`,
+  )
+    .bind(settleTxHash, requestId)
+    .run();
+}
+
 export async function updateQuerySettled(
   requestId: string,
-  txHash: string,
+  settleTxHash: string,
   passageIds: string[],
   responseDigest: string,
   env: Env,
 ): Promise<void> {
   await env.DB.prepare(
-    `UPDATE queries SET outcome = 'settled', tx_hash = ?, passage_ids = ?, response_digest = ?, settled_at = ?
+    `UPDATE queries SET outcome = 'settled', settle_tx_hash = ?, passage_ids = ?, response_digest = ?, settled_at = ?
      WHERE request_id = ?`,
   )
-    .bind(txHash, JSON.stringify(passageIds), responseDigest, Date.now(), requestId)
+    .bind(settleTxHash, JSON.stringify(passageIds), responseDigest, Date.now(), requestId)
+    .run();
+}
+
+export async function updateQueryContentHash(
+  requestId: string,
+  contentHash: string,
+  env: Env,
+): Promise<void> {
+  await env.DB.prepare("UPDATE queries SET content_hash = ? WHERE request_id = ?")
+    .bind(contentHash, requestId)
     .run();
 }
 

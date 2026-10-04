@@ -1,12 +1,13 @@
 import type { Env } from "../lib/types";
 import {
-  getCollectionRow, claimQuery, updateQuerySettled, updateQueryOutcome,
-  updateQueryRunning, updateQueryAnswerRecorded, getQueryRow,
+  getCollectionRow, claimQuery, updateQuerySettled, updateQuerySettlementPending,
+  updateQueryOutcome, updateQueryRunning, updateQueryAnswerRecorded,
+  updateQueryContentHash, getQueryRow,
 } from "../lib/d1";
 import { getOnChainCollection, getOnChainQuery, verifyUploadSignature } from "../lib/policy";
 import { retrievePassages } from "../lib/r2";
 import { callModel } from "../lib/model";
-import { createWalletClient, http, parseAbi, type Address } from "viem";
+import { createPublicClient, createWalletClient, http, parseAbi, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { isValidBytes32, isValidQuestion, isValidSignature, isValidTimestamp, error400 } from "../lib/validation";
 import { checkRateLimit, callerIdentity } from "../lib/ratelimit";
@@ -60,8 +61,8 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(retryAfter) },
   });
 
-  const body = await req.json<{ requestId: unknown; collectionId: unknown; question: unknown }>();
-  const { requestId, collectionId, question } = body;
+  const body = await req.json<{ requestId: unknown; collectionId: unknown; question: unknown; openTxHash?: unknown }>();
+  const { requestId, collectionId, question, openTxHash } = body;
 
   if (!isValidBytes32(requestId)) return error400("requestId must be a 0x-prefixed 32-byte hex string");
   if (!isValidBytes32(collectionId)) return error400("collectionId must be a 0x-prefixed 32-byte hex string");
@@ -107,12 +108,16 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
   // ── Atomic claim ─────────────────────────────────────────────────
   // INSERT OR IGNORE: only one Worker instance wins. If we lose the race,
   // inspect the existing row to return the right response.
+  const chainId = Number(env.CHAIN_ID) || 10143;
   const claimed = await claimQuery({
     request_id: requestId as string,
     collection_id: collectionId as string,
     buyer_address: buyerAddress,
     policy_version: currentPolicyVersion,
     question_digest: questionDigest,
+    open_tx_hash: isValidBytes32(openTxHash) ? (openTxHash as string) : undefined,
+    chain_id: chainId,
+    contract_address: env.CONTRACT_ADDRESS,
   }, env, LEASE_MS);
 
   if (!claimed) {
@@ -135,7 +140,7 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
           answer: existing.answer_text ?? "",
           passageIds: JSON.parse(existing.passage_ids),
           requestId,
-          txHash: existing.tx_hash ?? "pending",
+          txHash: existing.settle_tx_hash ?? "pending",
           receiptUrl: `/api/queries/${requestId}/receipt`,
           recovered: true,
         }),
@@ -168,11 +173,14 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
   await updateQueryRunning(requestId as string, env);
 
   try {
-    const { passages, passageIds } = await retrievePassages(collectionId as string, question as string, env);
+    const { passages, passageIds, contentHash } = await retrievePassages(collectionId as string, question as string, env);
     if (passages.length === 0) {
       await updateQueryOutcome(requestId as string, "failed", env);
       return new Response("No relevant passages found", { status: 422 });
     }
+
+    // Record the content version used so the receipt is self-describing
+    await updateQueryContentHash(requestId as string, contentHash, env);
 
     const { answer, citedPassages, citedPassageIds, responseDigest, isInsufficientEvidence } =
       await callModel(question as string, passages, passageIds, env);
@@ -180,7 +188,6 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     // Persist answer BEFORE broadcasting the settlement tx.
     // If the Worker crashes after settle but before response delivery, the buyer
     // can recover via GET /api/queries/:id/answer.
-    // Store only the cited passage IDs, not all retrieved ones.
     await updateQueryAnswerRecorded(requestId as string, answer, citedPassageIds, responseDigest, env);
 
     // Recheck policy immediately before settlement
@@ -193,9 +200,33 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
       );
     }
 
+    // Settle on-chain and wait for confirmation. If the tx broadcasts but times out
+    // before confirmation, mark as settlement_pending so the buyer can reconcile.
     let settleTxHash = "no-settlement-key";
+    let settled = false;
+
     if (env.SETTLEMENT_PRIVATE_KEY) {
-      settleTxHash = await settleOnChain(requestId as `0x${string}`, env);
+      const result = await settleOnChainWithConfirmation(requestId as `0x${string}`, env);
+      settleTxHash = result.hash;
+      settled = result.confirmed;
+
+      if (!settled) {
+        await updateQuerySettlementPending(requestId as string, settleTxHash, env);
+        return new Response(
+          JSON.stringify({
+            answer,
+            passages: citedPassages,
+            passageIds: citedPassageIds,
+            isInsufficientEvidence,
+            requestId,
+            settleTxHash,
+            settled: false,
+            receiptUrl: `/api/queries/${requestId}/receipt`,
+            warning: "Settlement tx broadcast but not yet confirmed. Call /reconcile to check status.",
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      }
     }
 
     await updateQuerySettled(requestId as string, settleTxHash, citedPassageIds, responseDigest, env);
@@ -203,11 +234,12 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     return new Response(
       JSON.stringify({
         answer,
-        passages: citedPassages,       // array of { id, text, version }
-        passageIds: citedPassageIds,   // versioned IDs matching receipt
+        passages: citedPassages,
+        passageIds: citedPassageIds,
         isInsufficientEvidence,
         requestId,
-        txHash: settleTxHash,
+        settleTxHash,
+        settled: true,
         receiptUrl: `/api/queries/${requestId}/receipt`,
       }),
       { headers: { "Content-Type": "application/json" } },
@@ -233,14 +265,101 @@ export async function handleReceipt(env: Env, requestId: string): Promise<Respon
       requestId: row.request_id,
       collectionId: row.collection_id,
       buyerAddress: row.buyer_address,
-      txHash: row.tx_hash,
+      chainId: row.chain_id,
+      contractAddress: row.contract_address,
+      contentHash: row.content_hash,
       policyVersion: row.policy_version,
-      passageIds: JSON.parse(row.passage_ids),
+      openTxHash: row.open_tx_hash,
+      settleTxHash: row.settle_tx_hash,
+      refundTxHash: row.refund_tx_hash,
+      citedPassageIds: JSON.parse(row.passage_ids),
       responseDigest: row.response_digest,
       outcome: row.outcome,
       createdAt: row.created_at,
       settledAt: row.settled_at,
     }),
+    { headers: { "Content-Type": "application/json" } },
+  );
+}
+
+// ── POST /api/queries/:id/reconcile ──────────────────────────────
+
+// Called by the buyer after a settlement_pending response. Checks on-chain
+// state for the pending tx and updates D1 if the settlement was confirmed.
+// Requires buyer ECDSA auth (same pattern as answer recovery).
+export async function handleReconcile(req: Request, env: Env, requestId: string): Promise<Response> {
+  if (!isValidBytes32(requestId)) return error400("Invalid requestId path segment");
+  if (!env.CONTRACT_ADDRESS) {
+    return new Response(JSON.stringify({ error: "Contract not configured." }), {
+      status: 503, headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const signature = req.headers.get("x-signature") ?? "";
+  const timestampStr = req.headers.get("x-timestamp") ?? "";
+  const timestamp = parseInt(timestampStr, 10);
+
+  if (!isValidSignature(signature)) {
+    return new Response(JSON.stringify({ error: "x-signature header missing or malformed" }), {
+      status: 401, headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (!isValidTimestamp(timestamp)) {
+    return new Response(JSON.stringify({ error: "x-timestamp header missing, invalid, or expired" }), {
+      status: 401, headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const row = await getQueryRow(requestId, env);
+  if (!row) return new Response("Not found", { status: 404 });
+
+  // Verify caller is the original buyer
+  const message = `datavault-reconcile:${requestId}:${timestamp}`;
+  const { verifyMessage } = await import("viem");
+  const valid = await verifyMessage({
+    address: row.buyer_address as `0x${string}`,
+    message,
+    signature: signature as `0x${string}`,
+  }).catch(() => false);
+  if (!valid) {
+    return new Response(JSON.stringify({ error: "Signature does not match buyer address." }), {
+      status: 403, headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (row.outcome === "settled") {
+    return new Response(
+      JSON.stringify({ outcome: "settled", settleTxHash: row.settle_tx_hash }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  if (row.outcome !== "settlement_pending" || !row.settle_tx_hash) {
+    return new Response(
+      JSON.stringify({ outcome: row.outcome, message: "Nothing to reconcile." }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  // Check on-chain escrow state
+  const escrow = await getOnChainQuery(requestId as `0x${string}`, env);
+  if (escrow && escrow.state === 1) {
+    // Settled on-chain: update D1
+    await updateQuerySettled(
+      requestId,
+      row.settle_tx_hash,
+      JSON.parse(row.passage_ids),
+      row.response_digest ?? "",
+      env,
+    );
+    return new Response(
+      JSON.stringify({ outcome: "settled", settleTxHash: row.settle_tx_hash, reconciled: true }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  return new Response(
+    JSON.stringify({ outcome: "settlement_pending", settleTxHash: row.settle_tx_hash, message: "Settlement not yet confirmed on-chain." }),
     { headers: { "Content-Type": "application/json" } },
   );
 }
@@ -322,16 +441,25 @@ async function sha256Hex(text: string): Promise<string> {
 
 // ── On-chain settlement ───────────────────────────────────────────
 
-async function settleOnChain(requestId: `0x${string}`, env: Env): Promise<string> {
+// Broadcasts the settlement tx and waits up to 20s for confirmation.
+// Returns { hash, confirmed: true } if the receipt arrives in time,
+// or { hash, confirmed: false } if the RPC times out.
+// A hash alone is not success: confirmed: false means settlement_pending.
+async function settleOnChainWithConfirmation(
+  requestId: `0x${string}`,
+  env: Env,
+): Promise<{ hash: `0x${string}`; confirmed: boolean }> {
   const account = privateKeyToAccount(env.SETTLEMENT_PRIVATE_KEY as `0x${string}`);
+  const chainId = Number(env.CHAIN_ID) || 10143;
   const chain = {
-    id: Number(env.CHAIN_ID) || 10143,
+    id: chainId,
     name: "Monad Testnet",
     nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
-    rpcUrls: { default: { http: [env.MONAD_RPC_URL] } },
+    rpcUrls: { default: { http: [env.MONAD_RPC_URL || "https://testnet-rpc.monad.xyz"] } },
   } as const;
 
   const walletClient = createWalletClient({ account, chain, transport: http() });
+  const publicClient = createPublicClient({ chain, transport: http() });
   const settleAbi = parseAbi(["function settleQuery(bytes32 requestId) external"]);
 
   const { encodeFunctionData } = await import("viem");
@@ -344,5 +472,11 @@ async function settleOnChain(requestId: `0x${string}`, env: Env): Promise<string
     account,
   });
 
-  return hash;
+  try {
+    await publicClient.waitForTransactionReceipt({ hash, timeout: 20_000, confirmations: 1 });
+    return { hash, confirmed: true };
+  } catch {
+    // Timeout or RPC error: tx was broadcast but not confirmed within the window
+    return { hash, confirmed: false };
+  }
 }
