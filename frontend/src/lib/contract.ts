@@ -2,15 +2,17 @@ import { createPublicClient, http, parseAbi } from "viem";
 import { monadTestnet } from "./dynamic";
 
 export const DATAVAULT_ABI = parseAbi([
-  "function registerCollection(bytes32 collectionId, uint256 price) external",
+  "function registerCollection(bytes32 collectionId, uint256 price, address operator) external",
+  "function updateOperator(bytes32 collectionId, address newOperator) external",
   "function updatePolicy(bytes32 collectionId, uint256 price, bool active) external",
   "function openQuery(bytes32 requestId, bytes32 collectionId) external payable",
   "function settleQuery(bytes32 requestId) external",
   "function refundExpired(bytes32 requestId) external",
-  "function getCollection(bytes32 collectionId) external view returns (tuple(address owner, uint256 price, uint32 policyVersion, bool active))",
+  "function getCollection(bytes32 collectionId) external view returns (tuple(address owner, address operator, uint256 price, uint32 policyVersion, bool active))",
   "function getQuery(bytes32 requestId) external view returns (tuple(bytes32 collectionId, address buyer, uint256 amount, uint32 policyVersion, uint64 openedAt, uint8 state))",
   "function REFUND_TIMEOUT() external view returns (uint64)",
-  "event CollectionRegistered(bytes32 indexed collectionId, address indexed owner, uint256 price)",
+  "event CollectionRegistered(bytes32 indexed collectionId, address indexed owner, address indexed operator, uint256 price)",
+  "event OperatorUpdated(bytes32 indexed collectionId, address indexed newOperator)",
   "event PolicyUpdated(bytes32 indexed collectionId, uint256 price, bool active, uint32 policyVersion)",
   "event QueryOpened(bytes32 indexed requestId, bytes32 indexed collectionId, address indexed buyer, uint256 amount)",
   "event QuerySettled(bytes32 indexed requestId, address indexed owner)",

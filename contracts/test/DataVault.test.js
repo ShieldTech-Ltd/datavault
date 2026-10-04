@@ -2,41 +2,51 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("DataVault", function () {
-  let contract, owner, buyer, other;
+  let contract, owner, operator, buyer, other;
   const COLLECTION_ID = ethers.keccak256(ethers.toUtf8Bytes("demo-collection-v1"));
   const REQUEST_ID    = ethers.keccak256(ethers.toUtf8Bytes("req-001"));
   const PRICE         = ethers.parseEther("0.001");
 
   beforeEach(async function () {
-    [owner, buyer, other] = await ethers.getSigners();
+    [owner, operator, buyer, other] = await ethers.getSigners();
     const DataVault = await ethers.getContractFactory("DataVault");
     contract = await DataVault.deploy();
   });
 
   // ── registerCollection ──────────────────────────────────────────
 
-  it("registers a collection and emits event", async function () {
-    await expect(contract.connect(owner).registerCollection(COLLECTION_ID, PRICE))
+  it("registers a collection with a separate operator and emits event", async function () {
+    await expect(
+      contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address)
+    )
       .to.emit(contract, "CollectionRegistered")
-      .withArgs(COLLECTION_ID, owner.address, PRICE);
+      .withArgs(COLLECTION_ID, owner.address, operator.address, PRICE);
 
     const col = await contract.getCollection(COLLECTION_ID);
     expect(col.owner).to.equal(owner.address);
+    expect(col.operator).to.equal(operator.address);
     expect(col.price).to.equal(PRICE);
     expect(col.policyVersion).to.equal(1n);
     expect(col.active).to.be.true;
   });
 
   it("rejects duplicate registration", async function () {
-    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE);
-    await expect(contract.connect(owner).registerCollection(COLLECTION_ID, PRICE))
-      .to.be.revertedWith("already registered");
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
+    await expect(
+      contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address)
+    ).to.be.revertedWith("already registered");
+  });
+
+  it("rejects registration with zero operator address", async function () {
+    await expect(
+      contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, ethers.ZeroAddress)
+    ).to.be.revertedWith("operator required");
   });
 
   // ── updatePolicy ────────────────────────────────────────────────
 
-  it("owner can pause and resume collection", async function () {
-    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE);
+  it("owner can pause and resume collection, bumping policyVersion", async function () {
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
     await contract.connect(owner).updatePolicy(COLLECTION_ID, PRICE, false);
 
     let col = await contract.getCollection(COLLECTION_ID);
@@ -50,15 +60,42 @@ describe("DataVault", function () {
   });
 
   it("non-owner cannot update policy", async function () {
-    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE);
-    await expect(contract.connect(other).updatePolicy(COLLECTION_ID, PRICE, false))
-      .to.be.revertedWith("not owner");
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
+    await expect(
+      contract.connect(other).updatePolicy(COLLECTION_ID, PRICE, false)
+    ).to.be.revertedWith("not owner");
+  });
+
+  // ── updateOperator ───────────────────────────────────────────────
+
+  it("owner can replace the operator", async function () {
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
+    await expect(contract.connect(owner).updateOperator(COLLECTION_ID, other.address))
+      .to.emit(contract, "OperatorUpdated")
+      .withArgs(COLLECTION_ID, other.address);
+
+    const col = await contract.getCollection(COLLECTION_ID);
+    expect(col.operator).to.equal(other.address);
+  });
+
+  it("non-owner cannot replace the operator", async function () {
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
+    await expect(
+      contract.connect(other).updateOperator(COLLECTION_ID, other.address)
+    ).to.be.revertedWith("not owner");
+  });
+
+  it("rejects zero address as new operator", async function () {
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
+    await expect(
+      contract.connect(owner).updateOperator(COLLECTION_ID, ethers.ZeroAddress)
+    ).to.be.revertedWith("operator required");
   });
 
   // ── openQuery ───────────────────────────────────────────────────
 
   it("buyer opens escrow with correct payment", async function () {
-    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE);
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
     await expect(
       contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE })
     )
@@ -68,18 +105,18 @@ describe("DataVault", function () {
     const q = await contract.getQuery(REQUEST_ID);
     expect(q.buyer).to.equal(buyer.address);
     expect(q.amount).to.equal(PRICE);
-    expect(q.state).to.equal(0n); // Open
+    expect(q.state).to.equal(0n);
   });
 
   it("rejects incorrect payment amount", async function () {
-    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE);
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
     await expect(
       contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE - 1n })
     ).to.be.revertedWith("incorrect payment");
   });
 
   it("rejects duplicate requestId", async function () {
-    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE);
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
     await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
     await expect(
       contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE })
@@ -87,45 +124,81 @@ describe("DataVault", function () {
   });
 
   it("rejects openQuery when collection is paused", async function () {
-    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE);
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
     await contract.connect(owner).updatePolicy(COLLECTION_ID, PRICE, false);
     await expect(
       contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE })
     ).to.be.revertedWith("collection paused");
   });
 
-  // ── settleQuery ─────────────────────────────────────────────────
+  // ── settleQuery (operator model) ────────────────────────────────
 
-  it("owner settles and receives payment", async function () {
-    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE);
+  it("operator settles and owner receives payment (not the operator)", async function () {
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
     await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
 
-    const before = await ethers.provider.getBalance(owner.address);
-    const tx = await contract.connect(owner).settleQuery(REQUEST_ID);
-    const receipt = await tx.wait();
-    const gas = receipt.gasUsed * tx.gasPrice;
-    const after = await ethers.provider.getBalance(owner.address);
+    const ownerBefore = await ethers.provider.getBalance(owner.address);
+    const operatorBefore = await ethers.provider.getBalance(operator.address);
 
-    expect(after).to.be.closeTo(before + PRICE - gas, ethers.parseEther("0.00001"));
+    const tx = await contract.connect(operator).settleQuery(REQUEST_ID);
+    const receipt = await tx.wait();
+    const gasCost = receipt.gasUsed * tx.gasPrice;
+
+    const ownerAfter = await ethers.provider.getBalance(owner.address);
+    const operatorAfter = await ethers.provider.getBalance(operator.address);
+
+    // Owner received the payment
+    expect(ownerAfter).to.be.closeTo(ownerBefore + PRICE, ethers.parseEther("0.00001"));
+    // Operator only spent gas, received nothing
+    expect(operatorAfter).to.be.closeTo(operatorBefore - gasCost, ethers.parseEther("0.00001"));
 
     const q = await contract.getQuery(REQUEST_ID);
-    expect(q.state).to.equal(1n); // Settled
+    expect(q.state).to.equal(1n);
   });
 
-  it("non-owner cannot settle", async function () {
-    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE);
+  it("owner cannot settle their own collection (must use operator)", async function () {
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
+    await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
+    await expect(contract.connect(owner).settleQuery(REQUEST_ID))
+      .to.be.revertedWith("not authorized operator");
+  });
+
+  it("random address cannot settle", async function () {
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
     await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
     await expect(contract.connect(other).settleQuery(REQUEST_ID))
-      .to.be.revertedWith("not collection owner");
+      .to.be.revertedWith("not authorized operator");
+  });
+
+  it("cannot settle an already settled query", async function () {
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
+    await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
+    await contract.connect(operator).settleQuery(REQUEST_ID);
+    await expect(contract.connect(operator).settleQuery(REQUEST_ID))
+      .to.be.revertedWith("already finalised");
+  });
+
+  it("new operator can settle after updateOperator", async function () {
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
+    await contract.connect(owner).updateOperator(COLLECTION_ID, other.address);
+    await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
+
+    // Old operator can no longer settle
+    await expect(contract.connect(operator).settleQuery(REQUEST_ID))
+      .to.be.revertedWith("not authorized operator");
+
+    // New operator can settle
+    await expect(contract.connect(other).settleQuery(REQUEST_ID))
+      .to.emit(contract, "QuerySettled")
+      .withArgs(REQUEST_ID, owner.address);
   });
 
   // ── refundExpired ───────────────────────────────────────────────
 
   it("buyer can refund after timeout", async function () {
-    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE);
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
     await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
 
-    // fast-forward past the 10-minute timeout
     await ethers.provider.send("evm_increaseTime", [600]);
     await ethers.provider.send("evm_mine", []);
 
@@ -138,13 +211,23 @@ describe("DataVault", function () {
     expect(after).to.be.closeTo(before + PRICE - gas, ethers.parseEther("0.00001"));
 
     const q = await contract.getQuery(REQUEST_ID);
-    expect(q.state).to.equal(2n); // Refunded
+    expect(q.state).to.equal(2n);
   });
 
   it("buyer cannot refund before timeout", async function () {
-    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE);
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
     await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
     await expect(contract.connect(buyer).refundExpired(REQUEST_ID))
       .to.be.revertedWith("timeout not elapsed");
+  });
+
+  it("cannot refund an already settled query", async function () {
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
+    await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
+    await contract.connect(operator).settleQuery(REQUEST_ID);
+    await ethers.provider.send("evm_increaseTime", [600]);
+    await ethers.provider.send("evm_mine", []);
+    await expect(contract.connect(buyer).refundExpired(REQUEST_ID))
+      .to.be.revertedWith("already finalised");
   });
 });

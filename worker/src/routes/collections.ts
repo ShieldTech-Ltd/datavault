@@ -1,4 +1,5 @@
 import { keccak256, toBytes } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import type { Env } from "../lib/types";
 import { storeCollection } from "../lib/r2";
 import { insertCollection, getCollectionRow } from "../lib/d1";
@@ -45,11 +46,20 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
     env,
   );
 
+  // Derive the Worker's settlement address from the settlement private key.
+  // This address is the operator passed to registerCollection on-chain.
+  // The private key itself never leaves the Worker runtime.
+  let operatorAddress = "0x0000000000000000000000000000000000000000" as `0x${string}`;
+  if (env.SETTLEMENT_PRIVATE_KEY) {
+    const account = privateKeyToAccount(env.SETTLEMENT_PRIVATE_KEY as `0x${string}`);
+    operatorAddress = account.address;
+  }
+
   // Build the calldata the frontend will use to call registerCollection on-chain
-  const txCalldata = await buildRegisterCalldata(collectionId as `0x${string}`, priceWei);
+  const txCalldata = await buildRegisterCalldata(collectionId as `0x${string}`, priceWei, operatorAddress);
 
   return new Response(
-    JSON.stringify({ collectionId, contentHash, txCalldata }),
+    JSON.stringify({ collectionId, contentHash, operatorAddress, txCalldata }),
     { headers: { "Content-Type": "application/json" } },
   );
 }
