@@ -3,14 +3,36 @@ import type { Env, CollectionRow, QueryRow } from "./types";
 // ── Collections ───────────────────────────────────────────────────
 
 export async function insertCollection(
-  row: Omit<CollectionRow, "policy_version" | "active" | "created_at">,
+  row: Omit<CollectionRow, "policy_version" | "active" | "status" | "staged_at" | "confirmed_tx" | "created_at">,
+  env: Env,
+): Promise<void> {
+  const now = Date.now();
+  await env.DB.prepare(
+    `INSERT INTO collections
+       (collection_id, owner_address, collection_name, content_hash, policy_version, active, status, staged_at, created_at)
+     VALUES (?, ?, ?, ?, 1, 1, 'staging', ?, ?)`,
+  )
+    .bind(row.collection_id, row.owner_address, row.collection_name, row.content_hash, now, now)
+    .run();
+}
+
+export async function confirmCollection(
+  collectionId: string,
+  txHash: string,
   env: Env,
 ): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO collections (collection_id, owner_address, collection_name, content_hash, policy_version, active, created_at)
-     VALUES (?, ?, ?, ?, 1, 1, ?)`,
+    `UPDATE collections SET status = 'confirmed', confirmed_tx = ? WHERE collection_id = ?`,
   )
-    .bind(row.collection_id, row.owner_address, row.collection_name, row.content_hash, Date.now())
+    .bind(txHash, collectionId)
+    .run();
+}
+
+export async function markCollectionOrphaned(collectionId: string, env: Env): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE collections SET status = 'orphaned' WHERE collection_id = ? AND status = 'staging'`,
+  )
+    .bind(collectionId)
     .run();
 }
 

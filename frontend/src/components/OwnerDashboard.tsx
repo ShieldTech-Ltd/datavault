@@ -72,9 +72,19 @@ export default function OwnerDashboard() {
         data: txCalldata as `0x${string}`,
       });
 
+      setMessage("Confirming registration with the server...");
+
+      // Tell the Worker the tx hash so it can verify on-chain ownership and activate the collection.
+      const confirmRes = await fetch(`/api/collections/${collectionId}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ txHash, ownerAddress: primaryWallet.address }),
+      });
+      if (!confirmRes.ok) throw new Error(await confirmRes.text());
+
       setPolicy({ collectionId, price: priceEth, active: true, policyVersion: 1 });
       setStatus("success");
-      setMessage(`Registered. Tx: ${txHash}`);
+      setMessage(`Registered and confirmed. Tx: ${txHash}`);
     } catch (err: unknown) {
       setStatus("error");
       setMessage(err instanceof Error ? err.message : String(err));

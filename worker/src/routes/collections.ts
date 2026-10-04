@@ -2,14 +2,19 @@ import { keccak256, toBytes } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Env } from "../lib/types";
 import { storeCollection } from "../lib/r2";
-import { insertCollection, getCollectionRow } from "../lib/d1";
-import { buildRegisterCalldata, verifyUploadSignature } from "../lib/policy";
+import { insertCollection, getCollectionRow, confirmCollection, markCollectionOrphaned } from "../lib/d1";
+import { buildRegisterCalldata, verifyUploadSignature, getOnChainCollection } from "../lib/policy";
 import {
   isValidAddress, isValidBytes32, isValidPriceWei, isValidSignature,
   isValidTimestamp, checkContentLength, LIMITS,
   error400, error401, error403, error413,
 } from "../lib/validation";
 import { checkRateLimit, callerIdentity } from "../lib/ratelimit";
+
+// Staging collections expire after 30 minutes if the owner never confirms the tx.
+const STAGING_EXPIRY_MS = 30 * 60 * 1000;
+
+// ── POST /api/collections ─────────────────────────────────────────
 
 export async function handleRegisterCollection(req: Request, env: Env): Promise<Response> {
   const sizeErr = checkContentLength(req);
@@ -36,34 +41,40 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
   const priceWei = BigInt(priceWeiStr as string);
   const contentHash = keccak256(toBytes(content));
 
-  // Derive collection ID from owner + content hash
+  // Derive collection ID canonically from owner + content hash.
+  // An attacker submitting someone else's ownerAddress gets a different collectionId
+  // than the real owner would compute, so they cannot pre-occupy the real owner's slot.
   const collectionId = keccak256(toBytes(`${ownerAddress}:${contentHash}`));
 
   const existing = await getCollectionRow(collectionId, env);
   if (existing) {
-    return new Response(JSON.stringify({ error: "Collection already registered" }), {
-      status: 409,
-      headers: { "Content-Type": "application/json" },
-    });
+    // If a prior staging attempt expired, allow a fresh one
+    if (existing.status === "staging" && existing.staged_at !== null &&
+        Date.now() - existing.staged_at > STAGING_EXPIRY_MS) {
+      await markCollectionOrphaned(collectionId, env);
+    } else if (existing.status !== "orphaned") {
+      return new Response(JSON.stringify({ error: "Collection already registered" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   }
 
-  // Store content privately in R2
-  await storeCollection(collectionId, content, env);
+  // Store content privately in R2 at a versioned key (immutable by content hash)
+  await storeCollection(collectionId, content, contentHash, env);
 
-  // Persist metadata in D1
+  // Persist metadata in D1 as 'staging'. The row is not queryable until confirmed.
   await insertCollection(
     {
       collection_id: collectionId,
-      owner_address: ownerAddress as string,
+      owner_address: (ownerAddress as string).toLowerCase(),
       collection_name: (file as File).name.replace(/\.md$/i, ""),
       content_hash: contentHash,
     },
     env,
   );
 
-  // Derive the Worker's settlement address from the settlement private key.
-  // This address is the operator passed to registerCollection on-chain.
-  // The private key itself never leaves the Worker runtime.
+  // Derive the Worker's settlement address from the settlement private key
   let operatorAddress = "0x0000000000000000000000000000000000000000" as `0x${string}`;
   if (env.SETTLEMENT_PRIVATE_KEY) {
     const account = privateKeyToAccount(env.SETTLEMENT_PRIVATE_KEY as `0x${string}`);
@@ -78,6 +89,60 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
     { headers: { "Content-Type": "application/json" } },
   );
 }
+
+// ── POST /api/collections/:id/confirm ────────────────────────────
+
+// Called by the frontend after the owner's wallet has signed and the tx has
+// been included. The Worker verifies the on-chain state before activating the
+// D1 row. Until this is called, the collection cannot be queried.
+export async function handleConfirmCollection(
+  req: Request,
+  env: Env,
+  collectionId: string,
+): Promise<Response> {
+  if (!isValidBytes32(collectionId)) return error400("Invalid collectionId path segment");
+
+  const body = await req.json<{ txHash: unknown; ownerAddress: unknown }>();
+  if (!isValidBytes32(body.txHash)) return error400("txHash must be a 0x-prefixed 32-byte hex string");
+  if (!isValidAddress(body.ownerAddress)) return error400("ownerAddress must be a 0x-prefixed 20-byte hex address");
+
+  const col = await getCollectionRow(collectionId, env);
+  if (!col) return new Response("Collection not found", { status: 404 });
+  if (col.status === "confirmed") {
+    return new Response(JSON.stringify({ ok: true, alreadyConfirmed: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (col.status === "orphaned") return error400("Staging window expired. Please register again.");
+
+  // Verify the submitted ownerAddress matches what was stored at staging time
+  if (col.owner_address !== (body.ownerAddress as string).toLowerCase()) {
+    return error403("ownerAddress does not match the registered owner");
+  }
+
+  // Verify on-chain: the collection must exist with the correct owner
+  if (env.CONTRACT_ADDRESS) {
+    const onChain = await getOnChainCollection(collectionId as `0x${string}`, env);
+    if (!onChain) {
+      return new Response(
+        JSON.stringify({ error: "Collection not found on-chain. The transaction may not be confirmed yet." }),
+        { status: 404, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (onChain.owner.toLowerCase() !== col.owner_address) {
+      return error403("On-chain owner does not match the registered owner. Possible front-run.");
+    }
+  }
+
+  await confirmCollection(collectionId, body.txHash as string, env);
+
+  return new Response(
+    JSON.stringify({ ok: true, collectionId, status: "confirmed" }),
+    { headers: { "Content-Type": "application/json" } },
+  );
+}
+
+// ── POST /api/collections/:id/upload ─────────────────────────────
 
 // The client must sign: `datavault-upload:<collectionId>:<sha256(body)>:<timestamp>`
 // and send x-signature and x-timestamp headers alongside the body.
@@ -94,6 +159,7 @@ export async function handleUploadCollection(
 
   const col = await getCollectionRow(collectionId, env);
   if (!col) return new Response("Collection not found", { status: 404 });
+  if (col.status !== "confirmed") return error403("Collection is not yet confirmed on-chain");
 
   const signature = req.headers.get("x-signature") ?? "";
   const timestampStr = req.headers.get("x-timestamp") ?? "";
@@ -118,9 +184,21 @@ export async function handleUploadCollection(
 
   if (!valid) return error403("Invalid or expired signature");
 
-  await storeCollection(collectionId, body, env);
+  // For re-uploads, also verify the signer is still the on-chain owner.
+  // This catches a case where the owner transferred the collection off-chain somehow.
+  if (env.CONTRACT_ADDRESS) {
+    const onChain = await getOnChainCollection(collectionId as `0x${string}`, env);
+    if (!onChain || onChain.owner.toLowerCase() !== col.owner_address) {
+      return error403("On-chain owner mismatch. Re-upload not authorized.");
+    }
+  }
 
-  return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+  const newContentHash = keccak256(toBytes(body));
+  await storeCollection(collectionId, body, newContentHash, env);
+
+  return new Response(JSON.stringify({ ok: true, contentHash: newContentHash }), {
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 async function sha256Hex(text: string): Promise<string> {

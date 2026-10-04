@@ -1,5 +1,5 @@
 import type { Env } from "./lib/types";
-import { handleRegisterCollection, handleUploadCollection } from "./routes/collections";
+import { handleRegisterCollection, handleUploadCollection, handleConfirmCollection } from "./routes/collections";
 import { handlePrepare, handleExecute, handleReceipt } from "./routes/queries";
 
 export default {
@@ -26,6 +26,9 @@ export default {
 
         if (method === "POST" && path === "/api/collections") {
           res = await handleRegisterCollection(request, env);
+        } else if (method === "POST" && path.match(/^\/api\/collections\/[^/]+\/confirm$/)) {
+          const id = path.split("/")[3];
+          res = await handleConfirmCollection(request, env, id);
         } else if (method === "POST" && path.match(/^\/api\/collections\/[^/]+\/upload$/)) {
           const id = path.split("/")[3];
           res = await handleUploadCollection(request, env, id);
