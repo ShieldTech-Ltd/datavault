@@ -1,41 +1,22 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
 import { isEthereumWallet } from "@dynamic-labs/ethereum";
-import { DATAVAULT_ABI, CONTRACT_ADDRESS } from "@/lib/contract";
-import { encodeFunctionData, keccak256, toBytes, formatEther } from "viem";
+import { encodeFunctionData, formatEther, keccak256, toBytes } from "viem";
+import { DATAVAULT_ABI, CONTRACT_ADDRESS, viemClient } from "@/lib/contract";
+import { executionMessage, type CitedPassage, type QueryResult, type RecoveredAnswer } from "../../../shared/api";
 
-const MONAD_CHAIN_ID = 10143;
-const REFUND_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID) || 10143;
 const HISTORY_KEY = "datavault_requests";
-const MAX_HISTORY = 10;
+const SAMPLE_QUESTIONS = [
+  "What information should a freelancer include on an invoice?",
+  "Why might a sole trader use a separate business bank account?",
+  "What records should a freelancer keep for business expenses?",
+];
 
-type QueryStep =
-  | "idle"
-  | "quoting"
-  | "quoted"
-  | "awaiting_wallet"
-  | "answering"
-  | "settlement_pending"
-  | "done"
-  | "failed"
-  | "refundable";
-
-interface Quote {
-  collectionId: string;
-  priceWei: string;
-  priceDisplay: string;
-  collectionName: string;
-}
-
-interface AnswerResult {
-  answer: string;
-  citedPassageIds: string[];
-  requestId: string;
-  openTxHash: string;
-  settleTxHash: string | null;
-  outcome: string;
-}
-
+type Step = "idle" | "quoting" | "quoted" | "awaiting_wallet" | "confirming_open" |
+  "answering" | "settlement_pending" | "done" | "failed";
+interface Quote { collectionId: string; collectionName: string; priceWei: string; priceDisplay: string }
+interface Demo { collectionId: string; collectionName: string; ownerAddress: string; priceWei: string }
 interface SavedRequest {
   requestId: string;
   collectionId: string;
@@ -45,501 +26,250 @@ interface SavedRequest {
   openedAt: number;
   outcome: string;
 }
+interface DisplayAnswer {
+  answer: string;
+  citedPassageIds: string[];
+  citedPassages: CitedPassage[];
+  requestId: string;
+  openTxHash: string;
+  settleTxHash: string | null;
+}
 
-function loadHistory(): SavedRequest[] {
+function history(): SavedRequest[] {
   try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]");
-  } catch {
-    return [];
-  }
+    const value: unknown = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+    return Array.isArray(value) ? value as SavedRequest[] : [];
+  } catch { return []; }
 }
-
-function saveToHistory(req: SavedRequest) {
-  const history = loadHistory().filter((r) => r.requestId !== req.requestId);
-  history.unshift(req);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+function save(request: SavedRequest): SavedRequest[] {
+  const next = [request, ...history().filter((item) => item.requestId !== request.requestId)].slice(0, 20);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  return next;
 }
-
-function updateHistoryOutcome(requestId: string, outcome: string) {
-  const history = loadHistory().map((r) =>
-    r.requestId === requestId ? { ...r, outcome } : r,
-  );
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-}
-
-async function signAuth(
-  walletClient: { signMessage: (args: { message: string }) => Promise<`0x${string}`> },
-  prefix: string,
-  requestId: string,
-): Promise<{ signature: string; timestamp: number }> {
-  const timestamp = Date.now();
-  const message = `${prefix}:${requestId}:${timestamp}`;
-  const signature = await walletClient.signMessage({ message });
-  return { signature, timestamp };
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(bytes)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export default function BuyerDashboard() {
   const { primaryWallet } = useDynamicContext();
+  const address = primaryWallet?.address ?? "";
+  const [demo, setDemo] = useState<Demo | null>(null);
   const [collectionId, setCollectionId] = useState("");
   const [question, setQuestion] = useState("");
   const [quote, setQuote] = useState<Quote | null>(null);
-  const [step, setStep] = useState<QueryStep>("idle");
-  const [error, setError] = useState("");
-  const [answer, setAnswer] = useState<AnswerResult | null>(null);
-  const [history, setHistory] = useState<SavedRequest[]>([]);
-  const [refundCountdown, setRefundCountdown] = useState<number | null>(null);
-  const [refunding, setRefunding] = useState(false);
-  const [reconciling, setReconciling] = useState(false);
-  const inFlightRef = useRef<{ requestId: string; openTxHash: string; openedAt: number } | null>(null);
-
-  const contractReady = Boolean(CONTRACT_ADDRESS);
-  const walletAddress = primaryWallet?.address ?? "";
+  const [step, setStep] = useState<Step>("idle");
+  const [message, setMessage] = useState("");
+  const [answer, setAnswer] = useState<DisplayAnswer | null>(null);
+  const [requests, setRequests] = useState<SavedRequest[]>([]);
+  const [current, setCurrent] = useState<SavedRequest | null>(null);
+  const [refundAt, setRefundAt] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    setHistory(loadHistory());
-  }, [walletAddress]);
-
-  // Refund countdown ticker
+    setRequests(history().filter((item) => item.buyerAddress.toLowerCase() === address.toLowerCase()));
+    fetch("/api/demo").then((response) => response.ok ? response.json() as Promise<Demo> : null)
+      .then((item) => setDemo(item)).catch(() => setDemo(null));
+  }, [address]);
   useEffect(() => {
-    if (!inFlightRef.current || step !== "refundable") return;
-    const openedAt = inFlightRef.current.openedAt;
-    const tick = () => {
-      const remaining = openedAt + REFUND_TIMEOUT_MS - Date.now();
-      setRefundCountdown(remaining > 0 ? remaining : 0);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [step]);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-  async function checkNetwork(): Promise<boolean> {
-    if (!primaryWallet || !isEthereumWallet(primaryWallet)) return false;
-    const wc = await primaryWallet.getWalletClient();
-    const chainId = await wc.getChainId();
-    if (chainId !== MONAD_CHAIN_ID) {
-      setError(`Wrong network. Switch to Monad testnet (chainId ${MONAD_CHAIN_ID}) in your wallet.`);
-      return false;
-    }
-    return true;
+  function remember(request: SavedRequest) {
+    setCurrent(request);
+    setRequests(save(request).filter((item) => item.buyerAddress.toLowerCase() === address.toLowerCase()));
   }
+  function changeCollection(value: string) { setCollectionId(value); setQuote(null); setStep("idle"); }
+  function changeQuestion(value: string) { setQuestion(value); setQuote(null); setStep("idle"); }
 
-  // Invalidate quote when inputs change
-  function handleCollectionIdChange(v: string) {
-    setCollectionId(v);
-    setQuote(null);
-    setError("");
+  async function wallet() {
+    if (!primaryWallet || !isEthereumWallet(primaryWallet)) throw new Error("Connect an EVM wallet first.");
+    const client = await primaryWallet.getWalletClient();
+    if (await client.getChainId() !== CHAIN_ID) throw new Error(`Switch your wallet to Monad testnet (${CHAIN_ID}).`);
+    return client;
   }
-
-  function handleQuestionChange(v: string) {
-    setQuestion(v);
-    setQuote(null);
-    setError("");
+  async function signedHeaders(prefix: string, requestId: string) {
+    const client = await wallet();
+    const timestamp = Date.now();
+    const signature = await client.signMessage({ message: `${prefix}:${requestId}:${timestamp}` });
+    return { "x-signature": signature, "x-timestamp": String(timestamp) };
   }
-
-  async function handlePrepare(e: React.FormEvent) {
-    e.preventDefault();
-    if (step === "awaiting_wallet" || step === "answering") return; // block duplicate
-    setStep("quoting");
-    setError("");
-    setQuote(null);
-    setAnswer(null);
+  async function loadRefundTime(request: SavedRequest) {
+    if (!CONTRACT_ADDRESS) return;
     try {
-      const res = await fetch("/api/queries/prepare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const query = await viemClient.readContract({
+        address: CONTRACT_ADDRESS, abi: DATAVAULT_ABI, functionName: "getQuery",
+        args: [request.requestId as `0x${string}`],
+      }) as [`0x${string}`, string, bigint, number, bigint, number];
+      setRefundAt(query[5] === 0 ? Number(query[4]) * 1000 + 600_000 : null);
+    } catch { setRefundAt(null); }
+  }
+
+  async function prepare(event: React.FormEvent) {
+    event.preventDefault();
+    setStep("quoting"); setMessage(""); setAnswer(null);
+    try {
+      const response = await fetch("/api/queries/prepare", {
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ collectionId, question }),
       });
-      if (!res.ok) throw new Error(await res.text());
-      const q = (await res.json()) as Quote;
-      setQuote(q);
+      if (!response.ok) throw new Error(await response.text());
+      setQuote(await response.json() as Quote);
       setStep("quoted");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-      setStep("idle");
-    }
+    } catch (error) { setMessage(String(error)); setStep("idle"); }
   }
 
-  async function handleExecute() {
-    if (!primaryWallet || !quote) return;
-    if (step === "awaiting_wallet" || step === "answering") return; // block duplicate
-
-    if (!contractReady) {
-      setError("Contract address not configured.");
-      return;
-    }
-    if (!(await checkNetwork())) return;
-
-    setStep("awaiting_wallet");
-    setError("");
-
+  async function execute() {
+    if (!quote || !CONTRACT_ADDRESS) return;
+    setMessage(""); setStep("awaiting_wallet");
+    let request: SavedRequest | null = null;
     try {
-      const requestId = keccak256(toBytes(`${walletAddress}-${Date.now()}-${question}`));
-
-      if (!isEthereumWallet(primaryWallet)) throw new Error("Not an Ethereum wallet");
-      const walletClient = await primaryWallet.getWalletClient();
-      const data = encodeFunctionData({
-        abi: DATAVAULT_ABI,
-        functionName: "openQuery",
-        args: [requestId, quote.collectionId as `0x${string}`],
+      const client = await wallet();
+      const requestId = keccak256(toBytes(`${address}:${Date.now()}:${crypto.randomUUID()}`));
+      const data = encodeFunctionData({ abi: DATAVAULT_ABI, functionName: "openQuery",
+        args: [requestId, quote.collectionId as `0x${string}`] });
+      const openTxHash = await client.sendTransaction({
+        to: CONTRACT_ADDRESS, data, value: BigInt(quote.priceWei),
       });
-
-      let txHash: string;
-      try {
-        txHash = await walletClient.sendTransaction({
-          to: CONTRACT_ADDRESS!,
-          data,
-          value: BigInt(quote.priceWei),
-        });
-      } catch (err: unknown) {
-        throw new Error("Transaction rejected: " + (err instanceof Error ? err.message : String(err)));
-      }
-
-      const openedAt = Date.now();
-      inFlightRef.current = { requestId, openTxHash: txHash, openedAt };
-      saveToHistory({
-        requestId,
-        collectionId: quote.collectionId,
-        question,
-        openTxHash: txHash,
-        buyerAddress: walletAddress,
-        openedAt,
-        outcome: "pending",
-      });
-      setHistory(loadHistory());
-
+      request = { requestId, collectionId: quote.collectionId, question, openTxHash,
+        buyerAddress: address, openedAt: Date.now(), outcome: "open_pending" };
+      remember(request);
+      setStep("confirming_open");
+      const receipt = await viemClient.waitForTransactionReceipt({ hash: openTxHash });
+      if (receipt.status !== "success") throw new Error("Opening transaction reverted. No payment was escrowed.");
+      await loadRefundTime(request);
+      const timestamp = Date.now();
+      const signature = await client.signMessage({ message: executionMessage(
+        CHAIN_ID, CONTRACT_ADDRESS, requestId, quote.collectionId,
+        await sha256Hex(question), openTxHash, timestamp,
+      ) });
       setStep("answering");
-
-      const res = await fetch("/api/queries/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requestId,
-          collectionId: quote.collectionId,
-          question,
-          txHash,
-          buyerAddress: walletAddress,
-        }),
+      const response = await fetch("/api/queries/execute", {
+        method: "POST", headers: { "Content-Type": "application/json", "x-signature": signature,
+          "x-timestamp": String(timestamp) },
+        body: JSON.stringify({ requestId, collectionId: quote.collectionId, question, openTxHash }),
       });
-
-      if (!res.ok) {
-        const text = await res.text();
-        // Determine if refundable based on time
-        if (openedAt + REFUND_TIMEOUT_MS < Date.now()) {
-          updateHistoryOutcome(requestId, "refundable");
-          setHistory(loadHistory());
-          setStep("refundable");
-        } else {
-          updateHistoryOutcome(requestId, "failed");
-          setHistory(loadHistory());
-          setStep("failed");
-        }
-        throw new Error(text);
+      if (!response.ok) throw new Error(await response.text());
+      const result = await response.json() as QueryResult;
+      if (result.outcome === "settlement_pending") {
+        remember({ ...request, outcome: "settlement_pending" });
+        setStep("settlement_pending");
+        setMessage("Settlement was broadcast and is awaiting confirmation. Your answer remains private until payment settles.");
+        return;
       }
-
-      const result = (await res.json()) as {
-        answer: string;
-        citedPassageIds: string[];
-        requestId: string;
-        openTxHash: string;
-        settleTxHash: string | null;
-        outcome: string;
-      };
-
-      updateHistoryOutcome(requestId, result.outcome);
-      setHistory(loadHistory());
-      setAnswer({ ...result });
-      setStep(result.outcome === "settlement_pending" ? "settlement_pending" : "done");
-    } catch (err: unknown) {
-      if (step !== "failed" && step !== "refundable") {
-        setError(err instanceof Error ? err.message : String(err));
-        if (step !== "settlement_pending") setStep("idle");
-      } else {
-        setError(err instanceof Error ? err.message : String(err));
-      }
+      if (result.outcome !== "settled" || !result.answer) throw new Error("Unexpected query result.");
+      setAnswer({ answer: result.answer, citedPassageIds: result.citedPassageIds ?? [],
+        citedPassages: result.citedPassages ?? [], requestId, openTxHash,
+        settleTxHash: result.settleTxHash });
+      remember({ ...request, outcome: "settled" });
+      setStep("done");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+      setStep("failed");
+      if (request) { remember({ ...request, outcome: "failed" }); await loadRefundTime(request); }
     }
   }
 
-  async function handleReconcile() {
-    if (!primaryWallet || !answer || !isEthereumWallet(primaryWallet)) return;
-    setReconciling(true);
+  async function recover(request: SavedRequest) {
+    setCurrent(request); setMessage(""); setAnswer(null);
+    await loadRefundTime(request);
     try {
-      const walletClient = await primaryWallet.getWalletClient();
-      const { signature, timestamp } = await signAuth(walletClient, "datavault-reconcile", answer.requestId);
-      const res = await fetch(`/api/queries/${answer.requestId}/reconcile`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ buyerAddress: walletAddress, signature, timestamp }),
+      const response = await fetch(`/api/queries/${request.requestId}/answer`, {
+        headers: await signedHeaders("datavault-answer", request.requestId),
       });
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as { outcome: string; settleTxHash: string | null };
-      setAnswer({ ...answer, outcome: data.outcome, settleTxHash: data.settleTxHash ?? answer.settleTxHash });
-      if (data.outcome === "settled") {
-        setStep("done");
-        updateHistoryOutcome(answer.requestId, "settled");
-        setHistory(loadHistory());
-      }
-    } catch (err: unknown) {
-      setError("Reconcile failed: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setReconciling(false);
-    }
+      if (!response.ok) throw new Error(await response.text());
+      const result = await response.json() as RecoveredAnswer;
+      setAnswer({ answer: result.answer, citedPassageIds: result.citedPassageIds,
+        citedPassages: result.citedPassages ?? [], requestId: request.requestId, openTxHash: request.openTxHash,
+        settleTxHash: result.settleTxHash });
+      remember({ ...request, outcome: "settled" }); setStep("done");
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); setStep("failed"); }
   }
 
-  async function handleRefund() {
-    if (!primaryWallet || !inFlightRef.current) return;
-    if (!(await checkNetwork())) return;
-    setRefunding(true);
+  async function reconcile() {
+    if (!current) return;
+    setMessage("");
     try {
-      if (!isEthereumWallet(primaryWallet)) throw new Error("Not an Ethereum wallet");
-      const walletClient = await primaryWallet.getWalletClient();
-      const data = encodeFunctionData({
-        abi: DATAVAULT_ABI,
-        functionName: "refundExpired",
-        args: [inFlightRef.current.requestId as `0x${string}`],
+      const response = await fetch(`/api/queries/${current.requestId}/reconcile`, {
+        method: "POST", headers: await signedHeaders("datavault-reconcile", current.requestId),
       });
-      const txHash = await walletClient.sendTransaction({ to: CONTRACT_ADDRESS!, data });
-      updateHistoryOutcome(inFlightRef.current.requestId, "refunded");
-      setHistory(loadHistory());
-      setStep("idle");
-      setError("");
-      setAnswer(null);
-      setQuote(null);
-      alert(`Refund sent. Tx: ${txHash}`);
-    } catch (err: unknown) {
-      setError("Refund failed: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setRefunding(false);
-    }
+      if (!response.ok) throw new Error(await response.text());
+      const result = await response.json() as { outcome: string };
+      if (result.outcome === "settled") await recover(current);
+      else setMessage("Settlement is still pending. Check again shortly or claim a refund after the timeout if the escrow remains open.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
   }
 
-  async function handleRecoverAnswer(req: SavedRequest) {
-    if (!primaryWallet || !isEthereumWallet(primaryWallet)) return;
-    setError("");
+  async function refund() {
+    if (!current || !CONTRACT_ADDRESS || refundAt === null || now < refundAt) return;
+    setMessage("");
     try {
-      const walletClient = await primaryWallet.getWalletClient();
-      const { signature, timestamp } = await signAuth(walletClient, "datavault-answer", req.requestId);
-      const res = await fetch(`/api/queries/${req.requestId}/answer`, {
-        headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as { answer: string; citedPassageIds: string[]; outcome: string };
-      inFlightRef.current = { requestId: req.requestId, openTxHash: req.openTxHash, openedAt: req.openedAt };
-      setCollectionId(req.collectionId);
-      setQuestion(req.question);
-      setAnswer({
-        answer: data.answer,
-        citedPassageIds: data.citedPassageIds ?? [],
-        requestId: req.requestId,
-        openTxHash: req.openTxHash,
-        settleTxHash: null,
-        outcome: data.outcome,
-      });
-      setStep(data.outcome === "settlement_pending" ? "settlement_pending" : "done");
-    } catch (err: unknown) {
-      setError("Recovery failed: " + (err instanceof Error ? err.message : String(err)));
-    }
+      const client = await wallet();
+      const data = encodeFunctionData({ abi: DATAVAULT_ABI, functionName: "refundExpired",
+        args: [current.requestId as `0x${string}`] });
+      const hash = await client.sendTransaction({ to: CONTRACT_ADDRESS, data });
+      const receipt = await viemClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("Refund transaction reverted.");
+      remember({ ...current, outcome: "refunded" }); setRefundAt(null); setStep("idle");
+      setMessage(`Refund confirmed. Transaction: ${hash}`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
   }
 
-  const isExecuting = step === "awaiting_wallet" || step === "answering";
-  const refundReady = step === "refundable" && (refundCountdown === null || refundCountdown <= 0);
-
-  return (
-    <div>
-      <h2>Ask a Question</h2>
-      <p style={styles.subtext}>
-        Payment is placed in escrow on Monad. You receive a cited answer drawn from the owner's knowledge collection.
-        The model provider receives the relevant passages to generate the answer.
-      </p>
-
-      {!contractReady && (
-        <div style={styles.warning}>
-          Contract not deployed yet. This is a development preview.
-        </div>
-      )}
-
-      <form onSubmit={handlePrepare} style={styles.form}>
-        <label style={styles.label}>
-          Collection ID (bytes32 hex)
-          <input
-            type="text"
-            placeholder="0x..."
-            value={collectionId}
-            onChange={(e) => handleCollectionIdChange(e.target.value)}
-            required
-            disabled={isExecuting}
-            style={styles.input}
-          />
-        </label>
-
-        <label style={styles.label}>
-          Your question
-          <textarea
-            rows={3}
-            value={question}
-            onChange={(e) => handleQuestionChange(e.target.value)}
-            required
-            disabled={isExecuting}
-            placeholder="What are the National Insurance thresholds for self-employed workers in the UK?"
-            style={{ ...styles.input, resize: "vertical" as const }}
-          />
-        </label>
-
-        <button type="submit" disabled={isExecuting || step === "quoting"} style={styles.button}>
-          {step === "quoting" ? "Getting quote..." : "Get Quote"}
-        </button>
-      </form>
-
-      {error && <div style={styles.errorBox}>{error}</div>}
-
-      {quote && step === "quoted" && (
-        <div style={styles.quoteCard}>
-          <strong>{quote.collectionName}</strong>
-          <div style={{ marginTop: "0.5rem" }}>
-            Price: <strong>{quote.priceDisplay} MON</strong> ({formatEther(BigInt(quote.priceWei))} MON)
-          </div>
-          <p style={styles.subtext}>
-            Signing places this amount in escrow on Monad. Payment releases to the owner after
-            your answer is delivered. If delivery fails, you can reclaim the payment after 10 minutes.
-          </p>
-          <button onClick={handleExecute} style={styles.button}>
-            Sign and Pay {quote.priceDisplay} MON
-          </button>
-        </div>
-      )}
-
-      {step === "awaiting_wallet" && (
-        <div style={styles.stateCard}>
-          Check your wallet for the payment transaction prompt...
-        </div>
-      )}
-
-      {step === "answering" && (
-        <div style={styles.stateCard}>
-          Transaction sent. Waiting for AI answer and settlement...
-        </div>
-      )}
-
-      {(step === "done" || step === "settlement_pending") && answer && (
-        <div style={styles.answerCard}>
-          <strong>Answer</strong>
-          {step === "settlement_pending" && (
-            <div style={styles.pendingNote}>
-              Settlement is pending confirmation. Your answer is saved.{" "}
-              <button onClick={handleReconcile} disabled={reconciling} style={styles.linkButton}>
-                {reconciling ? "Checking..." : "Check settlement status"}
-              </button>
-            </div>
-          )}
-          <p style={{ marginTop: "0.75rem", lineHeight: 1.6 }}>{answer.answer}</p>
-          {answer.citedPassageIds.length > 0 && (
-            <>
-              <strong style={{ fontSize: "0.85rem" }}>Cited passages</strong>
-              <ul style={styles.citationList}>
-                {answer.citedPassageIds.map((id) => (
-                  <li key={id} style={{ fontFamily: "monospace", fontSize: "0.78rem" }}>{id}</li>
-                ))}
-              </ul>
-            </>
-          )}
-          <div style={styles.receiptMeta}>
-            Request: {answer.requestId}<br />
-            Open Tx: {answer.openTxHash}<br />
-            {answer.settleTxHash && <>Settle Tx: {answer.settleTxHash}<br /></>}
-            Outcome: {answer.outcome}<br />
-            <a href={`/api/queries/${answer.requestId}/receipt`} target="_blank" rel="noreferrer" style={{ color: "#6366f1" }}>
-              View receipt
-            </a>
-          </div>
-        </div>
-      )}
-
-      {(step === "failed" || step === "refundable") && (
-        <div style={styles.failedCard}>
-          <strong>{step === "refundable" ? "Query failed: refund available" : "Query failed"}</strong>
-          <p style={styles.subtext}>
-            {step === "refundable"
-              ? "The 10-minute escrow window has elapsed. You can now reclaim your payment."
-              : "The query could not be completed. You can request a refund after 10 minutes."}
-          </p>
-          {step === "refundable" && refundCountdown !== null && refundCountdown > 0 && (
-            <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>
-              Refund available in: {Math.ceil(refundCountdown / 1000)}s
-            </div>
-          )}
-          <button
-            onClick={handleRefund}
-            disabled={refunding || !refundReady}
-            style={{ ...styles.button, background: "#ef4444", marginTop: "0.75rem" }}
-          >
-            {refunding ? "Sending refund..." : "Claim Refund (on-chain)"}
-          </button>
-        </div>
-      )}
-
-      {history.length > 0 && (
-        <div style={styles.historySection}>
-          <strong style={{ fontSize: "0.9rem" }}>Recent queries</strong>
-          <div style={{ marginTop: "0.5rem", display: "flex", flexDirection: "column" as const, gap: "0.4rem" }}>
-            {history.map((req) => (
-              <div key={req.requestId} style={styles.historyRow}>
-                <div style={{ fontSize: "0.8rem", color: "#374151", flex: 1 }}>
-                  <span style={{ fontFamily: "monospace", fontSize: "0.75rem" }}>{req.requestId.slice(0, 10)}...</span>
-                  {" "}&mdash; {req.question.slice(0, 60)}{req.question.length > 60 ? "..." : ""}
-                </div>
-                <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexShrink: 0 }}>
-                  <span style={{ fontSize: "0.75rem", color: outcomeColor(req.outcome), fontWeight: 600 }}>
-                    {req.outcome}
-                  </span>
-                  {(req.outcome === "answer_recorded" || req.outcome === "settlement_pending" || req.outcome === "settled") && (
-                    <button
-                      onClick={() => handleRecoverAnswer(req)}
-                      style={styles.miniButton}
-                    >
-                      Recover answer
-                    </button>
-                  )}
-                  <a
-                    href={`/api/queries/${req.requestId}/receipt`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ fontSize: "0.75rem", color: "#6366f1" }}
-                  >
-                    Receipt
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  const busy = ["quoting", "awaiting_wallet", "confirming_open", "answering"].includes(step);
+  return <div style={{ maxWidth: 720 }}>
+    <h2>Ask a Question</h2>
+    <p>Pay a fixed testnet MON price to ask about a private collection. Selected passages go to the model provider. A failed, unsettled payment can be refunded after ten minutes.</p>
+    {demo && <section style={box}>
+      <strong>Try the UK Practical Guide</strong> <span>Team-authored sample</span>
+      <p>Owner: {demo.ownerAddress}<br />Price: {formatEther(BigInt(demo.priceWei))} test MON</p>
+      {SAMPLE_QUESTIONS.map((sample) => <button key={sample} type="button" style={smallButton}
+        onClick={() => { changeCollection(demo.collectionId); changeQuestion(sample); }}>
+        {sample}
+      </button>)}
+    </section>}
+    <form onSubmit={prepare} style={{ display: "grid", gap: 12 }}>
+      <label>Collection ID<input style={field} value={collectionId} onChange={(event) => changeCollection(event.target.value)} required disabled={busy} /></label>
+      <label>Question<textarea style={field} rows={3} value={question} onChange={(event) => changeQuestion(event.target.value)} required maxLength={500} disabled={busy} /></label>
+      <button type="submit" disabled={busy || !CONTRACT_ADDRESS} style={button}>Get current price</button>
+    </form>
+    {quote && step === "quoted" && <section style={box}>
+      <strong>{quote.collectionName}</strong><p>Price: {quote.priceDisplay} test MON</p>
+      <p>Your wallet will open escrow. The Worker will verify payment and current policy before private retrieval.</p>
+      <p>An honest answer that says the document lacks enough information is still a paid query. A service failure that leaves escrow open is refundable after ten minutes.</p>
+      <button type="button" onClick={execute} style={button}>Sign and pay</button>
+    </section>}
+    {step === "awaiting_wallet" && <p>Check your wallet for the opening transaction.</p>}
+    {step === "confirming_open" && <p>Opening transaction sent. Waiting for chain confirmation.</p>}
+    {step === "answering" && <p>Payment confirmed. Retrieving passages, generating an answer, and settling.</p>}
+    {step === "settlement_pending" && <button type="button" onClick={reconcile} style={button}>Check settlement</button>}
+    {message && <p role="status" style={{ color: step === "failed" ? "#b91c1c" : "#374151", overflowWrap: "anywhere" }}>{message}</p>}
+    {answer && <section style={box}>
+      <h3>Cited answer</h3><p style={{ whiteSpace: "pre-wrap" }}>{answer.answer}</p>
+      {answer.citedPassageIds.map((id) => {
+        const passage = answer.citedPassages.find((item) => item.id === id);
+        return <details key={id}><summary>{id}</summary>
+          <p style={{ whiteSpace: "pre-wrap" }}>{passage?.text ?? "Passage text is available only in the original answer response."}</p>
+        </details>;
+      })}
+      <p>Open transaction: {answer.openTxHash}<br />Settlement transaction: {answer.settleTxHash}</p>
+      <a href={`/api/queries/${answer.requestId}/receipt`} target="_blank" rel="noreferrer">View public receipt</a>
+    </section>}
+    {current && refundAt !== null && step !== "done" && <section style={box}>
+      <p>{now < refundAt ? `Refund available in ${Math.ceil((refundAt - now) / 1000)} seconds if escrow remains open.` : "Refund timeout reached. Check settlement before refunding."}</p>
+      <button type="button" disabled={now < refundAt} onClick={refund} style={button}>Claim expired refund</button>
+    </section>}
+    {requests.length > 0 && <section style={box}><h3>Your recent requests</h3>
+      {requests.map((request) => <div key={request.requestId} style={{ marginBottom: 12, overflowWrap: "anywhere" }}>
+        <strong>{request.outcome}</strong> {request.question}<br />
+        <button type="button" onClick={() => recover(request)} style={smallButton}>Recover answer</button>
+        <button type="button" onClick={async () => { setCurrent(request); await loadRefundTime(request); setStep("settlement_pending"); }} style={smallButton}>Check or refund</button>
+      </div>)}
+    </section>}
+  </div>;
 }
 
-function outcomeColor(outcome: string): string {
-  if (outcome === "settled") return "#16a34a";
-  if (outcome === "failed" || outcome === "refunded") return "#dc2626";
-  if (outcome === "refundable") return "#f59e0b";
-  return "#6b7280";
-}
-
-const styles = {
-  form: { display: "flex", flexDirection: "column" as const, gap: "1rem", maxWidth: 560, marginTop: "1.5rem" },
-  label: { display: "flex", flexDirection: "column" as const, gap: "0.35rem", fontSize: "0.9rem", fontWeight: 500 },
-  input: { border: "1px solid #d1d5db", borderRadius: 6, padding: "0.5rem 0.75rem", fontSize: "0.9rem" },
-  button: { padding: "0.6rem 1.25rem", borderRadius: 6, background: "#6366f1", color: "white", border: "none", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem" },
-  linkButton: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: "0.82rem", padding: 0, textDecoration: "underline" },
-  miniButton: { padding: "0.2rem 0.5rem", borderRadius: 4, background: "#f3f4f6", border: "1px solid #d1d5db", cursor: "pointer", fontSize: "0.75rem" },
-  warning: { background: "#fef3c7", border: "1px solid #fbbf24", padding: "0.75rem 1rem", borderRadius: 6, fontSize: "0.875rem", marginBottom: "1rem" },
-  errorBox: { background: "#fef2f2", border: "1px solid #fca5a5", padding: "0.75rem 1rem", borderRadius: 6, fontSize: "0.875rem", marginTop: "1rem" },
-  quoteCard: { background: "#f0f9ff", border: "1px solid #bae6fd", padding: "1rem", borderRadius: 8, marginTop: "1.5rem", maxWidth: 560 },
-  answerCard: { background: "#f8fafc", border: "1px solid #e2e8f0", padding: "1.25rem", borderRadius: 8, marginTop: "1.5rem", maxWidth: 560 },
-  failedCard: { background: "#fef2f2", border: "1px solid #fca5a5", padding: "1rem", borderRadius: 8, marginTop: "1.5rem", maxWidth: 560 },
-  stateCard: { background: "#f9fafb", border: "1px solid #e5e7eb", padding: "0.75rem 1rem", borderRadius: 6, marginTop: "1rem", fontSize: "0.875rem", color: "#374151" },
-  pendingNote: { background: "#fefce8", border: "1px solid #fde047", padding: "0.5rem 0.75rem", borderRadius: 4, fontSize: "0.82rem", marginTop: "0.5rem" },
-  citationList: { fontSize: "0.8rem", color: "#374151", paddingLeft: "1.25rem", marginTop: "0.5rem" },
-  receiptMeta: { fontSize: "0.75rem", color: "#9ca3af", marginTop: "0.75rem", fontFamily: "monospace", wordBreak: "break-all" as const },
-  historySection: { marginTop: "2rem", borderTop: "1px solid #e5e7eb", paddingTop: "1rem", maxWidth: 560 },
-  historyRow: { display: "flex", gap: "0.75rem", alignItems: "center", padding: "0.5rem 0.75rem", background: "#f9fafb", borderRadius: 6, border: "1px solid #f3f4f6" },
-  subtext: { color: "#6b7280", fontSize: "0.875rem" },
-} as const;
+const box: React.CSSProperties = { border: "1px solid #d1d5db", borderRadius: 8, padding: 16, margin: "16px 0" };
+const field: React.CSSProperties = { display: "block", width: "100%", boxSizing: "border-box", padding: 8, marginTop: 4 };
+const button: React.CSSProperties = { padding: "10px 16px", background: "#4f46e5", color: "white", border: 0, borderRadius: 6, cursor: "pointer" };
+const smallButton: React.CSSProperties = { padding: "6px 10px", margin: "6px 8px 0 0", border: "1px solid #a5b4fc", background: "white", borderRadius: 6, cursor: "pointer" };

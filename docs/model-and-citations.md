@@ -16,7 +16,7 @@ The model is instructed to cite passages by their versioned ID:
 
 Example: `[Passage 0xabc123...:chunk-0]`
 
-The content hash in the ID pins the citation to the exact document version that was active at query time. Citations remain verifiable after the owner re-uploads new content.
+The content hash in the ID pins the citation to the exact document version used by the query. Content replacement is disabled in this demo until on-chain policy versioning is coupled to it.
 
 ## Passage ID versioning
 

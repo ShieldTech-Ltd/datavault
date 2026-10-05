@@ -1,6 +1,6 @@
 import type { Env } from "./lib/types";
-import { handleRegisterCollection, handleUploadCollection, handleConfirmCollection } from "./routes/collections";
-import { handlePrepare, handleExecute, handleReceipt, handleAnswerRecovery, handleReconcile } from "./routes/queries";
+import { handleRegisterCollection, handleConfirmCollection } from "./routes/collections";
+import { handleDemoCollection, handlePrepare, handleExecute, handleReceipt, handleAnswerRecovery, handleReconcile } from "./routes/queries";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -30,8 +30,11 @@ export default {
           const id = path.split("/")[3];
           res = await handleConfirmCollection(request, env, id);
         } else if (method === "POST" && path.match(/^\/api\/collections\/[^/]+\/upload$/)) {
-          const id = path.split("/")[3];
-          res = await handleUploadCollection(request, env, id);
+          res = new Response(JSON.stringify({ error: "Content replacement is unavailable until it can advance on-chain policy." }), {
+            status: 410, headers: { "Content-Type": "application/json" },
+          });
+        } else if (method === "GET" && path === "/api/demo") {
+          res = await handleDemoCollection(env);
         } else if (method === "POST" && path === "/api/queries/prepare") {
           res = await handlePrepare(request, env);
         } else if (method === "POST" && path === "/api/queries/execute") {
@@ -53,9 +56,8 @@ export default {
         const headers = new Headers(res.headers);
         for (const [k, v] of Object.entries(cors)) headers.set(k, v);
         return new Response(res.body, { status: res.status, headers });
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Internal server error";
-        return new Response(JSON.stringify({ error: msg }), {
+      } catch {
+        return new Response(JSON.stringify({ error: "Internal server error. Check request status before retrying payment." }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
         });

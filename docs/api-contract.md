@@ -1,157 +1,54 @@
-# DataVault API Contract
+# DataVault API contract
 
-## Base URL
+The production API and frontend share one Cloudflare Worker origin. Source content, questions, and answers stay off-chain. Selected source passages are sent to the configured model provider. `shared/api.ts` defines the buyer-facing result types and execution signature text.
 
-Production: served from the same Cloudflare Worker that hosts the frontend.
-Local dev: `http://localhost:8787`
+## Authentication
 
-## Authentication and authorization
+- `GET /api/demo` and `POST /api/queries/prepare` are public metadata endpoints.
+- `POST /api/collections` requires a wallet signature over chain, contract, owner, content hash, price, and timestamp before staging the document and transaction calldata. It proves wallet control, not legal content ownership.
+- `POST /api/collections/:id/confirm` accepts `txHash` and `ownerAddress` only after a successful `CollectionRegistered` transaction from that owner is confirmed on the configured contract.
+- `POST /api/collections/:id/upload` returns 410. Content replacement is unavailable until it can advance on-chain policy version.
+- `POST /api/queries/execute` requires a confirmed matching `QueryOpened` receipt and a current signature by the on-chain escrow buyer.
+- `POST /api/queries/:id/reconcile` and `GET /api/queries/:id/answer` require a current buyer signature.
+- `GET /api/queries/:id/receipt` is public and excludes answer text and source passages.
 
-| Endpoint | Auth mechanism |
-|---|---|
-| `POST /api/collections` | Owner wallet address in form field; no server-side session required at registration |
-| `POST /api/collections/:id/upload` | ECDSA signature over `datavault-upload:<collectionId>:<sha256(body)>:<timestamp>` |
-| `POST /api/queries/prepare` | None (public price lookup) |
-| `POST /api/queries/execute` | On-chain escrow verified by the Worker before any retrieval or model call |
-| `GET /api/queries/:id/receipt` | Public (receipts are intentionally visible for auditability) |
+All signatures use EIP-191 personal signing. Send `x-signature` and `x-timestamp` headers. The timestamp is Unix milliseconds within five minutes of server time. CORS is a browser control, not authorization.
 
-## CORS
+## Public demo and quote
 
-The `ALLOWED_ORIGINS` environment variable accepts a comma-separated list of permitted request origins (e.g. `https://datavault.example.com`). Localhost origins are always permitted for development. Unknown origins receive `Access-Control-Allow-Origin: null`, causing browsers to reject credentialed requests.
+`GET /api/demo` returns the configured sample collection ID, name, owner address, and current on-chain price only when its D1 row is confirmed and on-chain policy is active. Otherwise it returns 404. The sample ID is configured only after actual owner registration.
 
-## Request limits
+`POST /api/queries/prepare` accepts `{ "collectionId": "0x...", "question": "..." }` and returns `{ "collectionId", "collectionName", "priceWei", "priceDisplay" }`. It returns 503 if contract, settlement key, or model key is absent or the configured settlement key does not match the collection's on-chain operator. A quote does not reserve a price. `openQuery` enforces the current price and active policy when the buyer signs.
 
-| Limit | Value |
-|---|---|
-| Max upload / body size | 500 KB |
-| Max question length | 500 characters |
-| Max price | 10 MON (10^19 wei) |
-| Rate limit: execute | 10 requests per 60 seconds per IP |
-| Rate limit: register | 5 requests per 60 seconds per IP |
-| Rate limit: all other API routes | 30 requests per 60 seconds per IP |
+## Execute a paid query
 
-## Endpoints
+After the buyer's `openQuery` transaction confirms, send:
 
-### POST /api/collections
-
-Register a new knowledge collection.
-
-**Request:** `multipart/form-data`
-
-| Field | Type | Validation |
-|---|---|---|
-| `file` | File | Required, `.md` or `.txt`, max 500 KB |
-| `priceWei` | string | Positive integer, max 10 MON |
-| `ownerAddress` | string | `0x`-prefixed 20-byte hex address |
-
-**Response 200:**
-```json
-{
-  "collectionId": "0x...",
-  "contentHash": "0x...",
-  "operatorAddress": "0x...",
-  "txCalldata": "0x..."
-}
-```
-
-The `txCalldata` encodes `registerCollection(collectionId, priceWei, operatorAddress)`. The frontend sends this as a transaction to the contract using the owner's wallet. The `operatorAddress` is the Worker's settlement key.
-
-**Errors:** 400 (validation), 409 (already registered), 429 (rate limit)
-
-### POST /api/collections/:id/upload
-
-Replace collection content. The `collectionId` path segment must be a `0x`-prefixed 32-byte hex string.
-
-**Headers:**
-
-| Header | Format | Notes |
-|---|---|---|
-| `x-signature` | `0x` + 130 hex chars (65-byte ECDSA) | Signs the message below |
-| `x-timestamp` | Unix milliseconds | Must be within 5 minutes of server time |
-
-**Signed message:** `datavault-upload:<collectionId>:<sha256hex(body)>:<timestamp>`
-
-**Request body:** Raw text/markdown, max 500 KB
-
-**Errors:** 400 (validation), 401 (missing/expired/malformed auth), 403 (signature mismatch), 404 (collection not found), 413 (body too large)
-
-### POST /api/queries/prepare
-
-Fetch the current price for a collection before opening escrow.
-
-**Request JSON:**
-
-| Field | Type | Validation |
-|---|---|---|
-| `collectionId` | string | `0x`-prefixed 32-byte hex |
-
-**Response 200:**
-```json
-{
-  "collectionId": "0x...",
-  "priceWei": "1000000000000000",
-  "priceDisplay": "0.001000",
-  "collectionName": "..."
-}
-```
-
-**Errors:** 400 (validation), 403 (paused), 404 (not found)
-
-### POST /api/queries/execute
-
-Execute a paid query. The Worker verifies the on-chain escrow before any retrieval or model call.
-
-**Request JSON:**
-
-| Field | Type | Validation |
-|---|---|---|
-| `requestId` | string | `0x`-prefixed 32-byte hex |
-| `collectionId` | string | `0x`-prefixed 32-byte hex |
-| `question` | string | Non-empty, max 500 chars |
-
-**Response 200:**
-```json
-{
-  "answer": "...",
-  "passages": ["..."],
-  "requestId": "0x...",
-  "txHash": "0x...",
-  "receiptUrl": "/api/queries/0x.../receipt"
-}
-```
-
-**Errors:** 400 (validation), 402 (escrow not found or underpaid), 409 (already finalised or policy changed), 422 (no passages found), 429 (rate limit), 500 (model/settlement error)
-
-### GET /api/queries/:id/receipt
-
-Retrieve a receipt for a completed query. Receipts are public for auditability; the response includes only the passage IDs (not content) and a SHA-256 digest of the model response.
-
-**Response 200:**
 ```json
 {
   "requestId": "0x...",
   "collectionId": "0x...",
-  "buyerAddress": "0x...",
-  "txHash": "0x...",
-  "policyVersion": 1,
-  "passageIds": ["p0", "p1"],
-  "responseDigest": "sha256:...",
-  "outcome": "settled",
-  "createdAt": 1000000000,
-  "settledAt": 1000000005
+  "question": "...",
+  "openTxHash": "0x..."
 }
 ```
 
-**Errors:** 400 (invalid requestId format), 404 (not found)
+Sign the exact message from `executionMessage` in `shared/api.ts`:
 
-## Error response format
-
-All errors return JSON with a single `error` string. Internal details, provider error bodies, and secrets are never included.
-
-```json
-{ "error": "Human-readable description" }
+```
+datavault-execute:<chainId>:<lowercase contract>:<lowercase requestId>:<lowercase collectionId>:<sha256 question hex>:<lowercase openTxHash>:<timestamp>
 ```
 
-## Disclosure
+The Worker verifies signature, escrow buyer, collection, amount, policy version, expiry, and the successful opening receipt before claiming the request and reading private storage. One request ID is claimed once in D1. Duplicate attempts do not call the model again.
 
-The Worker retrieves selected passages from the private R2 collection and sends them to a third-party AI model API (Kimi or OpenAI-compatible) to generate answers. Buyers are informed of this before purchase. Passage content is not stored by the Worker after the model call completes.
+A confirmed settlement returns `QueryResult` with `outcome: "settled"`, answer text, versioned cited passage IDs, cited passage text, opening and settlement transaction hashes, and receipt URL. A broadcast without confirmation returns `outcome: "settlement_pending"` with hashes and receipt URL, without answer text. The caller must reconcile and recover the answer after settlement. Failures leave a still-open escrow eligible for the on-chain timeout refund.
+
+## Reconcile, recover, and receipt
+
+To reconcile, sign `datavault-reconcile:<requestId>:<timestamp>` and `POST /api/queries/:id/reconcile` with signature headers. The response reports the current outcome and settlement hash. To recover a settled answer, sign `datavault-answer:<requestId>:<timestamp>` and `GET /api/queries/:id/answer`. Only the escrow buyer can recover it. The recovery response includes answer text, cited IDs, digest, outcome, and settlement hash.
+
+The public receipt contains request and collection IDs, buyer address, chain and contract, content hash, policy version, opening and settlement hashes, cited passage IDs, answer digest, outcome, and timestamps. It does not prove the buyer saw the answer or that the answer is factually correct.
+
+## Limits and errors
+
+Uploads are limited to 512000 bytes, questions to 500 characters, and prices to 10 MON. Registration and execution are rate limited per caller IP. Expected errors include 400 for malformed input, 401 for missing or expired signature, 403 for wrong buyer or paused policy, 404 for absent resources, 409 for transaction or policy mismatch, 429 for rate limits, and 503 for incomplete deployment configuration.

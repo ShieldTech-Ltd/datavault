@@ -1,19 +1,12 @@
-# Local development secrets for `wrangler dev --local`
-# Copy to .dev.vars and fill in values. Never commit .dev.vars.
-
-# Deployed contract address on Monad testnet
-CONTRACT_ADDRESS=0x
-
-# Monad testnet RPC
+# Copy to .dev.vars for local development. Never commit .dev.vars.
+CONTRACT_ADDRESS=
 MONAD_RPC_URL=https://testnet-rpc.monad.xyz
-
-# Private key the Worker uses to call settleQuery (funded on testnet)
-SETTLEMENT_PRIVATE_KEY=0x
-
-# AI model provider: openai | kimi
+CHAIN_ID=10143
+SETTLEMENT_PRIVATE_KEY=
 MODEL_PROVIDER=openai
-MODEL_API_KEY=sk-
-
-# Model endpoint (defaults work for OpenAI; change for Kimi or other providers)
+MODEL_API_KEY=
 MODEL_API_BASE=https://api.openai.com/v1
 MODEL_NAME=gpt-4o-mini
+
+# Set only after the sample is registered and confirmed on-chain.
+DEMO_COLLECTION_ID=
