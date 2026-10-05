@@ -54,4 +54,11 @@ describe("HTTP security boundary", () => {
     expect(result).toBeInstanceOf(Request);
     expect(await (result as Request).json()).toEqual({ question: "What is in the guide?" });
   });
+
+  it("does not read the body of the retired upload route", async () => {
+    const request = new Request("https://demo.example.org/api/collections/id/upload", {
+      method: "POST", body: "x".repeat(9 * 1024),
+    });
+    expect(await boundedApiRequest(request)).toBe(request);
+  });
 });

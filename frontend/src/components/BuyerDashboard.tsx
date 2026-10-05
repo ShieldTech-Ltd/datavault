@@ -19,7 +19,6 @@ interface Demo { collectionId: string; collectionName: string; ownerAddress: str
 interface SavedRequest {
   requestId: string;
   collectionId: string;
-  question: string;
   openTxHash: string;
   buyerAddress: string;
   openedAt: number;
@@ -27,6 +26,7 @@ interface SavedRequest {
 }
 interface DisplayAnswer {
   answer: string;
+  buyerAddress: string;
   citedPassageIds: string[];
   citedPassages: CitedPassage[];
   requestId: string;
@@ -37,12 +37,25 @@ interface DisplayAnswer {
 function history(): SavedRequest[] {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
-    return Array.isArray(value) ? value as SavedRequest[] : [];
+    if (!Array.isArray(value)) return [];
+    const bytes32 = /^0x[0-9a-fA-F]{64}$/;
+    const address = /^0x[0-9a-fA-F]{40}$/;
+    const safe = value.flatMap((item): SavedRequest[] => {
+      if (!item || typeof item !== "object" || !bytes32.test(item.requestId) ||
+          !bytes32.test(item.collectionId) || !bytes32.test(item.openTxHash) ||
+          !address.test(item.buyerAddress)) return [];
+      return [{ requestId: item.requestId, collectionId: item.collectionId,
+        openTxHash: item.openTxHash, buyerAddress: item.buyerAddress,
+        openedAt: Number(item.openedAt) || 0, outcome: String(item.outcome ?? "unknown") }];
+    }).slice(0, 20);
+    // Rewrite legacy records to remove previously persisted plaintext questions.
+    if (JSON.stringify(safe) !== JSON.stringify(value)) localStorage.setItem(HISTORY_KEY, JSON.stringify(safe));
+    return safe;
   } catch { return []; }
 }
 function save(request: SavedRequest): SavedRequest[] {
   const next = [request, ...history().filter((item) => item.requestId !== request.requestId)].slice(0, 20);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); } catch { /* Payment flow must survive disabled storage. */ }
   return next;
 }
 async function sha256Hex(value: string): Promise<string> {
@@ -67,6 +80,7 @@ export default function BuyerDashboard() {
 
   useEffect(() => {
     setRequests(history().filter((item) => item.buyerAddress.toLowerCase() === address.toLowerCase()));
+    setCurrent(null); setAnswer(null); setQuote(null); setRefundAt(null); setStep("idle"); setMessage("");
     fetch("/api/demo").then((response) => response.ok ? response.json() as Promise<Demo> : null)
       .then((item) => setDemo(item)).catch(() => setDemo(null));
   }, [address]);
@@ -131,7 +145,7 @@ export default function BuyerDashboard() {
       const openTxHash = await client.sendTransaction({
         to: CONTRACT_ADDRESS, data, value: BigInt(quote.priceWei),
       });
-      request = { requestId, collectionId: quote.collectionId, question, openTxHash,
+      request = { requestId, collectionId: quote.collectionId, openTxHash,
         buyerAddress: address, openedAt: Date.now(), outcome: "open_pending" };
       remember(request);
       setStep("confirming_open");
@@ -158,7 +172,8 @@ export default function BuyerDashboard() {
         return;
       }
       if (result.outcome !== "settled" || !result.answer) throw new Error("Unexpected query result.");
-      setAnswer({ answer: result.answer, citedPassageIds: result.citedPassageIds ?? [],
+      setAnswer({ answer: result.answer, buyerAddress: request.buyerAddress,
+        citedPassageIds: result.citedPassageIds ?? [],
         citedPassages: result.citedPassages ?? [], requestId, openTxHash,
         settleTxHash: result.settleTxHash });
       remember({ ...request, outcome: "settled" });
@@ -179,7 +194,8 @@ export default function BuyerDashboard() {
       });
       if (!response.ok) throw new Error(await response.text());
       const result = await response.json() as RecoveredAnswer;
-      setAnswer({ answer: result.answer, citedPassageIds: result.citedPassageIds,
+      setAnswer({ answer: result.answer, buyerAddress: request.buyerAddress,
+        citedPassageIds: result.citedPassageIds,
         citedPassages: result.citedPassages ?? [], requestId: request.requestId, openTxHash: request.openTxHash,
         settleTxHash: result.settleTxHash });
       remember({ ...request, outcome: "settled" }); setStep("done");
@@ -216,6 +232,7 @@ export default function BuyerDashboard() {
   }
 
   const busy = ["quoting", "awaiting_wallet", "confirming_open", "answering"].includes(step);
+  const visibleRequests = requests.filter((item) => item.buyerAddress.toLowerCase() === address.toLowerCase());
   return <div style={{ maxWidth: 720 }}>
     <h2>Ask a Question</h2>
     <p>Pay a fixed testnet MON price to ask about a private collection. Selected passages go to the model provider. A failed, unsettled payment can be refunded after ten minutes.</p>
@@ -243,7 +260,7 @@ export default function BuyerDashboard() {
     {step === "answering" && <p>Payment confirmed. Retrieving passages, generating an answer, and settling.</p>}
     {step === "settlement_pending" && <button type="button" onClick={reconcile} style={button}>Check settlement</button>}
     {message && <p role="status" style={{ color: step === "failed" ? "#b91c1c" : "#374151", overflowWrap: "anywhere" }}>{message}</p>}
-    {answer && <section style={box}>
+    {answer && answer.buyerAddress.toLowerCase() === address.toLowerCase() && <section style={box}>
       <h3>Cited answer</h3><p style={{ whiteSpace: "pre-wrap" }}>{answer.answer}</p>
       {answer.citedPassageIds.map((id) => {
         const passage = answer.citedPassages.find((item) => item.id === id);
@@ -254,13 +271,13 @@ export default function BuyerDashboard() {
       <p>Open transaction: {answer.openTxHash}<br />Settlement transaction: {answer.settleTxHash}</p>
       <a href={`/api/queries/${answer.requestId}/receipt`} target="_blank" rel="noreferrer">View public receipt</a>
     </section>}
-    {current && refundAt !== null && step !== "done" && <section style={box}>
+    {current && current.buyerAddress.toLowerCase() === address.toLowerCase() && refundAt !== null && step !== "done" && <section style={box}>
       <p>{now < refundAt ? `Refund available in ${Math.ceil((refundAt - now) / 1000)} seconds if escrow remains open.` : "Refund timeout reached. Check settlement before refunding."}</p>
       <button type="button" disabled={now < refundAt} onClick={refund} style={button}>Claim expired refund</button>
     </section>}
-    {requests.length > 0 && <section style={box}><h3>Your recent requests</h3>
-      {requests.map((request) => <div key={request.requestId} style={{ marginBottom: 12, overflowWrap: "anywhere" }}>
-        <strong>{request.outcome}</strong> {request.question}<br />
+    {visibleRequests.length > 0 && <section style={box}><h3>Your recent requests</h3>
+      {visibleRequests.map((request) => <div key={request.requestId} style={{ marginBottom: 12, overflowWrap: "anywhere" }}>
+        <strong>{request.outcome}</strong> Request {request.requestId.slice(0, 12)}<br />
         <button type="button" onClick={() => recover(request)} style={smallButton}>Recover answer</button>
         <button type="button" onClick={async () => { setCurrent(request); await loadRefundTime(request); setStep("settlement_pending"); }} style={smallButton}>Check or refund</button>
       </div>)}

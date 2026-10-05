@@ -46,7 +46,10 @@ export function corsHeaders(origin: string | null): Headers {
 
 export async function boundedApiRequest(request: Request): Promise<Request | Response> {
   if (request.method !== "POST") return request;
-  const maxBytes = new URL(request.url).pathname === "/api/collections"
+  const path = new URL(request.url).pathname;
+  // The retired upload route never parses a body and must consistently return 410.
+  if (/^\/api\/collections\/[^/]+\/upload$/.test(path)) return request;
+  const maxBytes = path === "/api/collections"
     ? MAX_MULTIPART_REQUEST_BYTES : MAX_JSON_REQUEST_BYTES;
   const declared = request.headers.get("Content-Length");
   if (declared && (!/^\d+$/.test(declared) || Number(declared) > maxBytes)) {

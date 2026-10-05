@@ -10,6 +10,7 @@ The paid path handles private source material, buyer questions, and a settlement
 - Use separate, low balance testnet wallets. Rotate a key immediately if it appears in a commit, log, artifact, screenshot, or chat. Removing it from a later commit does not undo exposure.
 - Keep R2 buckets private and restrict Cloudflare account access. Apply least privilege to GitHub and Cloudflare tokens.
 - The tracked credential guard scans repository files for local env files and common credential formats. It is a guardrail, not a substitute for provider secret scanning or human review.
+- The browser stores only request identifiers, transaction hashes, and status for recovery. It removes legacy plaintext questions from local history and only displays a recovered answer for the connected buyer wallet.
 
 ## Request and response boundary
 
