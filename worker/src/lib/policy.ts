@@ -11,7 +11,7 @@ export interface OnChainQuery {
 }
 
 const COLLECTION_ABI = parseAbi([
-  "function getCollection(bytes32 collectionId) external view returns (tuple(address owner, address operator, uint256 price, uint32 policyVersion, bool active))",
+  "function getCollection(bytes32 collectionId) external view returns (address,address,uint256,uint32,bool)",
 ]);
 
 function buildChain(env: Env) {
@@ -40,13 +40,13 @@ export async function getOnChainCollection(
       abi: COLLECTION_ABI,
       functionName: "getCollection",
       args: [collectionId],
-    }) as { owner: string; operator: string; price: bigint; policyVersion: number; active: boolean };
+    }) as [string, string, bigint, number, boolean];
     return {
-      owner: result.owner,
-      operator: result.operator,
-      price: result.price,
-      policyVersion: result.policyVersion,
-      active: result.active,
+      owner: result[0],
+      operator: result[1],
+      price: result[2],
+      policyVersion: result[3],
+      active: result[4],
     };
   } catch {
     return null;
@@ -54,7 +54,7 @@ export async function getOnChainCollection(
 }
 
 const QUERY_ABI = parseAbi([
-  "function getQuery(bytes32 requestId) external view returns (tuple(bytes32 collectionId, address buyer, uint256 amount, uint32 policyVersion, uint64 openedAt, uint8 state))",
+  "function getQuery(bytes32 requestId) external view returns (bytes32,address,uint256,uint32,uint64,uint8)",
 ]);
 
 export async function getOnChainQuery(
@@ -74,18 +74,18 @@ export async function getOnChainQuery(
       abi: QUERY_ABI,
       functionName: "getQuery",
       args: [requestId],
-    }) as { collectionId: `0x${string}`; buyer: Address; amount: bigint; policyVersion: number; openedAt: bigint; state: number };
+    }) as [`0x${string}`, Address, bigint, number, bigint, number];
 
     // A zero buyer address means the requestId has never been recorded on-chain
-    if (result.buyer === "0x0000000000000000000000000000000000000000") return null;
+    if (result[1] === "0x0000000000000000000000000000000000000000") return null;
 
     return {
-      collectionId: result.collectionId,
-      buyer: result.buyer,
-      amount: result.amount,
-      policyVersion: result.policyVersion,
-      openedAt: result.openedAt,
-      state: result.state,
+      collectionId: result[0],
+      buyer: result[1],
+      amount: result[2],
+      policyVersion: result[3],
+      openedAt: result[4],
+      state: result[5],
     };
   } catch {
     return null;
