@@ -10,18 +10,21 @@ Updated 6 October 2026 for the demo readiness branch. This is source and local v
 - Model calls use selected passages and validate versioned citation IDs. Answer text is stored in D1, but returned only after settlement confirmation. Public receipts exclude answer and source text.
 - Buyer UI has a guided sample entry when a real confirmed sample ID is configured, wallet payment, settlement status, signed recovery, and on-chain refund action. Owner UI supports registration and pause or resume.
 - Content replacement is disabled in the public API and UI because the former path did not advance on-chain policy version.
+- API responses have no-store and browser security headers, and public deployments reject unlisted browser origins, including localhost.
 
 ## Local checks on this branch
 
 - `npm run test:contracts`: 20 passing.
 - `npm run typecheck` in Worker: passed.
 - `npm run typecheck` in frontend: passed.
-- `vitest run src/test/demo-readiness.test.ts` with local Vitest install: 8 passing. The committed Vitest dependency and CI integration remain in contributor PR #46.
+- `vitest run src/test/demo-readiness.test.ts src/test/http-security.test.ts` with local Vitest install: 12 passing. The committed Vitest dependency and CI integration remain in contributor PR #46.
+- `python3 scripts/check-secrets.py`: passed on the current tracked tree.
 - Frontend build passed after the registration signature change, with no generated JavaScript emitted into source files.
 
 ## Gates before public deployment
 
 - Merge and rebase contributor PRs #46 and #47, then run all combined tests and update the README without overwriting their work.
+- Resolve the ten high severity advisories in the frontend production dependency tree and pass the Security workflow. See `docs/security.md`.
 - Verify a real Dynamic login, signed registration, signed payment, private R2 and D1 access, actual model response, and owner payout on the configured Monad network.
 - Add real Cloudflare D1 and R2 resource identifiers, a deployed contract, Worker secrets, Dynamic origin, and a confirmed sample collection. The tracked Wrangler configuration still contains a placeholder database ID.
 - Review time-sensitive claims in the sample guide and collect actual user feedback. Do not invent results.

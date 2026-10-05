@@ -1,0 +1,40 @@
+name: Security
+
+on:
+  pull_request:
+    branches: [master, main]
+  push:
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+jobs:
+  credentials:
+    name: Tracked credential guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Scan tracked files
+        run: python3 scripts/check-secrets.py
+
+  dependencies:
+    name: Production dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Audit contracts and Worker production packages
+        run: |
+          npm audit --package-lock-only --omit=dev --audit-level=high
+          npm audit --prefix worker --package-lock-only --omit=dev --audit-level=high
+      - name: Audit frontend production packages
+        run: npm audit --prefix frontend --package-lock-only --omit=dev --audit-level=high

@@ -1,6 +1,7 @@
 import type { Env } from "./lib/types";
 import { handleRegisterCollection, handleConfirmCollection } from "./routes/collections";
 import { handleDemoCollection, handlePrepare, handleExecute, handleReceipt, handleAnswerRecovery, handleReconcile } from "./routes/queries";
+import { allowedOrigin, corsHeaders, securedResponse } from "./lib/http-security";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -10,16 +11,12 @@ export default {
 
     // ── API routes ────────────────────────────────────────────────
     if (path.startsWith("/api/")) {
-      const origin = request.headers.get("Origin") ?? "";
-      const allowedOrigin = resolveAllowedOrigin(origin, env);
-      const cors: Record<string, string> = {
-        "Access-Control-Allow-Origin": allowedOrigin,
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, x-signature, x-timestamp",
-        "Vary": "Origin",
-      };
-
-      if (method === "OPTIONS") return new Response(null, { headers: cors });
+      const origin = allowedOrigin(request, env);
+      const cors = corsHeaders(origin);
+      if (request.headers.has("Origin") && !origin) {
+        return securedResponse(new Response("Origin not allowed", { status: 403 }), true);
+      }
+      if (method === "OPTIONS") return securedResponse(new Response(null, { status: 204, headers: cors }), true);
 
       try {
         let res: Response;
@@ -54,38 +51,17 @@ export default {
 
         // Attach CORS headers to all API responses
         const headers = new Headers(res.headers);
-        for (const [k, v] of Object.entries(cors)) headers.set(k, v);
-        return new Response(res.body, { status: res.status, headers });
+        cors.forEach((value, key) => headers.set(key, value));
+        return securedResponse(new Response(res.body, { status: res.status, headers }), true);
       } catch {
-        return new Response(JSON.stringify({ error: "Internal server error. Check request status before retrying payment." }), {
+        return securedResponse(new Response(JSON.stringify({ error: "Internal server error. Check request status before retrying payment." }), {
           status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
+          headers: { "Content-Type": "application/json", "Vary": "Origin" },
+        }), true);
       }
     }
 
     // ── Static assets (React app) ─────────────────────────────────
-    return env.ASSETS.fetch(request);
+    return securedResponse(await env.ASSETS.fetch(request));
   },
 };
-
-// Returns the request's Origin if it is in the allowlist, otherwise falls back
-// to the Worker's own origin. This prevents credentialed cross-origin abuse
-// while still supporting localhost dev and the deployed frontend.
-function resolveAllowedOrigin(requestOrigin: string, env: Env): string {
-  // ALLOWED_ORIGINS is an optional comma-separated list set in wrangler.toml vars.
-  // If absent, only same-origin (empty Origin header) and localhost are permitted.
-  const raw = env.ALLOWED_ORIGINS ?? "";
-  const allowed = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  // Always allow localhost origins in development
-  const isLocalhost = /^https?:\/\/localhost(:\d+)?$/.test(requestOrigin);
-  if (isLocalhost || allowed.includes(requestOrigin)) return requestOrigin;
-
-  // Fall back to a null origin so browsers reject credentialed requests from
-  // unknown origins rather than reflecting an arbitrary origin.
-  return "null";
-}

@@ -1,0 +1,27 @@
+# Security controls and release gates
+
+The paid path handles private source material, buyer questions, and a settlement key. Treat the public demo as a financial service with limited funds. No scanner or test suite can guarantee that bugs or credential leaks will never occur.
+
+## Credential handling
+
+- Store the settlement and model keys only as Wrangler secrets. Keep deployer keys in untracked local environment files or an approved secret manager. Never use the deployer key as the settlement key.
+- Only `VITE_` values intended to be public may enter the frontend build. Inspect the built assets for secret values before deployment.
+- Use separate, low balance testnet wallets. Rotate a key immediately if it appears in a commit, log, artifact, screenshot, or chat. Removing it from a later commit does not undo exposure.
+- Keep R2 buckets private and restrict Cloudflare account access. Apply least privilege to GitHub and Cloudflare tokens.
+- The tracked credential guard scans repository files for local env files and common credential formats. It is a guardrail, not a substitute for provider secret scanning or human review.
+
+## Request and response boundary
+
+- Owner and buyer actions use current wallet signatures. Paid execution binds chain, contract, collection, request, question digest, opening transaction, and timestamp.
+- The Worker verifies matching successful Monad receipts before registering or executing, checks current policy and operator, and withholds answers until settlement is confirmed.
+- API responses use `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and a restrictive referrer policy. A public deployment accepts only its own origin and explicitly configured origins. Local cross-port origins are accepted only when the Worker itself runs on localhost.
+- Requests are rate limited and collection uploads have a 500 KB payload limit. Do not claim these D1-backed limits are a complete distributed abuse defense. Set Cloudflare account-level rate and spending limits before public use.
+- The unsupported content replacement endpoint returns 410. A new content version requires an on-chain policy update first.
+
+## CI and release decision
+
+The existing CI runs contract tests, frontend typecheck/build, and Worker typecheck in parallel. PR #46 adds the Worker test runner and full test job. The separate Security workflow runs a dependency-free tracked credential guard and production dependency audits. It has read-only repository permission and no production secrets.
+
+At this snapshot, the frontend production lockfile has ten high severity npm advisories in the Dynamic wallet dependency tree. The audit gate is expected to fail. Review upstream fixes and update dependencies with wallet connection and transaction regression tests. Do not waive the audit solely to turn CI green. The root and Worker production audits currently report zero high or critical advisories.
+
+Before deployment, require the CI and Security checks on the protected branch, review the combined result after PRs #46 and #47 merge, verify no keys in assets or logs, and run the live paid, recovery, pause, and refund checks in [deployment.md](deployment.md). Keep the PR in draft while any release gate fails.
