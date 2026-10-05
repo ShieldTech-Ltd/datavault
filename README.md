@@ -25,7 +25,7 @@ An owner uploads a private Markdown document, sets a per-query price, and regist
 ```
 contracts/          Solidity contract and Hardhat tests
   DataVault.sol     registerCollection, updatePolicy, openQuery, settleQuery, refundExpired
-  test/             12 unit tests (all passing)
+  test/             20 unit tests (all passing)
 frontend/           React + Vite + TypeScript UI
   src/
     lib/            Dynamic SDK config, viem contract client
@@ -34,10 +34,11 @@ worker/             Cloudflare Worker API
   src/
     lib/            policy.ts, model.ts, r2.ts, d1.ts, types.ts
     routes/         collections.ts, queries.ts
+    test/           53 Vitest unit tests (validation, D1 state machine, rate limit, route auth)
   migrations/       D1 SQL schema
 scripts/            Hardhat deploy script
 demo/               Team-authored UK Practical Guide (sample knowledge collection)
-docs/               Build status and decision records
+docs/               Architecture, API contract, testing guide, failure matrix, receipt format
 shared/             Shared ABI constant
 ```
 
@@ -150,13 +151,19 @@ npm run typecheck:worker
 
 ---
 
-## Contract tests
+## Tests
 
 ```sh
+# Smart contract tests (20 Hardhat tests)
 npm run test:contracts
+
+# Worker unit tests (53 Vitest tests, no live chain or model calls)
+cd worker && npm test
 ```
 
-12 tests covering registerCollection, updatePolicy, openQuery, settleQuery, refundExpired, replay protection, and timeout refund.
+Contract tests cover: registerCollection, updatePolicy, openQuery, settleQuery, refundExpired, operator model, replay protection, timeout refund.
+
+Worker tests cover: input validation, D1 state machine transitions, rate limiting, route auth and access control. See `docs/testing.md` for full scope and live gate documentation.
 
 ---
 
