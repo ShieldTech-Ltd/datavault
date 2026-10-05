@@ -2,7 +2,7 @@ name: Security
 
 on:
   pull_request:
-    branches: [master, main]
+    branches: [master, main, feat/demo-readiness-ritik]
   push:
     branches: [master, main]
 
@@ -20,6 +20,17 @@ jobs:
           persist-credentials: false
       - name: Scan tracked files
         run: python3 scripts/check-secrets.py
+
+  database_invariants:
+    name: D1 invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test migrated SQL and concurrent quotas
+        run: python3 scripts/verify-sql-invariants.py
 
   dependencies:
     name: Production dependency audit

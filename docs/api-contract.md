@@ -51,4 +51,4 @@ The public receipt contains request and collection IDs, buyer address, chain and
 
 ## Limits and errors
 
-Uploads are limited to 512000 bytes, questions to 500 characters, and prices to 10 MON. Registration and execution are rate limited per caller IP. Expected errors include 400 for malformed input, 401 for missing or expired signature, 403 for wrong buyer or paused policy, 404 for absent resources, 409 for transaction or policy mismatch, 429 for rate limits, and 503 for incomplete deployment configuration.
+Uploads are limited to 512000 document bytes with at most 16 KB of multipart overhead. Other POST bodies are limited to 8 KB before parsing. Questions are limited to 500 characters and prices to 10 MON. Registration and execution use an atomic per-IP fixed-window quota. Expected errors include 400 for malformed input, 401 for missing or expired signature, 403 for wrong buyer or paused policy, 404 for absent resources, 409 for transaction or policy mismatch, 413 for oversized requests, 429 for rate limits, and 503 for incomplete deployment configuration.

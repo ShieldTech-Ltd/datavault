@@ -2,7 +2,7 @@ import { keccak256, toBytes, verifyMessage } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Env } from "../lib/types";
 import { storeCollection } from "../lib/r2";
-import { insertCollection, getCollectionRow, confirmCollection, markCollectionOrphaned } from "../lib/d1";
+import { insertCollection, getCollectionRow, confirmCollection } from "../lib/d1";
 import { buildRegisterCalldata, verifyUploadSignature, getOnChainCollection } from "../lib/policy";
 import {
   isValidAddress, isValidBytes32, isValidPriceWei, isValidSignature,
@@ -61,24 +61,19 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
   const collectionId = keccak256(toBytes(`${ownerAddress}:${contentHash}`));
 
   const existing = await getCollectionRow(collectionId, env);
-  if (existing) {
-    // If a prior staging attempt expired, allow a fresh one
-    if (existing.status === "staging" && existing.staged_at !== null &&
-        Date.now() - existing.staged_at > STAGING_EXPIRY_MS) {
-      await markCollectionOrphaned(collectionId, env);
-    } else if (existing.status !== "orphaned") {
-      return new Response(JSON.stringify({ error: "Collection already registered" }), {
-        status: 409,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+  if (existing && existing.status !== "orphaned" &&
+      !(existing.status === "staging" && existing.staged_at !== null &&
+        Date.now() - existing.staged_at > STAGING_EXPIRY_MS)) {
+    return new Response(JSON.stringify({ error: "Collection already registered" }), {
+      status: 409, headers: { "Content-Type": "application/json" },
+    });
   }
 
   // Store content privately in R2 at a versioned key (immutable by content hash)
   await storeCollection(collectionId, content, contentHash, env);
 
   // Persist metadata in D1 as 'staging'. The row is not queryable until confirmed.
-  await insertCollection(
+  const staged = await insertCollection(
     {
       collection_id: collectionId,
       owner_address: (ownerAddress as string).toLowerCase(),
@@ -87,6 +82,9 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
     },
     env,
   );
+  if (!staged) return new Response(JSON.stringify({ error: "Collection already registered" }), {
+    status: 409, headers: { "Content-Type": "application/json" },
+  });
 
   // Derive the Worker's settlement address from the settlement private key
   const operatorAddress = privateKeyToAccount(env.SETTLEMENT_PRIVATE_KEY as `0x${string}`).address;

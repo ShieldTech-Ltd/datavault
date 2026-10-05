@@ -1,5 +1,8 @@
 import type { Env } from "./types";
 
+const MAX_JSON_REQUEST_BYTES = 8 * 1024;
+const MAX_MULTIPART_REQUEST_BYTES = 512_000 + 16 * 1024;
+
 const BASE_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "no-referrer",
@@ -39,4 +42,36 @@ export function corsHeaders(origin: string | null): Headers {
     headers.set("Access-Control-Allow-Headers", "Content-Type, x-signature, x-timestamp");
   }
   return headers;
+}
+
+export async function boundedApiRequest(request: Request): Promise<Request | Response> {
+  if (request.method !== "POST") return request;
+  const maxBytes = new URL(request.url).pathname === "/api/collections"
+    ? MAX_MULTIPART_REQUEST_BYTES : MAX_JSON_REQUEST_BYTES;
+  const declared = request.headers.get("Content-Length");
+  if (declared && (!/^\d+$/.test(declared) || Number(declared) > maxBytes)) {
+    return new Response("Request body too large", { status: 413 });
+  }
+  if (!request.body) return request;
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      return new Response("Request body too large", { status: 413 });
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new Request(request, { body });
 }

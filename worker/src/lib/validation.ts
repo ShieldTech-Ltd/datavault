@@ -44,7 +44,11 @@ export function isValidTimestamp(ts: unknown): boolean {
 
 export function checkContentLength(req: Request): Response | null {
   const cl = req.headers.get("content-length");
-  if (cl !== null && parseInt(cl, 10) > LIMITS.MAX_UPLOAD_BYTES) {
+  // Multipart boundaries and form fields add overhead beyond the file limit.
+  // The router independently enforces the same envelope allowance.
+  const multipart = req.headers.get("content-type")?.startsWith("multipart/form-data");
+  const maxBytes = LIMITS.MAX_UPLOAD_BYTES + (multipart ? 16 * 1024 : 0);
+  if (cl !== null && parseInt(cl, 10) > maxBytes) {
     return error413();
   }
   return null;
