@@ -62,7 +62,7 @@ export async function callModel(
   if (passages.length === 0) throw new Error("No passages provided to model");
   if (passages.length !== passageIds.length) throw new Error("passages and passageIds length mismatch");
 
-  const apiBase = env.MODEL_API_BASE ?? "https://api.openai.com/v1";
+  const apiBase = modelApiBase(env.MODEL_API_BASE);
   const model   = env.MODEL_NAME   ?? "gpt-4o-mini";
 
   // Build context, truncating total if needed
@@ -174,6 +174,16 @@ export async function callModel(
     responseDigest,
     isInsufficientEvidence,
   };
+}
+
+function modelApiBase(configured: string | undefined): string {
+  const value = configured ?? "https://api.openai.com/v1";
+  let url: URL;
+  try { url = new URL(value); } catch { throw new Error("Model API endpoint is invalid."); }
+  if (url.protocol !== "https:" || !url.hostname || url.username || url.password || url.search || url.hash) {
+    throw new Error("Model API endpoint must use HTTPS without embedded credentials or query parameters.");
+  }
+  return url.href.replace(/\/+$/, "");
 }
 
 async function sha256(text: string): Promise<string> {
