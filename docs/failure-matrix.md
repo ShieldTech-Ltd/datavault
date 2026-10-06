@@ -12,14 +12,14 @@ Rows marked **[LIVE GATE]** require real testnet/model credentials to verify end
 | File exceeds 500 KB | 413 size limit error | `checkContentLength` + content check |
 | Owner registers same content+address twice (within staging window) | 409 "Collection already registered" | D1 `status != 'orphaned'` check |
 | Owner sends wrong ownerAddress in confirm | 403 owner mismatch | D1 `owner_address` comparison |
-| Owner confirms before tx lands on-chain | 404 "Collection not found on-chain" | `getOnChainCollection` returning null |
+| Owner confirms before tx lands on-chain | Confirmation is rejected until the registration receipt is confirmed and matches the collection | `verifyRegistrationReceipt` |
 | Third party tries to confirm someone else's collection | 403 on-chain owner mismatch (the confirmation endpoint does not authenticate the HTTP caller; the check compares the stored `owner_address` against the on-chain registration owner only — a caller who controls both values would not be blocked at the HTTP layer) | `onChain.owner != col.owner_address` |
-| Staging window expires (30 min, no confirm) | Row marked `orphaned`; the expired row cannot be reused with the same collection ID — a new `registerCollection` call creates a fresh staging row (known limitation: the old orphaned row remains in D1 indefinitely) | `STAGING_EXPIRY_MS` check on re-register |
-| Re-upload signed by different address | 403 invalid signature | `verifyUploadSignature` |
-| Re-upload while collection is paused | 403 "Collection is not yet confirmed" (if staging) or allowed (confirmed but paused) | `status === 'confirmed'` check |
+| Staging window expires (30 min, no confirm) | Row marked `orphaned`; a new registration attempt can reuse the same collection ID and replace the stale staging metadata | `STAGING_EXPIRY_MS` check and D1 upsert on re-register |
+| Re-upload signed by different address | 410; the legacy upload route is disabled before checking a signature | Worker router in `index.ts` |
+| Re-upload while collection is paused | 410; the legacy upload route is disabled | Worker router in `index.ts` |
 | Collection paused before quote | 503 "collection not active" from prepare | `handlePrepare` on-chain active check **[LIVE GATE]** |
 | Collection paused after quote but before escrow | `openQuery` reverts on-chain ("collection paused") | Contract `require(col.active)` **[LIVE GATE]** |
-| Collection paused after escrow | Worker checks `active` before claiming and again before settlement; if the collection is paused the Worker marks the request `failed` and does not settle — the buyer must wait for the on-chain `REFUND_TIMEOUT` to elapse and then call `refundExpired` to recover payment | Worker `active` checks in `handleExecute` before claim and before settle **[LIVE GATE]** |
+| Collection paused after escrow | If paused before execution, the Worker returns 403 without claiming. If paused after the claim, it marks the request `failed` before settlement. The buyer can refund after the on-chain timeout. | Worker `active` checks in `handleExecute` before claim and before settle **[LIVE GATE]** |
 
 ## Escrow and payment failures
 
@@ -42,17 +42,18 @@ Rows marked **[LIVE GATE]** require real testnet/model credentials to verify end
 | Expired auth timestamp (over 5 min old) | 401 expired timestamp | `isValidTimestamp` 5-minute window |
 | Signature for wrong requestId | 401 invalid signature | ECDSA message includes requestId |
 | Malformed signature (not 65 bytes) | 401 malformed signature | `isValidSignature` regex |
-| Rate limit exceeded | 429 with Retry-After; the stated quota (execute=10/min, register=5/min) is best-effort — the count read and increment are separate D1 operations, so concurrent requests can exceed the limit until the rate limiter uses atomic operations | D1 sliding-window counter |
+| Rate limit exceeded | 429 with Retry-After; the fixed-window quota is enforced by one atomic D1 upsert per request | D1 `rate_limits` upsert |
 
 ## Model and answer failures
 
 | Scenario | Expected behavior | Enforcement |
 |---|---|---|
-| Model returns no citations | Answer rejected; query marked `failed` | Citation count check in `callModel` |
+| Model returns no citations | A substantive answer is rejected; an explicit insufficient-evidence answer may have no citations | Citation and insufficiency checks in `callModel` |
 | Model cites out-of-range passage index | Answer rejected; error thrown | Index validation in `callModel` |
-| Model API times out (>25s) | Answer rejected; query marked `failed` | `AbortSignal.timeout(25000)` |
+| Model API times out (>25s) | Answer rejected; query marked `failed` | 25-second `AbortController` timer |
 | Model API returns non-200 | Answer rejected; query marked `failed` | HTTP status check |
-| Insufficient evidence (no relevant passages) | Answer returned with `isInsufficientEvidence=true`; still settled | Detection phrase check; buyer receives honest answer |
+| No relevant passages found by retrieval | 422; request marked `failed` without calling the model or settling | `retrievePassages` result check |
+| Model determines supplied passages are insufficient | An insufficient-evidence answer can settle with no citations | Detection phrase check in `callModel` |
 | R2 retrieval fails (collection missing) | 500; request remains claimed in D1 (R2 retrieval happens after `claimQuery` succeeds — the claim cannot be retried with the same requestId) | `retrievePassages` throws after claim; `claimQuery` has already written the row |
 
 ## Settlement failures
@@ -60,7 +61,7 @@ Rows marked **[LIVE GATE]** require real testnet/model credentials to verify end
 | Scenario | Expected behavior | Enforcement |
 |---|---|---|
 | `settleQuery` tx broadcast but not confirmed within 20s | Response body contains `outcome: "settlement_pending"` and `receiptUrl`; buyer calls `POST /api/queries/:id/reconcile` with ECDSA auth (`x-signature` / `x-timestamp` headers) to check on-chain state | `waitForTransactionReceipt` 20s timeout; `handleReconcile` |
-| Worker crashes after answer recorded but before settle | Answer persisted in D1 with `outcome: "settlement_pending"`; buyer calls the reconcile endpoint (with ECDSA auth) which checks on-chain state and returns the answer if settlement is confirmed | `updateQueryAnswerRecorded` before broadcast; `handleReconcile` reads on-chain escrow state |
+| Worker crashes after answer recorded but before settle | Answer remains in D1 with `outcome: "answer_recorded"`. Reconcile checks the chain and reports settlement status; it cannot broadcast a missing settlement. The authenticated answer endpoint only releases the answer after on-chain settlement is confirmed. | `updateQueryAnswerRecorded`, `handleReconcile`, `handleAnswerRecovery` |
 | Settlement tx reverts on-chain | Reconcile endpoint checks on-chain escrow state; if state is not settled and no answer has been recorded, the current outcome is returned; `settlement_pending` remains until resolved on-chain | `getOnChainQuery` state check in `handleReconcile` **[LIVE GATE]** |
 | Operator key rotated mid-flight | Pending settleQuery uses stale key; reverts; owner can call `updateOperator` to restore | Contract `require(col.operator == msg.sender)` **[LIVE GATE]** |
 
