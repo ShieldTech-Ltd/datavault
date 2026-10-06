@@ -16,6 +16,7 @@ The paid path handles private source material, buyer questions, and a settlement
 
 - Owner and buyer actions use current wallet signatures. Paid execution binds chain, contract, collection, request, question digest, opening transaction, and timestamp.
 - The Worker verifies matching successful Monad receipts before registering or executing, checks current policy and operator, and withholds answers until settlement is confirmed.
+- Uploaded passage text is escaped before placement inside model prompt delimiters. Model outputs still require validated citations, and prompt injection remains a residual risk to review with real adversarial documents.
 - API responses use `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and a restrictive referrer policy. A public deployment accepts only its own origin and explicitly configured origins. Local cross-port origins are accepted only when the Worker itself runs on localhost.
 - The Worker caps JSON request bodies at 8 KB and registration request bodies at 512000 bytes plus 16 KB of multipart overhead before parsing. The document itself remains limited to 512000 bytes.
 - Registration and execution use an atomic D1 fixed-window quota per caller IP. This does not stop an attacker using many IPs. Set Cloudflare account-level rate and spending limits before public use.

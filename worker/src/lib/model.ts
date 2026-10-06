@@ -50,7 +50,8 @@ function buildSystemPrompt(): string {
 function buildPassageBlock(passageId: string, text: string): string {
   // Truncate individual passages to prevent context explosion
   const truncated = text.length > 2_000 ? text.slice(0, 2_000) + "\n[truncated]" : text;
-  return `<passage id="${passageId}">\n${truncated}\n</passage>`;
+  const escaped = truncated.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<passage id="${passageId}">\n${escaped}\n</passage>`;
 }
 
 export async function callModel(
