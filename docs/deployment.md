@@ -51,4 +51,4 @@ Retain the previous deployed commit and configuration. For a bad app deploy, res
 
 ## Submission handoff
 
-After the live checks, publish a real video of the deployed product, no longer than three minutes. Before creating the Metropolis project, verify the public HTTPS site, video, GitHub repository, license, documentation, contract explorer, and transaction links from a clean browser. The Metropolis project and final submission require separate authorization and a portal confirmation record.
+After the live checks, publish a real video of the deployed product, no longer than three minutes, using [the demo script](demo-script.md). Work through [the submission evidence checklist](submission-checklist.md). Before creating the Metropolis project, verify the public HTTPS site, video, GitHub repository, license, documentation, contract explorer, and transaction links from a clean browser. The Metropolis project and final submission require separate authorization and a portal confirmation record.
