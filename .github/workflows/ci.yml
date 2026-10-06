@@ -1,4 +1,4 @@
-name: CI
+﻿name: CI
 
 on:
   push:
@@ -70,4 +70,8 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+        working-directory: worker
+
+      - name: Unit tests
+        run: npm run test
         working-directory: worker
