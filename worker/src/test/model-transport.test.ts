@@ -24,7 +24,7 @@ describe("model credential transport", () => {
   it("keeps uploaded markup inside the passage boundary", async () => {
     const originalFetch = globalThis.fetch;
     let sent = "";
-    globalThis.fetch = vi.fn(async (_url, init) => {
+    globalThis.fetch = vi.fn(async (_url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       sent = String(init?.body ?? "");
       return new Response(JSON.stringify({ choices: [{ message: {
         content: "The passage contains markup [Passage chunk-0].",
