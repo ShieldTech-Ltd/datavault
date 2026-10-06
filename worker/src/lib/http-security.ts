@@ -5,6 +5,8 @@ const MAX_MULTIPART_REQUEST_BYTES = 512_000 + 16 * 1024;
 
 const BASE_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
   "Referrer-Policy": "no-referrer",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 };
