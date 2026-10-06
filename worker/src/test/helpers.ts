@@ -191,13 +191,16 @@ class MockD1Statement {
       const key = this.boundArgs[0];
       const now = this.boundArgs[1] as number;
       const windowStart = this.boundArgs[2] as number;
+      const limit = this.boundArgs[6] as number;
       const existing = rl.find((r) => r.key === key);
       if (!existing) {
         rl.push({ key, window_start: now, count: 1 });
       } else {
-        if ((existing.window_start as number) < windowStart) {
+        if ((existing.window_start as number) <= windowStart) {
           existing.count = 1;
           existing.window_start = now;
+        } else if ((existing.count as number) >= limit) {
+          return { meta: { changes: 0 } };
         } else {
           existing.count = (existing.count as number) + 1;
         }
