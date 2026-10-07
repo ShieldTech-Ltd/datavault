@@ -1,6 +1,7 @@
 import { createPublicClient, createWalletClient, encodeFunctionData, http, parseAbi, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Env } from "./types";
+import { rpcMatchesConfiguredChain } from "./chain-identity";
 
 export type SettlementResult = {
   hash: `0x${string}`;
@@ -13,6 +14,7 @@ export async function settleOnChainWithConfirmation(
   requestId: `0x${string}`,
   env: Env,
 ): Promise<SettlementResult> {
+  if (!(await rpcMatchesConfiguredChain(env))) throw new Error("Monad RPC chain does not match this deployment.");
   const account = privateKeyToAccount(env.SETTLEMENT_PRIVATE_KEY as `0x${string}`);
   const chainId = Number(env.CHAIN_ID) || 10143;
   const chain = {

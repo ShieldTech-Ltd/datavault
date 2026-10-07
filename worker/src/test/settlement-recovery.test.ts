@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   updateQueryOutcome: vi.fn(), updateQueryContentHash: vi.fn(),
   updateQueryAnswerRecorded: vi.fn(), updateQuerySettlementPending: vi.fn(),
   updateQuerySettled: vi.fn(), retrievePassages: vi.fn(), callModel: vi.fn(),
-  settle: vi.fn(), checkRateLimit: vi.fn(),
+  settle: vi.fn(), checkRateLimit: vi.fn(), rpcMatchesConfiguredChain: vi.fn(),
 }));
 
 vi.mock("../lib/policy", () => ({
@@ -32,6 +32,7 @@ vi.mock("../lib/settlement", () => ({ settleOnChainWithConfirmation: mocks.settl
 vi.mock("../lib/ratelimit", () => ({
   checkRateLimit: mocks.checkRateLimit, callerIdentity: vi.fn(() => "test"),
 }));
+vi.mock("../lib/chain-identity", () => ({ rpcMatchesConfiguredChain: mocks.rpcMatchesConfiguredChain }));
 
 const buyer = privateKeyToAccount(`0x${"22".repeat(32)}`);
 const requestId = `0x${"aa".repeat(32)}`;
@@ -60,6 +61,7 @@ async function execute() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.rpcMatchesConfiguredChain.mockResolvedValue(true);
   mocks.checkRateLimit.mockResolvedValue({ allowed: true, retryAfter: 0 });
   const operator = privateKeyToAccount(env.SETTLEMENT_PRIVATE_KEY as `0x${string}`).address;
   mocks.getOnChainCollection.mockResolvedValue({ owner: buyer.address, operator,

@@ -26,6 +26,7 @@ Record the final values in a private release ledger, and publish only public add
 Before the Worker deploy command, run `npm run check:release-config` with the public `VITE_` values, `CONTRACT_ADDRESS`, and `CHAIN_ID` set for that build. It fails on placeholder D1 and contract settings. Run `npm run compile`, then `npm run check:release-config -- --live` to confirm that both Worker and frontend RPC endpoints report the configured chain and that the contract runtime bytecode matches the compiled DataVault artifact. The live check needs network access and does not inspect Wrangler secrets or remote resource permissions. Verify those separately. After the site and video exist, run `npm run check:release-config -- --submission --live` with `DEMO_COLLECTION_ID`, `DEPLOYMENT_TX_HASH`, `PUBLIC_SITE_URL`, and `DEMO_VIDEO_URL` set. The submission mode checks formats and HTTPS URLs, then a person must open every URL and verify the actual content.
 
 The Worker must return 503 for paid quotes until contract, settlement, and model settings are present. No query should be opened against a deployment that returns 503.
+The Worker also checks the RPC chain ID during registration, quotes, paid execution, and settlement. A mismatched or unavailable RPC fails these operations closed; restore the correct endpoint before inviting another payment.
 
 ## Register the sample collection
 

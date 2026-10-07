@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   retrievePassages: vi.fn(),
   storeCollection: vi.fn(),
   verifyRegistrationReceipt: vi.fn(),
+  rpcMatchesConfiguredChain: vi.fn(async () => true),
 }));
 vi.mock("../lib/d1", () => ({
   getCollectionRow: mocks.getCollectionRow,
@@ -38,6 +39,7 @@ vi.mock("../lib/chain-receipts", () => ({ verifyOpenReceipt: mocks.verifyOpenRec
 vi.mock("../lib/r2", () => ({ retrievePassages: mocks.retrievePassages,
   retrieveCitedPassages: vi.fn(() => []), storeCollection: mocks.storeCollection }));
 vi.mock("../lib/ratelimit", () => ({ checkRateLimit: vi.fn(() => ({ allowed: true, retryAfter: 0 })), callerIdentity: vi.fn(() => "test") }));
+vi.mock("../lib/chain-identity", () => ({ rpcMatchesConfiguredChain: mocks.rpcMatchesConfiguredChain }));
 
 const owner = privateKeyToAccount(`0x${"11".repeat(32)}`);
 const buyer = privateKeyToAccount(`0x${"22".repeat(32)}`);
@@ -93,6 +95,15 @@ describe("paid query boundary", () => {
     }), { ...env, MODEL_API_KEY: "" });
     expect(response.status).toBe(503);
     expect(mocks.getCollectionRow).not.toHaveBeenCalled();
+  });
+
+  it("does not quote from a mismatched RPC chain", async () => {
+    mocks.rpcMatchesConfiguredChain.mockResolvedValueOnce(false);
+    const response = await handlePrepare(new Request("http://localhost/api/queries/prepare", {
+      method: "POST", body: JSON.stringify({ collectionId, question: "What is in the guide?" }),
+    }), env);
+    expect(response.status).toBe(503);
+    expect(mocks.getOnChainCollection).not.toHaveBeenCalled();
   });
 
   it("rejects a caller who cannot sign as the escrow buyer before retrieval", async () => {

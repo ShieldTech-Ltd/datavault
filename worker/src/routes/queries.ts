@@ -14,6 +14,7 @@ import { verifyMessage } from "viem";
 import { settleOnChainWithConfirmation } from "../lib/settlement";
 import { isValidBytes32, isValidQuestion, isValidSignature, isValidTimestamp, error400 } from "../lib/validation";
 import { checkRateLimit, callerIdentity } from "../lib/ratelimit";
+import { rpcMatchesConfiguredChain } from "../lib/chain-identity";
 
 // Worker lease duration: if a Worker instance claims a requestId but crashes,
 // another instance may reclaim it after this window.
@@ -26,6 +27,7 @@ export async function handleDemoCollection(env: Env): Promise<Response> {
   }
   const row = await getCollectionRow(id, env);
   if (!row || row.status !== "confirmed") return new Response("Demo collection unavailable.", { status: 404 });
+  if (!(await rpcMatchesConfiguredChain(env))) return new Response("Demo collection unavailable.", { status: 404 });
   const policy = await getOnChainCollection(id as `0x${string}`, env);
   if (!policy || !policy.active || !operatorMatches(env, policy) || policy.owner.toLowerCase() !== row.owner_address) {
     return new Response("Demo collection unavailable.", { status: 404 });
@@ -54,6 +56,10 @@ export async function handlePrepare(req: Request, env: Env): Promise<Response> {
   if (!col) return new Response("Collection not found", { status: 404 });
   if (col.status !== "confirmed") return new Response("Collection is not yet confirmed on-chain", { status: 403 });
   if (!col.active) return new Response("Collection is paused", { status: 403 });
+  if (!(await rpcMatchesConfiguredChain(env))) {
+    return new Response(JSON.stringify({ error: "Monad RPC chain does not match this deployment." }),
+      { status: 503, headers: { "Content-Type": "application/json" } });
+  }
 
   const onChain = await getOnChainCollection(collectionId as `0x${string}`, env);
   if (!onChain) return new Response("Collection not found on-chain", { status: 404 });
@@ -78,7 +84,6 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
       { status: 503, headers: { "Content-Type": "application/json" } },
     );
   }
-
   const { allowed, retryAfter } = await checkRateLimit(callerIdentity(req), "execute", env);
   if (!allowed) return new Response(JSON.stringify({ error: "Too many requests" }), {
     status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(retryAfter) },
@@ -96,6 +101,10 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
   const timestamp = Number(req.headers.get("x-timestamp"));
   if (!isValidSignature(signature) || !isValidTimestamp(timestamp)) {
     return new Response("A current buyer signature is required.", { status: 401 });
+  }
+  if (!(await rpcMatchesConfiguredChain(env))) {
+    return new Response(JSON.stringify({ error: "Monad RPC chain does not match this deployment." }),
+      { status: 503, headers: { "Content-Type": "application/json" } });
   }
 
   const questionDigest = await sha256Hex(question as string);

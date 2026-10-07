@@ -13,6 +13,7 @@ import { checkRateLimit, callerIdentity } from "../lib/ratelimit";
 import { verifyRegistrationReceipt } from "../lib/chain-receipts";
 import { registrationMessage } from "../../../shared/api";
 import { paidServiceConfigured } from "../lib/config";
+import { rpcMatchesConfiguredChain } from "../lib/chain-identity";
 
 // Staging collections expire after 30 minutes if the owner never confirms the tx.
 const STAGING_EXPIRY_MS = 30 * 60 * 1000;
@@ -56,6 +57,9 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
     signature: signature as `0x${string}`,
   }).catch(() => false);
   if (!authorized) return error403("Signature does not match the collection owner");
+  if (!(await rpcMatchesConfiguredChain(env))) {
+    return new Response("Monad RPC chain does not match this deployment.", { status: 503 });
+  }
 
   // Derive the collection ID from the signed owner and content hash.
   const collectionId = keccak256(toBytes(`${ownerAddress}:${contentHash}`));
@@ -127,6 +131,9 @@ export async function handleConfirmCollection(
   // Verify the submitted ownerAddress matches what was stored at staging time
   if (col.owner_address !== (body.ownerAddress as string).toLowerCase()) {
     return error403("ownerAddress does not match the registered owner");
+  }
+  if (!(await rpcMatchesConfiguredChain(env))) {
+    return new Response("Monad RPC chain does not match this deployment.", { status: 503 });
   }
 
   // Verify on-chain: the collection must exist with the correct owner
