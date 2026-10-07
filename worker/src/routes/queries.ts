@@ -10,8 +10,8 @@ import { operatorMatches, paidServiceConfigured } from "../lib/config";
 import { executionMessage, type QueryResult } from "../../../shared/api";
 import { retrievePassages, retrieveCitedPassages } from "../lib/r2";
 import { callModel } from "../lib/model";
-import { createPublicClient, createWalletClient, http, parseAbi, verifyMessage, type Address } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { verifyMessage } from "viem";
+import { settleOnChainWithConfirmation } from "../lib/settlement";
 import { isValidBytes32, isValidQuestion, isValidSignature, isValidTimestamp, error400 } from "../lib/validation";
 import { checkRateLimit, callerIdentity } from "../lib/ratelimit";
 
@@ -204,6 +204,8 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
   // ── Execution (this instance holds the claim) ─────────────────────
   await updateQueryRunning(requestId as string, env);
 
+  let answerMayBeRecorded = false;
+  let settleTxHash: `0x${string}` | null = null;
   try {
     const { passages, passageIds, contentHash } = await retrievePassages(collectionId as string, question as string, env);
     if (passages.length === 0) {
@@ -220,6 +222,7 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     // Persist answer BEFORE broadcasting the settlement tx.
     // If the Worker crashes after settle but before response delivery, the buyer
     // can recover via GET /api/queries/:id/answer.
+    answerMayBeRecorded = true;
     await updateQueryAnswerRecorded(requestId as string, answer, citedPassageIds, responseDigest, env);
 
     // Recheck policy immediately before settlement
@@ -240,8 +243,14 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
       return new Response("Escrow is no longer open for settlement.", { status: 409 });
     }
     const result = await settleOnChainWithConfirmation(requestId as `0x${string}`, env);
-    const settleTxHash = result.hash;
-    if (!result.confirmed) {
+    settleTxHash = result.hash;
+    if (result.status === "reverted") {
+      await updateQueryOutcome(requestId as string, "failed", env);
+      return new Response(JSON.stringify({ error: "Settlement transaction reverted. Check escrow status and refund after the timeout if it remains open.", settleTxHash }), {
+        status: 409, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (result.status === "pending") {
       await updateQuerySettlementPending(requestId as string, settleTxHash, env);
       return new Response(JSON.stringify({
         requestId, openTxHash, settleTxHash, outcome: "settlement_pending",
@@ -266,6 +275,15 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
       { headers: { "Content-Type": "application/json" } },
     );
   } catch (err: unknown) {
+    if (answerMayBeRecorded) {
+      // The answer write or settlement may have completed before an RPC or D1
+      // error reached this Worker. Preserve the row for authenticated chain
+      // reconciliation instead of writing a false terminal failure.
+      return new Response(JSON.stringify({
+        requestId, openTxHash, settleTxHash, outcome: "settlement_pending",
+        receiptUrl: `/api/queries/${requestId}/receipt`,
+      } satisfies QueryResult), { status: 202, headers: { "Content-Type": "application/json" } });
+    }
     await updateQueryOutcome(requestId as string, "failed", env);
     const knownModelFailure = err instanceof Error && err.message.startsWith("Model API");
     return new Response(JSON.stringify({ error: knownModelFailure
@@ -470,46 +488,4 @@ async function sha256Hex(text: string): Promise<string> {
   return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-}
-
-// ── On-chain settlement ───────────────────────────────────────────
-
-// Broadcasts the settlement tx and waits up to 20s for confirmation.
-// Returns { hash, confirmed: true } if the receipt arrives in time,
-// or { hash, confirmed: false } if the RPC times out.
-// A hash alone is not success: confirmed: false means settlement_pending.
-async function settleOnChainWithConfirmation(
-  requestId: `0x${string}`,
-  env: Env,
-): Promise<{ hash: `0x${string}`; confirmed: boolean }> {
-  const account = privateKeyToAccount(env.SETTLEMENT_PRIVATE_KEY as `0x${string}`);
-  const chainId = Number(env.CHAIN_ID) || 10143;
-  const chain = {
-    id: chainId,
-    name: "Monad Testnet",
-    nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
-    rpcUrls: { default: { http: [env.MONAD_RPC_URL || "https://testnet-rpc.monad.xyz"] } },
-  } as const;
-
-  const walletClient = createWalletClient({ account, chain, transport: http() });
-  const publicClient = createPublicClient({ chain, transport: http() });
-  const settleAbi = parseAbi(["function settleQuery(bytes32 requestId) external"]);
-
-  const { encodeFunctionData } = await import("viem");
-  const data = encodeFunctionData({ abi: settleAbi, functionName: "settleQuery", args: [requestId] });
-
-  const hash = await walletClient.sendTransaction({
-    to: env.CONTRACT_ADDRESS as Address,
-    data,
-    chain,
-    account,
-  });
-
-  try {
-    const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 20_000, confirmations: 1 });
-    return { hash, confirmed: receipt.status === "success" };
-  } catch {
-    // Timeout or RPC error: tx was broadcast but not confirmed within the window
-    return { hash, confirmed: false };
-  }
 }

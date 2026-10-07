@@ -168,7 +168,9 @@ export default function BuyerDashboard() {
       if (result.outcome === "settlement_pending") {
         remember({ ...request, outcome: "settlement_pending" });
         setStep("settlement_pending");
-        setMessage("Settlement was broadcast and is awaiting confirmation. Your answer remains private until payment settles.");
+        setMessage(result.settleTxHash
+          ? "Settlement confirmation is uncertain. Check the chain status before retrying payment. Your answer remains private until settlement is confirmed."
+          : "Settlement broadcast is uncertain. Check the chain status before retrying payment. If escrow stays open, you can refund after the timeout.");
         return;
       }
       if (result.outcome !== "settled" || !result.answer) throw new Error("Unexpected query result.");

@@ -62,7 +62,8 @@ Rows marked **[LIVE GATE]** require real testnet/model credentials to verify end
 |---|---|---|
 | `settleQuery` tx broadcast but not confirmed within 20s | Response body contains `outcome: "settlement_pending"` and `receiptUrl`; buyer calls `POST /api/queries/:id/reconcile` with ECDSA auth (`x-signature` / `x-timestamp` headers) to check on-chain state | `waitForTransactionReceipt` 20s timeout; `handleReconcile` |
 | Worker crashes after answer recorded but before settle | Answer remains in D1 with `outcome: "answer_recorded"`. Reconcile checks the chain and reports settlement status; it cannot broadcast a missing settlement. The authenticated answer endpoint only releases the answer after on-chain settlement is confirmed. | `updateQueryAnswerRecorded`, `handleReconcile`, `handleAnswerRecovery` |
-| Settlement tx reverts on-chain | Reconcile endpoint checks on-chain escrow state; if state is not settled and no answer has been recorded, the current outcome is returned; `settlement_pending` remains until resolved on-chain | `getOnChainQuery` state check in `handleReconcile` **[LIVE GATE]** |
+| Settlement tx confirms with a reverted receipt | Worker marks the query `failed`, withholds the answer, and directs the buyer to check escrow and refund after timeout if still open | Receipt status check in `settleOnChainWithConfirmation` **[LIVE GATE]** |
+| Settlement broadcast or final D1 write is uncertain after answer recording | Worker preserves the answer row and returns `settlement_pending` without answer text; signed reconcile checks the chain before releasing the answer | `handleExecute` uncertainty branch and `handleReconcile` **[LIVE GATE]** |
 | Operator key rotated mid-flight | Pending settleQuery uses stale key; reverts; owner can call `updateOperator` to restore | Contract `require(col.operator == msg.sender)` **[LIVE GATE]** |
 
 ## Security and privacy

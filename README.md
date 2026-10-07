@@ -34,7 +34,7 @@ worker/             Cloudflare Worker API
   src/
     lib/            policy.ts, model.ts, r2.ts, d1.ts, types.ts
     routes/         collections.ts, queries.ts
-    test/           79 Vitest unit tests (validation, D1 state machine, rate limit, route auth)
+    test/           84 Vitest unit tests (validation, D1 state machine, rate limit, route auth)
   migrations/       D1 SQL schema
 scripts/            Hardhat deploy script
 demo/               Team-authored UK Practical Guide (sample knowledge collection)
