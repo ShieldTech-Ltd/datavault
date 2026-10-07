@@ -1,4 +1,5 @@
 const hre = require("hardhat");
+const publicTestWallets = require("../shared/public-test-wallets.json");
 
 async function main() {
   if (!["localhost", "monadTestnet"].includes(hre.network.name)) {
@@ -21,8 +22,8 @@ async function main() {
   const [deployer] = await hre.ethers.getSigners();
   if (!deployer) throw new Error("No deployer signer is configured.");
   if (hre.network.name === "monadTestnet" &&
-      deployer.address.toLowerCase() === "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266") {
-    throw new Error("The public Hardhat test wallet cannot deploy to Monad testnet.");
+      publicTestWallets.includes(deployer.address.toLowerCase())) {
+    throw new Error("A public Hardhat test wallet cannot deploy to Monad testnet.");
   }
   console.log("Deploying DataVault with account:", deployer.address);
   console.log("Network:", hre.network.name);

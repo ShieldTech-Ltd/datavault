@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { keccak256, toBytes } from "viem";
+import { bytesToHex, keccak256, toBytes } from "viem";
+import { mnemonicToAccount } from "viem/accounts";
 import { makeEnv } from "./helpers";
 import { paidServiceConfigured, settlementKeyConfigured } from "../lib/config";
 
@@ -12,6 +13,11 @@ describe("settlement key release guard", () => {
     expect(settlementKeyConfigured(`0x${"33".repeat(32)}`)).toBe(false);
     expect(settlementKeyConfigured(`0x${"aA".repeat(32)}`)).toBe(false);
     expect(settlementKeyConfigured(makeEnv().SETTLEMENT_PRIVATE_KEY)).toBe(false);
+    const secondPublicHardhatKey = mnemonicToAccount(
+      "test test test test test test test test test test test junk", { addressIndex: 1 },
+    ).getHdKey().privateKey;
+    expect(secondPublicHardhatKey).toBeDefined();
+    expect(settlementKeyConfigured(bytesToHex(secondPublicHardhatKey!))).toBe(false);
   });
 
   it("allows a valid operator key shape while requiring the other service settings", () => {
