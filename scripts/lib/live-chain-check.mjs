@@ -1,4 +1,4 @@
-export async function checkLiveChain({ rpcUrl, chainId, contractAddress, request = fetch }) {
+export async function checkLiveChain({ rpcUrl, chainId, contractAddress, expectedBytecode, request = fetch }) {
   const call = async (method, params = []) => {
     const response = await request(rpcUrl, {
       method: "POST",
@@ -20,5 +20,8 @@ export async function checkLiveChain({ rpcUrl, chainId, contractAddress, request
   const code = await call("eth_getCode", [contractAddress, "latest"]);
   if (!/^0x(?:[0-9a-f]{2})+$/i.test(code) || /^0x(?:00)+$/i.test(code)) {
     throw new Error("CONTRACT_ADDRESS has no deployed code on the configured chain");
+  }
+  if (code.toLowerCase() !== expectedBytecode.toLowerCase()) {
+    throw new Error("CONTRACT_ADDRESS bytecode does not match the compiled DataVault contract");
   }
 }

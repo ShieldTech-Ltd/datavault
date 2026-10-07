@@ -55,11 +55,19 @@ if (process.argv.includes("--submission")) {
 }
 
 if (!errors.length && process.argv.includes("--live")) {
+  let expectedBytecode;
+  try {
+    const artifact = JSON.parse(readFileSync(new URL("../artifacts/contracts/DataVault.sol/DataVault.json", import.meta.url), "utf8"));
+    expectedBytecode = artifact.deployedBytecode;
+    if (!/^0x(?:[0-9a-f]{2})+$/i.test(expectedBytecode)) throw new Error("invalid artifact");
+  } catch {
+    errors.push("Compile DataVault before --live so deployed bytecode can be checked");
+  }
   const rpcUrl = setting("MONAD_RPC_URL");
   const frontendRpcUrl = process.env.VITE_CHAIN_RPC_URL || rpcUrl;
-  for (const [name, url] of [["MONAD_RPC_URL", rpcUrl], ["VITE_CHAIN_RPC_URL", frontendRpcUrl]]) {
+  for (const [name, url] of expectedBytecode ? [["MONAD_RPC_URL", rpcUrl], ["VITE_CHAIN_RPC_URL", frontendRpcUrl]] : []) {
     try {
-      await checkLiveChain({ rpcUrl: url, chainId, contractAddress: contract });
+      await checkLiveChain({ rpcUrl: url, chainId, contractAddress: contract, expectedBytecode });
     } catch (error) {
       errors.push(`${name} live verification failed: ${error instanceof Error ? error.message : "unknown error"}`);
     }
