@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Offline guard for public, non-secret deployment configuration.
 import { readFileSync } from "node:fs";
+import { checkLiveChain } from "./lib/live-chain-check.mjs";
 
 const errors = [];
 const workerConfig = readFileSync(new URL("../worker/wrangler.toml", import.meta.url), "utf8");
@@ -53,9 +54,24 @@ if (process.argv.includes("--submission")) {
   requiredUrl("DEMO_VIDEO_URL", process.env.DEMO_VIDEO_URL);
 }
 
+if (!errors.length && process.argv.includes("--live")) {
+  const rpcUrl = setting("MONAD_RPC_URL");
+  const frontendRpcUrl = process.env.VITE_CHAIN_RPC_URL || rpcUrl;
+  for (const [name, url] of [["MONAD_RPC_URL", rpcUrl], ["VITE_CHAIN_RPC_URL", frontendRpcUrl]]) {
+    try {
+      await checkLiveChain({ rpcUrl: url, chainId, contractAddress: contract });
+    } catch (error) {
+      errors.push(`${name} live verification failed: ${error instanceof Error ? error.message : "unknown error"}`);
+    }
+    if (frontendRpcUrl === rpcUrl) break;
+  }
+}
+
 if (errors.length) {
   console.error(`Release configuration failed:\n${errors.map((error) => `- ${error}`).join("\n")}`);
   process.exitCode = 1;
 } else {
-  console.log("Public release configuration passed. Verify Worker secrets and live chain state separately.");
+  console.log(process.argv.includes("--live")
+    ? "Public release configuration and live RPC contract checks passed. Verify Worker secrets separately."
+    : "Public release configuration passed. Run with --live to verify RPC chain ID and contract code.");
 }
