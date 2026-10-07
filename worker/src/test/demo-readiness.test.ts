@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
+import { keccak256, toBytes } from "viem";
 import { handlePrepare, handleExecute, handleAnswerRecovery } from "../routes/queries";
 import { handleRegisterCollection, handleConfirmCollection } from "../routes/collections";
 import { callModel } from "../lib/model";
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   retrievePassages: vi.fn(),
   storeCollection: vi.fn(),
   verifyRegistrationReceipt: vi.fn(),
+  rpcMatchesConfiguredChain: vi.fn(async () => true),
 }));
 vi.mock("../lib/d1", () => ({
   getCollectionRow: mocks.getCollectionRow,
@@ -37,6 +39,7 @@ vi.mock("../lib/chain-receipts", () => ({ verifyOpenReceipt: mocks.verifyOpenRec
 vi.mock("../lib/r2", () => ({ retrievePassages: mocks.retrievePassages,
   retrieveCitedPassages: vi.fn(() => []), storeCollection: mocks.storeCollection }));
 vi.mock("../lib/ratelimit", () => ({ checkRateLimit: vi.fn(() => ({ allowed: true, retryAfter: 0 })), callerIdentity: vi.fn(() => "test") }));
+vi.mock("../lib/chain-identity", () => ({ rpcMatchesConfiguredChain: mocks.rpcMatchesConfiguredChain }));
 
 const owner = privateKeyToAccount(`0x${"11".repeat(32)}`);
 const buyer = privateKeyToAccount(`0x${"22".repeat(32)}`);
@@ -45,7 +48,7 @@ const collectionId = `0x${"bb".repeat(32)}`;
 const openTxHash = `0x${"cc".repeat(32)}`;
 const contract = `0x${"dd".repeat(20)}`;
 const env = {
-  CONTRACT_ADDRESS: contract, SETTLEMENT_PRIVATE_KEY: `0x${"33".repeat(32)}`,
+  CONTRACT_ADDRESS: contract, SETTLEMENT_PRIVATE_KEY: keccak256(toBytes("datavault-test-operator")),
   MODEL_API_KEY: "test-model-key", CHAIN_ID: "10143", MONAD_RPC_URL: "http://localhost:8545",
 } as Env;
 
@@ -92,6 +95,15 @@ describe("paid query boundary", () => {
     }), { ...env, MODEL_API_KEY: "" });
     expect(response.status).toBe(503);
     expect(mocks.getCollectionRow).not.toHaveBeenCalled();
+  });
+
+  it("does not quote from a mismatched RPC chain", async () => {
+    mocks.rpcMatchesConfiguredChain.mockResolvedValueOnce(false);
+    const response = await handlePrepare(new Request("http://localhost/api/queries/prepare", {
+      method: "POST", body: JSON.stringify({ collectionId, question: "What is in the guide?" }),
+    }), env);
+    expect(response.status).toBe(503);
+    expect(mocks.getOnChainCollection).not.toHaveBeenCalled();
   });
 
   it("rejects a caller who cannot sign as the escrow buyer before retrieval", async () => {

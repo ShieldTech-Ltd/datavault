@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowedOrigin, corsHeaders, securedResponse } from "../lib/http-security";
+import { allowedOrigin, boundedApiRequest, corsHeaders, securedResponse } from "../lib/http-security";
 import type { Env } from "../lib/types";
 
 const env = { ALLOWED_ORIGINS: "https://preview.example.org" } as Env;
@@ -33,6 +33,35 @@ describe("HTTP security boundary", () => {
     const response = securedResponse(new Response("ok"), true);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("X-Frame-Options")).toBe("DENY");
+    expect(response.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
+    expect(response.headers.get("Content-Security-Policy")).toContain("script-src 'self'");
     expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+  });
+
+  it("rejects an oversized JSON body even without a declared length", async () => {
+    const request = new Request("https://demo.example.org/api/queries/prepare", {
+      method: "POST", body: "x".repeat(9 * 1024),
+    });
+    request.headers.delete("Content-Length");
+    const result = await boundedApiRequest(request);
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).status).toBe(413);
+  });
+
+  it("preserves a bounded request body for route parsing", async () => {
+    const request = new Request("https://demo.example.org/api/queries/prepare", {
+      method: "POST", body: JSON.stringify({ question: "What is in the guide?" }),
+    });
+    const result = await boundedApiRequest(request);
+    expect(result).toBeInstanceOf(Request);
+    expect(await (result as Request).json()).toEqual({ question: "What is in the guide?" });
+  });
+
+  it("does not read the body of the retired upload route", async () => {
+    const request = new Request("https://demo.example.org/api/collections/id/upload", {
+      method: "POST", body: "x".repeat(9 * 1024),
+    });
+    expect(await boundedApiRequest(request)).toBe(request);
   });
 });

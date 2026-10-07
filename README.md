@@ -16,7 +16,7 @@ An owner uploads a private Markdown document, sets a per-query price, and regist
 - Content hashes are integrity references only. They do not prove copyright ownership.
 - Revoking access blocks future queries through this service. It cannot erase answers already delivered.
 - Selected passages are sent to the model provider to generate answers. Owners are told this before uploading.
-- This is not production-ready software.
+- The source has security and release gates, but public service readiness depends on live checks and deployment configuration.
 
 ---
 
@@ -34,7 +34,7 @@ worker/             Cloudflare Worker API
   src/
     lib/            policy.ts, model.ts, r2.ts, d1.ts, types.ts
     routes/         collections.ts, queries.ts
-    test/           79 Vitest unit tests (validation, D1 state machine, rate limit, route auth)
+    test/           94 Vitest unit tests (validation, D1 state machine, rate limit, route auth)
   migrations/       D1 SQL schema
 scripts/            Hardhat deploy script
 demo/               Team-authored UK Practical Guide (sample knowledge collection)
@@ -155,7 +155,7 @@ npm run typecheck:worker
 # Smart contract tests (20 Hardhat tests)
 npm run test:contracts
 
-# Worker unit tests (53 Vitest tests, no live chain or model calls)
+# Worker unit tests (94 Vitest tests, no live chain or model calls)
 cd worker && npm test
 ```
 

@@ -15,19 +15,24 @@ Record the final values in a private release ledger, and publish only public add
 
 ## Deploy the contract and bindings
 
-1. Set `DEPLOYER_PRIVATE_KEY` and `MONAD_RPC_URL` locally. Deploy with `npm run deploy:testnet`.
-2. Record the contract address and deployment transaction. Verify chain ID 10143 and contract code at the address.
+1. Set a newly generated, private `DEPLOYER_PRIVATE_KEY` and `MONAD_RPC_URL` locally. Never fund or reuse the example key committed in early history. Deploy with `npm run deploy:testnet`. The script requires an explicit target network, rejects known unsafe example keys, checks chain ID 10143 on testnet, and refuses to proceed without a signer.
+2. Record the printed contract address and deployment transaction. The script checks that contract code exists at the address; verify the transaction again in the Monad explorer.
 3. Create private R2 buckets matching `worker/wrangler.toml`, including the preview bucket if used.
 4. Create the D1 database, replace `PLACEHOLDER_REPLACE_AFTER_D1_CREATE` with its actual ID in the deployment configuration, and apply migrations 0001 through 0006 in order.
 5. Set `CONTRACT_ADDRESS`, `CHAIN_ID`, `MONAD_RPC_URL`, `MODEL_PROVIDER`, `MODEL_API_BASE`, and `MODEL_NAME` for the Worker. Set `SETTLEMENT_PRIVATE_KEY` and `MODEL_API_KEY` through Wrangler secrets. Never place keys in tracked files.
 6. Set `VITE_CONTRACT_ADDRESS`, `VITE_CHAIN_ID`, and `VITE_CHAIN_RPC_URL` for the frontend build.
 7. Build the frontend and deploy the Worker with static assets. Check that client assets and API errors expose no credentials.
 
+Before the Worker deploy command, run `npm run check:release-config` with the public `VITE_` values, `CONTRACT_ADDRESS`, and `CHAIN_ID` set for that build. It fails on placeholder D1 and contract settings. Run `npm run compile`, then `npm run check:release-config -- --live` to confirm that both Worker and frontend RPC endpoints report the configured chain and that the contract runtime bytecode matches the compiled DataVault artifact. The live check needs network access and does not inspect Wrangler secrets or remote resource permissions. Verify those separately. After the site and video exist, run `npm run check:release-config -- --submission --live` with `DEMO_COLLECTION_ID`, `DEPLOYMENT_TX_HASH`, `PUBLIC_SITE_URL`, and `DEMO_VIDEO_URL` set. The submission mode checks formats and HTTPS URLs, then a person must open every URL and verify the actual content.
+
 The Worker must return 503 for paid quotes until contract, settlement, and model settings are present. No query should be opened against a deployment that returns 503.
+The Worker also checks the RPC chain ID during registration, quotes, paid execution, and settlement. A mismatched or unavailable RPC fails these operations closed; restore the correct endpoint before inviting another payment.
 
 ## Register the sample collection
 
 Use an authorized owner wallet and the public owner flow to upload the reviewed team-authored guide. Wait for the registration receipt and D1 confirmation. Set `DEMO_COLLECTION_ID` to the confirmed collection ID as a Worker runtime setting, for example with `wrangler secret put DEMO_COLLECTION_ID`, then verify the resulting Worker version. `GET /api/demo` must return that active collection. Keep a separate owner-controlled presentation collection for pause and refund demonstrations so the public sample remains usable.
+
+Set `PUBLIC_SITE_URL` to the deployed HTTPS origin and run `npm run smoke:public`. This read-only smoke checks the homepage, JavaScript asset, security headers, active demo collection, and a quote that matches its price. It opens no escrow and uses no wallet or model key. A passing result is only a prerequisite for the paid browser checks below.
 
 ## Live acceptance
 
@@ -49,4 +54,4 @@ Retain the previous deployed commit and configuration. For a bad app deploy, res
 
 ## Submission handoff
 
-After the live checks, publish a real video of the deployed product, no longer than three minutes. Before creating the Metropolis project, verify the public HTTPS site, video, GitHub repository, license, documentation, contract explorer, and transaction links from a clean browser. The Metropolis project and final submission require separate authorization and a portal confirmation record.
+After the live checks, publish a real video of the deployed product, no longer than three minutes, using [the demo script](demo-script.md). Work through [the submission evidence checklist](submission-checklist.md). Before creating the Metropolis project, verify the public HTTPS site, video, GitHub repository, license, documentation, contract explorer, and transaction links from a clean browser. The Metropolis project and final submission require separate authorization and a portal confirmation record.

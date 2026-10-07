@@ -2,7 +2,7 @@ import { keccak256, toBytes, verifyMessage } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Env } from "../lib/types";
 import { storeCollection } from "../lib/r2";
-import { insertCollection, getCollectionRow, confirmCollection, markCollectionOrphaned } from "../lib/d1";
+import { insertCollection, getCollectionRow, confirmCollection } from "../lib/d1";
 import { buildRegisterCalldata, verifyUploadSignature, getOnChainCollection } from "../lib/policy";
 import {
   isValidAddress, isValidBytes32, isValidPriceWei, isValidSignature,
@@ -13,6 +13,7 @@ import { checkRateLimit, callerIdentity } from "../lib/ratelimit";
 import { verifyRegistrationReceipt } from "../lib/chain-receipts";
 import { registrationMessage } from "../../../shared/api";
 import { paidServiceConfigured } from "../lib/config";
+import { rpcMatchesConfiguredChain } from "../lib/chain-identity";
 
 // Staging collections expire after 30 minutes if the owner never confirms the tx.
 const STAGING_EXPIRY_MS = 30 * 60 * 1000;
@@ -56,29 +57,27 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
     signature: signature as `0x${string}`,
   }).catch(() => false);
   if (!authorized) return error403("Signature does not match the collection owner");
+  if (!(await rpcMatchesConfiguredChain(env))) {
+    return new Response("Monad RPC chain does not match this deployment.", { status: 503 });
+  }
 
   // Derive the collection ID from the signed owner and content hash.
   const collectionId = keccak256(toBytes(`${ownerAddress}:${contentHash}`));
 
   const existing = await getCollectionRow(collectionId, env);
-  if (existing) {
-    // If a prior staging attempt expired, allow a fresh one
-    if (existing.status === "staging" && existing.staged_at !== null &&
-        Date.now() - existing.staged_at > STAGING_EXPIRY_MS) {
-      await markCollectionOrphaned(collectionId, env);
-    } else if (existing.status !== "orphaned") {
-      return new Response(JSON.stringify({ error: "Collection already registered" }), {
-        status: 409,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+  if (existing && existing.status !== "orphaned" &&
+      !(existing.status === "staging" && existing.staged_at !== null &&
+        Date.now() - existing.staged_at > STAGING_EXPIRY_MS)) {
+    return new Response(JSON.stringify({ error: "Collection already registered" }), {
+      status: 409, headers: { "Content-Type": "application/json" },
+    });
   }
 
   // Store content privately in R2 at a versioned key (immutable by content hash)
   await storeCollection(collectionId, content, contentHash, env);
 
   // Persist metadata in D1 as 'staging'. The row is not queryable until confirmed.
-  await insertCollection(
+  const staged = await insertCollection(
     {
       collection_id: collectionId,
       owner_address: (ownerAddress as string).toLowerCase(),
@@ -87,6 +86,9 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
     },
     env,
   );
+  if (!staged) return new Response(JSON.stringify({ error: "Collection already registered" }), {
+    status: 409, headers: { "Content-Type": "application/json" },
+  });
 
   // Derive the Worker's settlement address from the settlement private key
   const operatorAddress = privateKeyToAccount(env.SETTLEMENT_PRIVATE_KEY as `0x${string}`).address;
@@ -129,6 +131,9 @@ export async function handleConfirmCollection(
   // Verify the submitted ownerAddress matches what was stored at staging time
   if (col.owner_address !== (body.ownerAddress as string).toLowerCase()) {
     return error403("ownerAddress does not match the registered owner");
+  }
+  if (!(await rpcMatchesConfiguredChain(env))) {
+    return new Response("Monad RPC chain does not match this deployment.", { status: 503 });
   }
 
   // Verify on-chain: the collection must exist with the correct owner

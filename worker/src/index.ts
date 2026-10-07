@@ -1,7 +1,7 @@
 import type { Env } from "./lib/types";
 import { handleRegisterCollection, handleConfirmCollection } from "./routes/collections";
 import { handleDemoCollection, handlePrepare, handleExecute, handleReceipt, handleAnswerRecovery, handleReconcile } from "./routes/queries";
-import { allowedOrigin, corsHeaders, securedResponse } from "./lib/http-security";
+import { allowedOrigin, boundedApiRequest, corsHeaders, securedResponse } from "./lib/http-security";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -19,6 +19,9 @@ export default {
       if (method === "OPTIONS") return securedResponse(new Response(null, { status: 204, headers: cors }), true);
 
       try {
+        const bounded = await boundedApiRequest(request);
+        if (bounded instanceof Response) return securedResponse(bounded, true);
+        request = bounded;
         let res: Response;
 
         if (method === "POST" && path === "/api/collections") {

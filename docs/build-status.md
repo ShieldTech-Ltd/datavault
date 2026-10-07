@@ -17,14 +17,14 @@ Updated 7 October 2026 for the stacked release branches. This is source and loca
 - `npm run test:contracts`: 20 passing.
 - `npm run typecheck` in Worker: passed.
 - `npm run typecheck` in frontend: passed.
-- `npm run test --prefix worker`: 79 passing after contributor PRs #46 and #47 merged.
+- `npm test --prefix worker`: 94 passing after contributor PRs #46 and #47 merged.
 - `python3 scripts/check-secrets.py`: passed on the current tracked tree.
 - Frontend build passed after the registration signature change, with no generated JavaScript emitted into source files.
 
 ## Gates before public deployment
 
 - Merge readiness PR #48 and its stacked security PR #49 after all checks and live gates pass.
-- Confirm the three production dependency audits remain clear in CI. The injected wallet replacement removed the vulnerable Dynamic dependency tree, but still needs a live browser wallet regression check.
+- Confirm the three production dependency audits remain clear in CI. The injected wallet replacement removed the vulnerable Dynamic dependency tree. The wallet now offers a Monad network switch, but still needs a live browser regression check.
 - Verify a real injected-wallet connection, signed registration, signed payment, private R2 and D1 access, actual model response, and owner payout on the configured Monad network.
 - Add real Cloudflare D1 and R2 resource identifiers, a deployed contract, Worker secrets, public site origin, and a confirmed sample collection. The tracked Wrangler configuration still contains a placeholder database ID.
 - Review time-sensitive claims in the sample guide and collect actual user feedback. Do not invent results.
