@@ -11,6 +11,7 @@ The production API and frontend share one Cloudflare Worker origin. Source conte
 - `POST /api/queries/execute` requires a confirmed matching `QueryOpened` receipt and a current signature by the on-chain escrow buyer.
 - `POST /api/queries/:id/reconcile` and `GET /api/queries/:id/answer` require a current buyer signature.
 - `GET /api/queries/:id/receipt` is public and excludes answer text and source passages.
+- `GET /api/buyer/queries` requires a current signature from the buyer wallet before listing that wallet's recorded request metadata.
 
 All signatures use EIP-191 personal signing. Send `x-signature` and `x-timestamp` headers. The timestamp is Unix milliseconds within five minutes of server time. CORS is a browser control, not authorization.
 
@@ -21,6 +22,8 @@ All signatures use EIP-191 personal signing. Send `x-signature` and `x-timestamp
 `GET /api/marketplace/analytics` returns settlements completed in the last 30 days for the configured chain and contract, confirmed collection count, exact known revenue in wei, coverage of historical amount data, top earning collections when ranking is complete, and recent settlement metadata. Older query rows have null amounts, so revenue can be unavailable or a lower bound. The endpoint returns 503 when the configured contract or RPC chain is unavailable; it does not display local D1 records as current marketplace activity. No question, answer, or private passage is exposed. `GET /api/owner/analytics?address=0x...` requires a current signature over `datavault-owner-summary:<chainId>:<lowercase contract>:<lowercase owner>:<timestamp>` and limits the same data to collections registered by that owner.
 
 `GET /api/owner/collections?address=0x...&limit=12&offset=0` uses the same current owner signature as owner analytics. It returns only that owner's confirmed collections after checking each owner and policy on Monad, with current price, active status, paid-query count, and pagination metadata. It does not return private source text.
+
+`GET /api/buyer/queries?address=0x...&limit=20&offset=0` requires `datavault-buyer-history:<chainId>:<lowercase contract>:<lowercase buyer>:<timestamp>`. It returns at most 50 request records per page, scoped to that buyer and the configured chain and contract. It includes collection ID, transaction hashes, amount, outcome, and timestamps, but never question text, answer text, or private passages. A buyer can sync this history on another device and use the separate authenticated answer endpoint to recover a settled answer.
 
 `GET /api/demo` returns the configured sample collection ID, name, owner address, and current on-chain price only when its D1 row is confirmed and on-chain policy is active. Otherwise it returns 404. The sample ID is configured only after actual owner registration.
 

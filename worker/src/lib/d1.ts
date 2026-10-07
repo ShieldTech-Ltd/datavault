@@ -120,7 +120,7 @@ export async function claimQuery(
     .bind(
       row.request_id,
       row.collection_id,
-      row.buyer_address,
+      row.buyer_address.toLowerCase(),
       row.policy_version,
       row.question_digest,
       row.open_tx_hash ?? null,

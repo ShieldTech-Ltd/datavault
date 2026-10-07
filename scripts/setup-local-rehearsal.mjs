@@ -9,8 +9,9 @@ import { ethers } from "ethers";
 
 const workerVars = new URL("../worker/.dev.vars", import.meta.url);
 const frontendVars = new URL("../frontend/.env.local", import.meta.url);
+const browserMode = process.argv.includes("--browser");
 assert(
-  !existsSync(workerVars) && !existsSync(frontendVars),
+  !existsSync(workerVars) && (!browserMode || !existsSync(frontendVars)),
   "Remove or back up existing local env files before setup."
 );
 const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
@@ -82,15 +83,17 @@ writeFileSync(
   ].join("\n") + "\n",
   { mode: 0o600 }
 );
-writeFileSync(
-  frontendVars,
-  [
-    `VITE_CONTRACT_ADDRESS=${contractAddress}`,
-    "VITE_CHAIN_ID=31337",
-    "VITE_CHAIN_RPC_URL=http://127.0.0.1:8545",
-  ].join("\n") + "\n",
-  { mode: 0o600 }
-);
+if (browserMode) {
+  writeFileSync(
+    frontendVars,
+    [
+      `VITE_CONTRACT_ADDRESS=${contractAddress}`,
+      "VITE_CHAIN_ID=31337",
+      "VITE_CHAIN_RPC_URL=http://127.0.0.1:8545",
+    ].join("\n") + "\n",
+    { mode: 0o600 }
+  );
+}
 console.log(
   JSON.stringify(
     { contractAddress, cert, key, workerPort: 8790, modelPort: 9443 },

@@ -3,6 +3,7 @@ import { useWallet } from "@/lib/wallet";
 import { encodeFunctionData, formatEther, keccak256, toBytes } from "viem";
 import { DATAVAULT_ABI, CONTRACT_ADDRESS, viemClient } from "@/lib/contract";
 import {
+  buyerHistoryMessage,
   executionMessage,
   type CitedPassage,
   type QueryResult,
@@ -12,7 +13,10 @@ import {
 const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID) || 10143;
 const CHAIN_LABEL =
   CHAIN_ID === 31337 ? "the local test chain" : "Monad testnet";
-const HISTORY_KEY = "datavault_requests";
+const HISTORY_KEY = `datavault_requests:${CHAIN_ID}:${
+  CONTRACT_ADDRESS?.toLowerCase() ?? "unconfigured"
+}`;
+const LEGACY_HISTORY_KEY = "datavault_requests";
 const SAMPLE_QUESTIONS = [
   "What information should a freelancer include on an invoice?",
   "Why might a sole trader use a separate business bank account?",
@@ -59,11 +63,15 @@ interface DisplayAnswer {
   settleTxHash: string | null;
 }
 
-function history(): SavedRequest[] {
+function readSafeHistory(key: string): SavedRequest[] {
   try {
-    const value: unknown = JSON.parse(
-      localStorage.getItem(HISTORY_KEY) || "[]"
-    );
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    if (raw.length > 100_000) {
+      localStorage.removeItem(key);
+      return [];
+    }
+    const value: unknown = JSON.parse(raw);
     if (!Array.isArray(value)) return [];
     const bytes32 = /^0x[0-9a-fA-F]{64}$/;
     const address = /^0x[0-9a-fA-F]{40}$/;
@@ -92,11 +100,20 @@ function history(): SavedRequest[] {
       .slice(0, 20);
     // Rewrite legacy records to remove previously persisted plaintext questions.
     if (JSON.stringify(safe) !== JSON.stringify(value))
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(safe));
+      localStorage.setItem(key, JSON.stringify(safe));
     return safe;
   } catch {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* Storage may be disabled. */
+    }
     return [];
   }
+}
+function history(): SavedRequest[] {
+  if (HISTORY_KEY !== LEGACY_HISTORY_KEY) readSafeHistory(LEGACY_HISTORY_KEY);
+  return readSafeHistory(HISTORY_KEY);
 }
 function save(request: SavedRequest): SavedRequest[] {
   const next = [
@@ -135,6 +152,10 @@ export default function BuyerDashboard({
   const [message, setMessage] = useState("");
   const [answer, setAnswer] = useState<DisplayAnswer | null>(null);
   const [requests, setRequests] = useState<SavedRequest[]>([]);
+  const [historyStatus, setHistoryStatus] = useState<
+    "idle" | "loading" | "error"
+  >("idle");
+  const [historyMessage, setHistoryMessage] = useState("");
   const [current, setCurrent] = useState<SavedRequest | null>(null);
   const [refundAt, setRefundAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -151,6 +172,8 @@ export default function BuyerDashboard({
     setRefundAt(null);
     setStep("idle");
     setMessage("");
+    setHistoryStatus("idle");
+    setHistoryMessage("");
     fetch("/api/demo")
       .then((response) =>
         response.ok ? (response.json() as Promise<Demo>) : null
@@ -360,6 +383,73 @@ export default function BuyerDashboard({
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
       setStep("failed");
+    }
+  }
+
+  async function syncHistory() {
+    if (!primaryWallet || !CONTRACT_ADDRESS) return;
+    setHistoryStatus("loading");
+    setHistoryMessage("");
+    try {
+      const client = await wallet();
+      const timestamp = Date.now();
+      const signature = await client.signMessage({
+        message: buyerHistoryMessage(
+          CHAIN_ID,
+          CONTRACT_ADDRESS,
+          address,
+          timestamp
+        ),
+      });
+      const response = await fetch(
+        `/api/buyer/queries?address=${encodeURIComponent(address)}&limit=20`,
+        {
+          headers: {
+            "x-signature": signature,
+            "x-timestamp": String(timestamp),
+          },
+        }
+      );
+      if (!response.ok)
+        throw new Error("Request history is unavailable. Try again.");
+      const result = (await response.json()) as { requests: SavedRequest[] };
+      const bytes32 = /^0x[0-9a-fA-F]{64}$/;
+      const synced = result.requests
+        .filter(
+          (item) =>
+            bytes32.test(item.requestId) &&
+            bytes32.test(item.collectionId) &&
+            bytes32.test(item.openTxHash) &&
+            Number.isFinite(item.openedAt)
+        )
+        .map((item) => ({ ...item, buyerAddress: address }));
+      const merged = [...synced, ...history()]
+        .filter(
+          (item, index, all) =>
+            all.findIndex((other) => other.requestId === item.requestId) ===
+            index
+        )
+        .sort((a, b) => b.openedAt - a.openedAt)
+        .slice(0, 20);
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(merged));
+      } catch {
+        /* Local storage is optional. */
+      }
+      setRequests(merged);
+      setHistoryStatus("idle");
+      setHistoryMessage(
+        synced.length
+          ? `Loaded ${synced.length} recorded requests.`
+          : "No recorded requests for this wallet."
+      );
+    } catch (cause) {
+      setHistoryStatus("error");
+      setHistoryMessage(
+        cause instanceof Error
+          ? cause.message
+          : "Could not load request history."
+      );
     }
   }
 
@@ -676,9 +766,21 @@ export default function BuyerDashboard({
             </p>
           </div>
         )}
-        {visibleRequests.length > 0 && (
+        {(visibleRequests.length > 0 || primaryWallet) && (
           <div className="workspace-history">
             <h3>Your recent requests</h3>
+            {primaryWallet && CONTRACT_ADDRESS && (
+              <button
+                type="button"
+                onClick={() => void syncHistory()}
+                disabled={historyStatus === "loading"}
+              >
+                {historyStatus === "loading"
+                  ? "Loading..."
+                  : "Sync from account"}
+              </button>
+            )}
+            {historyMessage && <p role="status">{historyMessage}</p>}
             {visibleRequests.map((request) => (
               <div key={request.requestId}>
                 <span>

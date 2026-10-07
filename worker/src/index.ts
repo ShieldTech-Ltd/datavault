@@ -26,6 +26,7 @@ import {
   handleMarketplaceAnalytics,
   handleOwnerAnalytics,
 } from "./routes/analytics";
+import { handleBuyerHistory } from "./routes/buyer-history";
 import { checkRateLimit, callerIdentity } from "./lib/ratelimit";
 
 export default {
@@ -59,6 +60,7 @@ export default {
           (path === "/api/marketplace/analytics" ||
             path === "/api/owner/analytics" ||
             path === "/api/owner/collections" ||
+            path === "/api/buyer/queries" ||
             path === "/api/collections" ||
             /^\/api\/collections\/[^/]+$/.test(path))
         ) {
@@ -90,6 +92,8 @@ export default {
           res = await handleOwnerAnalytics(request, env);
         } else if (method === "GET" && path === "/api/owner/collections") {
           res = await handleOwnerCollections(request, env);
+        } else if (method === "GET" && path === "/api/buyer/queries") {
+          res = await handleBuyerHistory(request, env);
         } else if (method === "GET" && path === "/api/collections") {
           res = await handleListCollections(request, env);
         } else if (

@@ -81,3 +81,18 @@ export function ownerSummaryMessage(
     timestamp,
   ].join(":");
 }
+
+export function buyerHistoryMessage(
+  chainId: number,
+  contractAddress: string,
+  buyerAddress: string,
+  timestamp: number
+): string {
+  return [
+    "datavault-buyer-history",
+    chainId,
+    contractAddress.toLowerCase(),
+    buyerAddress.toLowerCase(),
+    timestamp,
+  ].join(":");
+}

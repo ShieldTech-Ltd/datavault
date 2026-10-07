@@ -1,5 +1,5 @@
 import type { Env } from "../lib/types";
-import { authenticatedOwner } from "../lib/owner-auth";
+import { authenticatedOwner } from "../lib/wallet-auth";
 import { isValidAddress } from "../lib/validation";
 import { rpcMatchesConfiguredChain } from "../lib/chain-identity";
 

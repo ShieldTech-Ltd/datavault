@@ -1,5 +1,5 @@
 import { verifyMessage } from "viem";
-import { ownerSummaryMessage } from "../../../shared/api";
+import { buyerHistoryMessage, ownerSummaryMessage } from "../../../shared/api";
 import type { Env } from "./types";
 import {
   isValidAddress,
@@ -8,18 +8,19 @@ import {
   error400,
 } from "./validation";
 
-export async function authenticatedOwner(
+async function authenticatedWallet(
   req: Request,
-  env: Env
+  env: Env,
+  purpose: "owner" | "buyer"
 ): Promise<string | Response> {
-  const owner = new URL(req.url).searchParams.get("address");
-  if (!isValidAddress(owner))
-    return error400("A valid owner address is required.");
+  const address = new URL(req.url).searchParams.get("address");
+  if (!isValidAddress(address))
+    return error400("A valid wallet address is required.");
   const signature = req.headers.get("x-signature");
   const timestamp = Number(req.headers.get("x-timestamp"));
   if (!isValidSignature(signature) || !isValidTimestamp(timestamp)) {
     return new Response(
-      JSON.stringify({ error: "A current owner signature is required." }),
+      JSON.stringify({ error: "A current wallet signature is required." }),
       {
         status: 401,
         headers: { "Content-Type": "application/json" },
@@ -31,7 +32,7 @@ export async function authenticatedOwner(
     !Number.isSafeInteger(Number(env.CHAIN_ID))
   ) {
     return new Response(
-      JSON.stringify({ error: "Owner access is not configured." }),
+      JSON.stringify({ error: "Wallet access is not configured." }),
       {
         status: 503,
         headers: { "Content-Type": "application/json" },
@@ -39,22 +40,27 @@ export async function authenticatedOwner(
     );
   }
   const valid = await verifyMessage({
-    address: owner as `0x${string}`,
-    message: ownerSummaryMessage(
+    address: address as `0x${string}`,
+    message: (purpose === "owner" ? ownerSummaryMessage : buyerHistoryMessage)(
       Number(env.CHAIN_ID),
       env.CONTRACT_ADDRESS,
-      owner,
+      address,
       timestamp
     ),
     signature: signature as `0x${string}`,
   }).catch(() => false);
   if (!valid)
     return new Response(
-      JSON.stringify({ error: "Signature does not match the owner." }),
+      JSON.stringify({ error: "Signature does not match the wallet." }),
       {
         status: 403,
         headers: { "Content-Type": "application/json" },
       }
     );
-  return owner.toLowerCase();
+  return address.toLowerCase();
 }
+
+export const authenticatedOwner = (req: Request, env: Env) =>
+  authenticatedWallet(req, env, "owner");
+export const authenticatedBuyer = (req: Request, env: Env) =>
+  authenticatedWallet(req, env, "buyer");

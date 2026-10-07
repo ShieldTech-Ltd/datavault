@@ -233,6 +233,26 @@ const recovered = await request(answerPath, {
 });
 assert.equal(recovered.status, 200);
 assert.equal(recovered.body.answer, executed.body.answer);
+const historyTime = Date.now();
+const historyMessage = [
+  "datavault-buyer-history",
+  31337,
+  contractAddress.toLowerCase(),
+  buyerAddress.toLowerCase(),
+  historyTime,
+].join(":");
+const buyerHistory = await request(
+  `/api/buyer/queries?address=${buyerAddress}`,
+  {
+    headers: signedHeaders(
+      await buyer.signMessage(historyMessage),
+      historyTime
+    ),
+  }
+);
+assert.equal(buyerHistory.status, 200);
+assert(buyerHistory.body.requests.some((item) => item.requestId === requestId));
+assert(!JSON.stringify(buyerHistory.body).includes(executed.body.answer));
 const analytics = await request("/api/marketplace/analytics");
 assert.equal(analytics.status, 200);
 assert(analytics.body.paidQueries >= 1);
@@ -339,6 +359,7 @@ console.log(
         "owner payout",
         "receipt",
         "answer recovery",
+        "buyer history",
         "analytics",
         "owner analytics",
         "pause enforcement",

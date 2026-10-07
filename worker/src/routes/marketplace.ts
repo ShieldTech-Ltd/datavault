@@ -4,7 +4,7 @@ import { getOnChainCollection } from "../lib/policy";
 import { paidServiceConfigured, operatorMatches } from "../lib/config";
 import { rpcMatchesConfiguredChain } from "../lib/chain-identity";
 import { isValidBytes32, error400 } from "../lib/validation";
-import { authenticatedOwner } from "../lib/owner-auth";
+import { authenticatedOwner } from "../lib/wallet-auth";
 
 interface ListedCollection {
   collection_id: string;

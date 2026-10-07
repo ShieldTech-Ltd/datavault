@@ -19,12 +19,12 @@ Live chain and model calls are never made in PR CI. The PR test suite uses in-me
 Prepare the services in separate terminals:
 
 1. Run `npm run compile` and `npm run node -- --hostname 127.0.0.1`.
-2. Run `npm run setup:local-rehearsal`. It deploys a local contract, funds a fresh throwaway operator, creates ignored local env files, and prints the paths of a one-day certificate and key outside the repository. It refuses to overwrite existing local env files.
+2. Run `npm run setup:local-rehearsal`. It deploys a local contract, funds a fresh throwaway operator, creates an ignored Worker env file, and prints the paths of a one-day certificate and key outside the repository. It refuses to overwrite an existing Worker env file. Add `-- --browser` to also create `frontend/.env.local` for browser testing.
 3. Use the printed paths to run `LOCAL_MODEL_CERT=<cert path> LOCAL_MODEL_KEY=<key path> npm run model:stub`.
 4. Run `npm run db:migrate:local --prefix worker`, then `NODE_EXTRA_CA_CERTS=<cert path> npm run dev --prefix worker -- --ip 127.0.0.1 --port 8790`.
-5. Run `npm run rehearse:local`. A passing result checks registration, signed owner catalogue, quote, escrow, wrong-buyer denial, cited answer, on-chain settlement and owner payout, public receipt, buyer-only recovery, analytics, pause enforcement, and the on-chain timeout refund.
+5. Run `npm run rehearse:local`. A passing result checks registration, signed owner catalogue, quote, escrow, wrong-buyer denial, cited answer, on-chain settlement and owner payout, public receipt, buyer-only recovery, signed buyer history, analytics, pause enforcement, and the on-chain timeout refund.
 
-Remove the temporary `.dev.vars`, `.env.local`, and certificate directory after the rehearsal. This local integration result is a prerequisite, not a substitute for the live Monad testnet and public-site gates below.
+Remove the temporary `.dev.vars`, optional `.env.local`, and certificate directory after the rehearsal. This local integration result is a prerequisite, not a substitute for the live Monad testnet and public-site gates below.
 
 ## Running tests locally
 
