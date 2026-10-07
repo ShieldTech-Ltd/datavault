@@ -41,7 +41,7 @@ datavault-execute:<chainId>:<lowercase contract>:<lowercase requestId>:<lowercas
 
 The Worker verifies signature, escrow buyer, collection, amount, policy version, expiry, and the successful opening receipt before claiming the request and reading private storage. One request ID is claimed once in D1. Duplicate attempts do not call the model again.
 
-A confirmed settlement returns `QueryResult` with `outcome: "settled"`, answer text, versioned cited passage IDs, cited passage text, opening and settlement transaction hashes, and receipt URL. A broadcast without confirmation returns `outcome: "settlement_pending"` with hashes and receipt URL, without answer text. The caller must reconcile and recover the answer after settlement. Failures leave a still-open escrow eligible for the on-chain timeout refund.
+A confirmed settlement returns `QueryResult` with `outcome: "settled"`, answer text, versioned cited passage IDs, cited passage text, opening and settlement transaction hashes, and receipt URL. An uncertain broadcast or confirmation returns `outcome: "settlement_pending"` with the opening hash, any known settlement hash, and a receipt URL, without answer text. The caller must reconcile and recover the answer after settlement. Failures leave a still-open escrow eligible for the on-chain timeout refund.
 
 ## Reconcile, recover, and receipt
 
