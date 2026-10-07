@@ -3,6 +3,7 @@ import { useWallet } from "@/lib/wallet";
 import { encodeFunctionData, formatEther, keccak256, toBytes } from "viem";
 import { DATAVAULT_ABI, CONTRACT_ADDRESS, viemClient } from "@/lib/contract";
 import { transactionExplorerUrl } from "@/lib/network";
+import { verifyAnswerAnchor } from "@/lib/provenance";
 import {
   buyerHistoryMessage,
   executionMessage,
@@ -62,6 +63,7 @@ interface DisplayAnswer {
   requestId: string;
   openTxHash: string;
   settleTxHash: string | null;
+  responseDigest: string;
 }
 
 function readSafeHistory(key: string): SavedRequest[] {
@@ -152,6 +154,7 @@ export default function BuyerDashboard({
   const [step, setStep] = useState<Step>("idle");
   const [message, setMessage] = useState("");
   const [answer, setAnswer] = useState<DisplayAnswer | null>(null);
+  const [anchorStatus, setAnchorStatus] = useState<"idle" | "checking" | "verified" | "unavailable" | "mismatch">("idle");
   const [requests, setRequests] = useState<SavedRequest[]>([]);
   const [historyStatus, setHistoryStatus] = useState<
     "idle" | "loading" | "error"
@@ -346,6 +349,7 @@ export default function BuyerDashboard({
         requestId,
         openTxHash,
         settleTxHash: result.settleTxHash,
+        responseDigest: result.responseDigest ?? "",
       });
       remember({ ...request, outcome: "settled" });
       setStep("done");
@@ -378,6 +382,7 @@ export default function BuyerDashboard({
         requestId: request.requestId,
         openTxHash: request.openTxHash,
         settleTxHash: result.settleTxHash,
+        responseDigest: result.responseDigest,
       });
       remember({ ...request, outcome: "settled" });
       setStep("done");
@@ -517,6 +522,18 @@ export default function BuyerDashboard({
     answer && answer.buyerAddress.toLowerCase() === address.toLowerCase()
       ? answer
       : null;
+  useEffect(() => {
+    if (!visibleAnswer) {
+      setAnchorStatus("idle");
+      return;
+    }
+    let active = true;
+    setAnchorStatus("checking");
+    void verifyAnswerAnchor(visibleAnswer).then((status) => {
+      if (active) setAnchorStatus(status);
+    });
+    return () => { active = false; };
+  }, [visibleAnswer]);
   return (
     <div className="workspace-grid">
       <section
@@ -735,6 +752,15 @@ export default function BuyerDashboard({
               })}
             </div>
             <h3>On-chain receipt</h3>
+            <p className="proof-limitation" role="status">
+              {anchorStatus === "verified"
+                ? "Answer digest matches the Monad settlement event."
+                : anchorStatus === "checking"
+                  ? "Checking the answer digest against Monad..."
+                  : anchorStatus === "mismatch"
+                    ? "Answer digest does not match the settlement event. Do not rely on this answer."
+                    : "Answer digest verification is unavailable. Check the receipt and transaction manually."}
+            </p>
             <dl className="proof-receipt">
               <div>
                 <dt>Opening transaction</dt>

@@ -84,7 +84,7 @@ contract DataVault {
         address indexed buyer,
         uint256 amount
     );
-    event QuerySettled(bytes32 indexed requestId, address indexed owner);
+    event QuerySettled(bytes32 indexed requestId, address indexed owner, bytes32 answerDigest);
     event QueryRefunded(bytes32 indexed requestId, address indexed buyer);
 
     // ─────────────────────────────────────────────────────────────
@@ -190,10 +190,11 @@ contract DataVault {
      * Only the registered operator may call this.
      * Payment is always released to the collection owner, never to the operator.
      */
-    function settleQuery(bytes32 requestId) external {
+    function settleQuery(bytes32 requestId, bytes32 answerDigest) external {
         Query storage q = queries[requestId];
         require(q.buyer != address(0), "unknown request");
         require(q.state == QueryState.Open, "already finalised");
+        require(answerDigest != bytes32(0), "answer digest required");
 
         Collection storage col = collections[q.collectionId];
         require(col.operator == msg.sender, "not authorized operator");
@@ -203,7 +204,7 @@ contract DataVault {
         (bool ok, ) = col.owner.call{value: q.amount}("");
         require(ok, "transfer failed");
 
-        emit QuerySettled(requestId, col.owner);
+        emit QuerySettled(requestId, col.owner, answerDigest);
     }
 
     // ─────────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ export interface QueryResult {
   citedPassages?: CitedPassage[];
   citedPassageIds?: string[];
   isInsufficientEvidence?: boolean;
+  responseDigest?: string;
 }
 
 export interface RecoveredAnswer {

@@ -205,6 +205,22 @@ assert.equal(
 assert.equal(executed.body.outcome, "settled");
 assert.match(executed.body.answer, /\[Passage /);
 assert(executed.body.citedPassages.length > 0);
+const answerDigest = createHash("sha256")
+  .update(executed.body.answer)
+  .digest("hex");
+assert.equal(executed.body.responseDigest, `sha256:${answerDigest}`);
+const settlementReceipt = await provider.getTransactionReceipt(
+  executed.body.settleTxHash
+);
+assert.equal(settlementReceipt.status, 1);
+const settlementEvents = settlementReceipt.logs
+  .filter((log) => log.address.toLowerCase() === contractAddress.toLowerCase())
+  .map((log) => contract.interface.parseLog(log))
+  .filter((event) => event?.name === "QuerySettled");
+assert(settlementEvents.some((event) =>
+  event.args.requestId === requestId &&
+  event.args.answerDigest.toLowerCase() === `0x${answerDigest}`
+));
 assert.equal((await contract.getQuery(requestId)).state, 1n);
 assert.equal(
   BigInt(await provider.send("eth_getBalance", [ownerAddress, "latest"])),
@@ -214,6 +230,7 @@ const receipt = await request(`/api/queries/${requestId}/receipt`);
 assert.equal(receipt.status, 200);
 assert.equal(receipt.body.amountWei, priceWei.toString());
 assert.equal(receipt.body.outcome, "settled");
+assert.equal(receipt.body.responseDigest, executed.body.responseDigest);
 assert(!JSON.stringify(receipt.body).includes(executed.body.answer));
 
 const recoveryTime = Date.now();
@@ -356,6 +373,7 @@ console.log(
         "wrong buyer denial",
         "cited answer",
         "settlement",
+        "on-chain answer digest",
         "owner payout",
         "receipt",
         "answer recovery",

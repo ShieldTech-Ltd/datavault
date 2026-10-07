@@ -39,6 +39,7 @@ const requestId = `0x${"aa".repeat(32)}`;
 const collectionId = `0x${"bb".repeat(32)}`;
 const openTxHash = `0x${"cc".repeat(32)}`;
 const settleTxHash = `0x${"ee".repeat(32)}`;
+const answerDigest = `sha256:${"ab".repeat(32)}`;
 const contract = `0x${"dd".repeat(20)}`;
 const env = {
   CONTRACT_ADDRESS: contract, SETTLEMENT_PRIVATE_KEY: keccak256(toBytes("datavault-test-operator")),
@@ -73,7 +74,7 @@ beforeEach(() => {
   mocks.retrievePassages.mockResolvedValue({ passages: ["A fact."],
     passageIds: [`0x${"ff".repeat(32)}:chunk-0`], contentHash: `0x${"ff".repeat(32)}` });
   mocks.callModel.mockResolvedValue({ answer: "A cited fact.", citedPassages: [],
-    citedPassageIds: [`0x${"ff".repeat(32)}:chunk-0`], responseDigest: "sha256:test", isInsufficientEvidence: false });
+    citedPassageIds: [`0x${"ff".repeat(32)}:chunk-0`], responseDigest: answerDigest, isInsufficientEvidence: false });
   mocks.settle.mockResolvedValue({ hash: settleTxHash, status: "confirmed" });
 });
 
@@ -81,6 +82,7 @@ describe("settlement uncertainty after answer recording", () => {
   it("claims the exact on-chain escrow amount for revenue records", async () => {
     await execute();
     expect(mocks.claimQuery).toHaveBeenCalledWith(expect.objectContaining({ amount_wei: "100" }), env, expect.any(Number));
+    expect(mocks.settle).toHaveBeenCalledWith(requestId, `0x${"ab".repeat(32)}`, env);
   });
 
   it("preserves the answer if the settlement broadcast reports an ambiguous error", async () => {
@@ -122,7 +124,7 @@ describe("settlement uncertainty after answer recording", () => {
   it("reconciles a recorded answer only after on-chain settlement", async () => {
     mocks.getQueryRow.mockResolvedValue({ buyer_address: buyer.address,
       outcome: "answer_recorded", answer_text: "A cited fact.", passage_ids: "[]",
-      response_digest: "sha256:test", settle_tx_hash: settleTxHash });
+      response_digest: answerDigest, settle_tx_hash: settleTxHash });
     mocks.getOnChainQuery.mockResolvedValue({ state: 1 });
     const timestamp = Date.now();
     const signature = await buyer.signMessage({ message: `datavault-reconcile:${requestId}:${timestamp}` });
@@ -131,6 +133,6 @@ describe("settlement uncertainty after answer recording", () => {
     }), env, requestId);
     expect(response.status).toBe(200);
     expect(await response.text()).not.toContain("A cited fact.");
-    expect(mocks.updateQuerySettled).toHaveBeenCalledWith(requestId, settleTxHash, [], "sha256:test", env);
+    expect(mocks.updateQuerySettled).toHaveBeenCalledWith(requestId, settleTxHash, [], answerDigest, env);
   });
 });

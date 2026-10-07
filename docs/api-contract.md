@@ -50,13 +50,13 @@ datavault-execute:<chainId>:<lowercase contract>:<lowercase requestId>:<lowercas
 
 The Worker verifies signature, escrow buyer, collection, amount, policy version, expiry, and the successful opening receipt before claiming the request and reading private storage. One request ID is claimed once in D1. Duplicate attempts do not call the model again.
 
-A confirmed settlement returns `QueryResult` with `outcome: "settled"`, answer text, versioned cited passage IDs, cited passage text, opening and settlement transaction hashes, and receipt URL. An uncertain broadcast or confirmation returns `outcome: "settlement_pending"` with the opening hash, any known settlement hash, and a receipt URL, without answer text. The caller must reconcile and recover the answer after settlement. Failures leave a still-open escrow eligible for the on-chain timeout refund.
+A confirmed settlement returns `QueryResult` with `outcome: "settled"`, answer text, its SHA-256 digest, versioned cited passage IDs, cited passage text, opening and settlement transaction hashes, and receipt URL. An uncertain broadcast or confirmation returns `outcome: "settlement_pending"` with the opening hash, any known settlement hash, and a receipt URL, without answer text. The caller must reconcile and recover the answer after settlement. Failures leave a still-open escrow eligible for the on-chain timeout refund.
 
 ## Reconcile, recover, and receipt
 
 To reconcile, sign `datavault-reconcile:<requestId>:<timestamp>` and `POST /api/queries/:id/reconcile` with signature headers. The response reports the current outcome and settlement hash. To recover a settled answer, sign `datavault-answer:<requestId>:<timestamp>` and `GET /api/queries/:id/answer`. Only the escrow buyer can recover it. The recovery response includes answer text, cited IDs, digest, outcome, and settlement hash.
 
-The public receipt contains request and collection IDs, buyer address, chain and contract, content hash, policy version, exact escrow amount when recorded, opening and settlement hashes, cited passage IDs, answer digest, outcome, and timestamps. Older receipts may have a null amount. It does not prove the buyer saw the answer or that the answer is factually correct.
+The public receipt contains request and collection IDs, buyer address, chain and contract, content hash, policy version, exact escrow amount when recorded, opening and settlement hashes, cited passage IDs, answer digest, outcome, and timestamps. The `QuerySettled` event anchors the SHA-256 answer digest on Monad. The buyer view checks the answer bytes against that digest and the settlement event. Older receipts may have a null amount. This proves the recorded answer matches the settled digest; it does not prove the buyer saw the answer or that the answer is factually correct.
 
 ## Limits and errors
 

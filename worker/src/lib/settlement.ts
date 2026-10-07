@@ -12,6 +12,7 @@ export type SettlementResult = {
 // authoritative if the receipt is delayed, the RPC fails, or the Worker exits.
 export async function settleOnChainWithConfirmation(
   requestId: `0x${string}`,
+  answerDigest: `0x${string}`,
   env: Env,
 ): Promise<SettlementResult> {
   if (!(await rpcMatchesConfiguredChain(env))) throw new Error("Monad RPC chain does not match this deployment.");
@@ -26,8 +27,8 @@ export async function settleOnChainWithConfirmation(
 
   const walletClient = createWalletClient({ account, chain, transport: http() });
   const publicClient = createPublicClient({ chain, transport: http() });
-  const settleAbi = parseAbi(["function settleQuery(bytes32 requestId) external"]);
-  const data = encodeFunctionData({ abi: settleAbi, functionName: "settleQuery", args: [requestId] });
+  const settleAbi = parseAbi(["function settleQuery(bytes32 requestId, bytes32 answerDigest) external"]);
+  const data = encodeFunctionData({ abi: settleAbi, functionName: "settleQuery", args: [requestId, answerDigest] });
 
   const hash = await walletClient.sendTransaction({
     to: env.CONTRACT_ADDRESS as Address,

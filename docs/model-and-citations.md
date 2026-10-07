@@ -58,7 +58,7 @@ Passage content is wrapped in `<passage id="...">` XML tags in the model prompt.
 
 ## Response digest
 
-The receipt records `responseDigest = "sha256:" + sha256(answerText)`. This allows independent verification that the stored answer text matches the digest in the receipt. The digest covers exactly the answer bytes returned to the buyer.
+The receipt records `responseDigest = "sha256:" + sha256(answerText)`. The settlement transaction emits the same 32-byte digest in `QuerySettled`. The buyer view checks the answer text, receipt digest, and on-chain event. The digest covers exactly the answer bytes returned to the buyer; it does not establish factual correctness.
 
 ## Limitations
 

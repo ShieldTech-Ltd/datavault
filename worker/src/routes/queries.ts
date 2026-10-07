@@ -252,7 +252,11 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
       await updateQueryOutcome(requestId as string, "failed", env);
       return new Response("Escrow is no longer open for settlement.", { status: 409 });
     }
-    const result = await settleOnChainWithConfirmation(requestId as `0x${string}`, env);
+    const digestHex = responseDigest.slice("sha256:".length);
+    if (!/^sha256:[0-9a-fA-F]{64}$/.test(responseDigest) || /^0{64}$/.test(digestHex)) {
+      throw new Error("Answer digest is invalid for settlement.");
+    }
+    const result = await settleOnChainWithConfirmation(requestId as `0x${string}`, `0x${digestHex}`, env);
     settleTxHash = result.hash;
     if (result.status === "reverted") {
       await updateQueryOutcome(requestId as string, "failed", env);
@@ -276,6 +280,7 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
         citedPassages,
         citedPassageIds,
         isInsufficientEvidence,
+        responseDigest,
         requestId,
         openTxHash,
         settleTxHash,
