@@ -13,7 +13,7 @@ function firstAddress(value: unknown): Address | null {
     ? value[0] as Address : null;
 }
 
-export const monadChain = {
+const monadChain = {
   id: monadTestnet.chainId,
   name: monadTestnet.name,
   nativeCurrency: monadTestnet.nativeCurrency,
