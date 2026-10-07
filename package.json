@@ -16,7 +16,8 @@
     "typecheck:worker": "cd worker && npm run typecheck",
     "install:all": "npm install && cd frontend && npm install && cd ../worker && npm install",
     "db:migrate:local": "cd worker && npm run db:migrate:local",
-    "check:release-config": "node scripts/check-release-config.mjs"
+    "check:release-config": "node scripts/check-release-config.mjs",
+    "smoke:public": "node scripts/smoke-public-site.mjs"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

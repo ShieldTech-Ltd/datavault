@@ -32,6 +32,8 @@ The Worker also checks the RPC chain ID during registration, quotes, paid execut
 
 Use an authorized owner wallet and the public owner flow to upload the reviewed team-authored guide. Wait for the registration receipt and D1 confirmation. Set `DEMO_COLLECTION_ID` to the confirmed collection ID as a Worker runtime setting, for example with `wrangler secret put DEMO_COLLECTION_ID`, then verify the resulting Worker version. `GET /api/demo` must return that active collection. Keep a separate owner-controlled presentation collection for pause and refund demonstrations so the public sample remains usable.
 
+Set `PUBLIC_SITE_URL` to the deployed HTTPS origin and run `npm run smoke:public`. This read-only smoke checks the homepage, JavaScript asset, security headers, active demo collection, and a quote that matches its price. It opens no escrow and uses no wallet or model key. A passing result is only a prerequisite for the paid browser checks below.
+
 ## Live acceptance
 
 Record the deployment commit, URL, chain ID, contract, owner, operator, collection ID, content hash, model provider, and date. From a fresh browser and new buyer wallet:
