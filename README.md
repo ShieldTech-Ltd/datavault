@@ -126,6 +126,8 @@ cd frontend && npm run dev
 
 Open http://localhost:5173.
 
+For UI and UX review without a wallet, open `http://localhost:5173/demo.html` while Vite is running. This local preview has sample owner and buyer states only. It makes no API, model, wallet, or Monad calls and is excluded from the production build. Use the main app and live acceptance checklist to verify real payments and answers.
+
 ---
 
 ## Build and deploy to Cloudflare
