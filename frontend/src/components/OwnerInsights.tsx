@@ -46,7 +46,11 @@ export default function OwnerInsights({
     const client = await primaryWallet.getWalletClient();
     const chainId = Number(import.meta.env.VITE_CHAIN_ID) || 10143;
     if ((await client.getChainId()) !== chainId)
-      throw new Error("Switch your wallet to Monad testnet first.");
+      throw new Error(
+        `Switch your wallet to ${
+          chainId === 31337 ? "the local test chain" : "Monad testnet"
+        } first.`
+      );
     const timestamp = Date.now();
     const address = primaryWallet.address.toLowerCase();
     const signature = await client.signMessage({

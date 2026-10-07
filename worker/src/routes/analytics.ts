@@ -1,5 +1,7 @@
 import type { Env } from "../lib/types";
 import { authenticatedOwner } from "../lib/owner-auth";
+import { isValidAddress } from "../lib/validation";
+import { rpcMatchesConfiguredChain } from "../lib/chain-identity";
 
 interface RecordedPayment {
   request_id: string;
@@ -94,13 +96,30 @@ async function payments(
                         q.amount_wei, q.created_at, q.settled_at, q.settle_tx_hash
                    FROM queries q JOIN collections c ON c.collection_id = q.collection_id
                   WHERE q.outcome = 'settled' AND q.settled_at >= ?
+                    AND q.chain_id = ? AND LOWER(q.contract_address) = ?
+                    AND c.chain_id = ? AND c.contract_address = ?
                     AND c.status = 'confirmed' ${
                       owner ? "AND c.owner_address = ?" : ""
                     }
                   ORDER BY q.settled_at DESC, q.request_id DESC LIMIT ?`;
   const args = owner
-    ? [since, owner.toLowerCase(), MAX_ROWS + 1]
-    : [since, MAX_ROWS + 1];
+    ? [
+        since,
+        Number(env.CHAIN_ID),
+        env.CONTRACT_ADDRESS.toLowerCase(),
+        Number(env.CHAIN_ID),
+        env.CONTRACT_ADDRESS.toLowerCase(),
+        owner.toLowerCase(),
+        MAX_ROWS + 1,
+      ]
+    : [
+        since,
+        Number(env.CHAIN_ID),
+        env.CONTRACT_ADDRESS.toLowerCase(),
+        Number(env.CHAIN_ID),
+        env.CONTRACT_ADDRESS.toLowerCase(),
+        MAX_ROWS + 1,
+      ];
   const result = await env.DB.prepare(query)
     .bind(...args)
     .all<RecordedPayment>();
@@ -108,6 +127,12 @@ async function payments(
 }
 
 export async function handleMarketplaceAnalytics(env: Env): Promise<Response> {
+  if (
+    !isValidAddress(env.CONTRACT_ADDRESS) ||
+    !(await rpcMatchesConfiguredChain(env))
+  ) {
+    return json({ error: "Current Monad deployment is unavailable." }, 503);
+  }
   const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const rows = await payments(env, since);
   if (!rows)
@@ -118,8 +143,10 @@ export async function handleMarketplaceAnalytics(env: Env): Promise<Response> {
       503
     );
   const count = await env.DB.prepare(
-    "SELECT COUNT(*) AS count FROM collections WHERE status = 'confirmed'"
-  ).first<{ count: number }>();
+    "SELECT COUNT(*) AS count FROM collections WHERE status = 'confirmed' AND chain_id = ? AND contract_address = ?"
+  )
+    .bind(Number(env.CHAIN_ID), env.CONTRACT_ADDRESS.toLowerCase())
+    .first<{ count: number }>();
   return json({
     periodDays: 30,
     confirmedCollections: count?.count ?? 0,
@@ -133,6 +160,9 @@ export async function handleOwnerAnalytics(
 ): Promise<Response> {
   const owner = await authenticatedOwner(req, env);
   if (owner instanceof Response) return owner;
+  if (!(await rpcMatchesConfiguredChain(env))) {
+    return json({ error: "Current Monad deployment is unavailable." }, 503);
+  }
 
   const since = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const rows = await payments(env, since, owner);
@@ -144,9 +174,9 @@ export async function handleOwnerAnalytics(
       503
     );
   const count = await env.DB.prepare(
-    "SELECT COUNT(*) AS count FROM collections WHERE status = 'confirmed' AND owner_address = ?"
+    "SELECT COUNT(*) AS count FROM collections WHERE status = 'confirmed' AND chain_id = ? AND contract_address = ? AND owner_address = ?"
   )
-    .bind(owner)
+    .bind(Number(env.CHAIN_ID), env.CONTRACT_ADDRESS.toLowerCase(), owner)
     .first<{ count: number }>();
   return json({
     periodDays: 30,

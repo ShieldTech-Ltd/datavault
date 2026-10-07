@@ -117,7 +117,16 @@ describe("public collection catalogue", () => {
     );
     expect(response.status).toBe(200);
     expect(query).toContain("LIKE ? ESCAPE '\\'");
-    expect(bound).toEqual(["%\\%\\_\\\\%", 12, 0]);
+    expect(query).toContain("c.chain_id = ? AND c.contract_address = ?");
+    expect(bound).toEqual([
+      10143,
+      env.CONTRACT_ADDRESS.toLowerCase(),
+      10143,
+      env.CONTRACT_ADDRESS.toLowerCase(),
+      "%\\%\\_\\\\%",
+      12,
+      0,
+    ]);
   });
 
   it("does not show a D1 row with a different on-chain owner", async () => {
@@ -209,7 +218,15 @@ describe("public collection catalogue", () => {
       ownerEnv
     );
     expect(response.status).toBe(200);
-    expect(bound).toEqual([lowerOwner, 12, 0]);
+    expect(bound).toEqual([
+      10143,
+      env.CONTRACT_ADDRESS.toLowerCase(),
+      10143,
+      env.CONTRACT_ADDRESS.toLowerCase(),
+      lowerOwner,
+      12,
+      0,
+    ]);
     const body = (await response.json()) as {
       collections: Array<{ name: string }>;
     };

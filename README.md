@@ -195,8 +195,8 @@ For a local paid-flow integration rehearsal using a Hardhat chain, Wrangler D1/R
 
 ## Ownership
 
-**Tanvir:** Solidity contracts, Worker API, R2 and D1, payment state machine, security checks, AI model integration.  
-**Ritik:** React frontend, injected wallet connection, owner and buyer UX, demo video editing.
+**Tanvir:** Solidity contracts, core Worker API, R2 and D1 payment state machine, and AI model integration.  
+**Ritik:** React frontend, wallet and owner/buyer UX, marketplace and analytics routes, local integration rehearsal, and demo preparation.
 
 ---
 

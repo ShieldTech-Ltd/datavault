@@ -11,6 +11,8 @@ import {
 import { registrationMessage } from "../../../shared/api";
 
 const MONAD_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID) || 10143;
+const NETWORK_LABEL =
+  MONAD_CHAIN_ID === 31337 ? "the local test chain" : "Monad testnet";
 const STORAGE_KEY = "datavault_collection_id";
 
 type Step =
@@ -96,7 +98,7 @@ export default function OwnerDashboard({
     if (chainId !== MONAD_CHAIN_ID) {
       setStep("error");
       setStatusMsg(
-        `Wrong network. Switch to Monad testnet (chainId ${MONAD_CHAIN_ID}) in your wallet.`
+        `Wrong network. Switch to ${NETWORK_LABEL} (chainId ${MONAD_CHAIN_ID}) in your wallet.`
       );
       return false;
     }

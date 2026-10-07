@@ -8,6 +8,10 @@ import OwnerInsights from "./components/OwnerInsights";
 import "./app.css";
 
 type View = "marketplace" | "collection";
+const NETWORK_LABEL =
+  Number(import.meta.env.VITE_CHAIN_ID) === 31337
+    ? "Local test chain"
+    : "Monad Testnet";
 
 export default function App() {
   const { primaryWallet } = useWallet();
@@ -86,7 +90,7 @@ export default function App() {
           </form>
           <div className="app-header-actions">
             <span className="app-network">
-              <span aria-hidden="true" /> Monad Testnet
+              <span aria-hidden="true" /> {NETWORK_LABEL}
             </span>
             <ConnectButton />
           </div>
@@ -136,7 +140,7 @@ export default function App() {
                     <span />
                     <span />
                   </div>
-                  <div className="art-check">✓</div>
+                  <div className="art-check" />
                 </div>
                 <p>
                   Private knowledge
@@ -236,7 +240,7 @@ export default function App() {
       </main>
 
       <footer className="app-footer">
-        <span>DataVault on Monad testnet</span>
+        <span>DataVault on {NETWORK_LABEL}</span>
         <a
           href="https://github.com/ShieldTech-Ltd/datavault"
           target="_blank"

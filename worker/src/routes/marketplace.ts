@@ -90,15 +90,30 @@ export async function handleListCollections(
        FROM collections c
        LEFT JOIN (
          SELECT collection_id, COUNT(*) AS paid_queries FROM queries
-          WHERE outcome = 'settled' GROUP BY collection_id
+          WHERE outcome = 'settled' AND chain_id = ? AND LOWER(contract_address) = ? GROUP BY collection_id
        ) q ON q.collection_id = c.collection_id
-      WHERE c.status = 'confirmed' ${searchClause}
+      WHERE c.status = 'confirmed' AND c.chain_id = ? AND c.contract_address = ? ${searchClause}
       ORDER BY c.created_at DESC, c.collection_id DESC
       LIMIT ? OFFSET ?`;
   const escapedSearch = search.toLowerCase().replace(/[\\%_]/g, "\\$&");
   const bindings = search
-    ? [`%${escapedSearch}%`, page.limit, page.offset]
-    : [page.limit, page.offset];
+    ? [
+        Number(env.CHAIN_ID),
+        env.CONTRACT_ADDRESS.toLowerCase(),
+        Number(env.CHAIN_ID),
+        env.CONTRACT_ADDRESS.toLowerCase(),
+        `%${escapedSearch}%`,
+        page.limit,
+        page.offset,
+      ]
+    : [
+        Number(env.CHAIN_ID),
+        env.CONTRACT_ADDRESS.toLowerCase(),
+        Number(env.CHAIN_ID),
+        env.CONTRACT_ADDRESS.toLowerCase(),
+        page.limit,
+        page.offset,
+      ];
   const result = await env.DB.prepare(sql)
     .bind(...bindings)
     .all<ListedCollection>();
@@ -134,9 +149,13 @@ export async function handleCollectionDetail(
   if (!row || row.status !== "confirmed")
     return json({ error: "Collection not found." }, 404);
   const count = await env.DB.prepare(
-    "SELECT COUNT(*) AS paid_queries FROM queries WHERE collection_id = ? AND outcome = 'settled'"
+    "SELECT COUNT(*) AS paid_queries FROM queries WHERE collection_id = ? AND outcome = 'settled' AND chain_id = ? AND LOWER(contract_address) = ?"
   )
-    .bind(collectionId)
+    .bind(
+      collectionId,
+      Number(env.CHAIN_ID),
+      env.CONTRACT_ADDRESS.toLowerCase()
+    )
     .first<{ paid_queries: number }>();
   const collection = await verifiedCollection(
     {
@@ -174,13 +193,21 @@ export async function handleOwnerCollections(
        FROM collections c
        LEFT JOIN (
          SELECT collection_id, COUNT(*) AS paid_queries FROM queries
-          WHERE outcome = 'settled' GROUP BY collection_id
+          WHERE outcome = 'settled' AND chain_id = ? AND LOWER(contract_address) = ? GROUP BY collection_id
        ) q ON q.collection_id = c.collection_id
-      WHERE c.status = 'confirmed' AND c.owner_address = ?
+      WHERE c.status = 'confirmed' AND c.chain_id = ? AND c.contract_address = ? AND c.owner_address = ?
       ORDER BY c.created_at DESC, c.collection_id DESC
       LIMIT ? OFFSET ?`
   )
-    .bind(owner, page.limit, page.offset)
+    .bind(
+      Number(env.CHAIN_ID),
+      env.CONTRACT_ADDRESS.toLowerCase(),
+      Number(env.CHAIN_ID),
+      env.CONTRACT_ADDRESS.toLowerCase(),
+      owner,
+      page.limit,
+      page.offset
+    )
     .all<ListedCollection>();
   try {
     const checked = await Promise.all(

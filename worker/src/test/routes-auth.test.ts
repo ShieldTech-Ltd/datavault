@@ -8,11 +8,13 @@ import { MockD1Database, makeEnv } from "./helpers";
 import { handleReceipt } from "../routes/queries";
 import { handleConfirmCollection } from "../routes/collections";
 
-vi.mock("../lib/chain-identity", () => ({ rpcMatchesConfiguredChain: vi.fn(async () => true) }));
+vi.mock("../lib/chain-identity", () => ({
+  rpcMatchesConfiguredChain: vi.fn(async () => true),
+}));
 
-const COL_ID  = "0x" + "bb".repeat(32);
-const REQ_ID  = "0x" + "aa".repeat(32);
-const BUYER   = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+const COL_ID = "0x" + "bb".repeat(32);
+const REQ_ID = "0x" + "aa".repeat(32);
+const BUYER = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const TX_HASH = "0x" + "dd".repeat(32);
 
 // ── Receipt endpoint ───────────────────────────────────────────────
@@ -32,31 +34,33 @@ describe("GET /api/queries/:id/receipt", () => {
 
   it("returns receipt JSON for a known pending request", async () => {
     const db = new MockD1Database();
-    db.seed("queries", [{
-      request_id: REQ_ID,
-      collection_id: COL_ID,
-      buyer_address: BUYER,
-      policy_version: 1,
-      question_digest: "0x" + "ff".repeat(32),
-      open_tx_hash: TX_HASH,
-      settle_tx_hash: null,
-      refund_tx_hash: null,
-      chain_id: 10143,
-      contract_address: "0x" + "11".repeat(20),
-      content_hash: "0x" + "22".repeat(32),
-      passage_ids: "[]",
-      outcome: "pending",
-      claimed_at: Date.now(),
-      lease_expires_at: Date.now() + 60000,
-      created_at: Date.now(),
-      settled_at: null,
-      answer_text: null,
-      response_digest: null,
-    }]);
+    db.seed("queries", [
+      {
+        request_id: REQ_ID,
+        collection_id: COL_ID,
+        buyer_address: BUYER,
+        policy_version: 1,
+        question_digest: "0x" + "ff".repeat(32),
+        open_tx_hash: TX_HASH,
+        settle_tx_hash: null,
+        refund_tx_hash: null,
+        chain_id: 10143,
+        contract_address: "0x" + "11".repeat(20),
+        content_hash: "0x" + "22".repeat(32),
+        passage_ids: "[]",
+        outcome: "pending",
+        claimed_at: Date.now(),
+        lease_expires_at: Date.now() + 60000,
+        created_at: Date.now(),
+        settled_at: null,
+        answer_text: null,
+        response_digest: null,
+      },
+    ]);
     const env = makeEnv({ DB: db });
     const res = await handleReceipt(env as never, REQ_ID);
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.requestId).toBe(REQ_ID);
     expect(body.outcome).toBe("pending");
     expect(body.buyerAddress).toBe(BUYER);
@@ -66,30 +70,32 @@ describe("GET /api/queries/:id/receipt", () => {
 
   it("does not expose answer text in receipt (answer only via authenticated endpoint)", async () => {
     const db = new MockD1Database();
-    db.seed("queries", [{
-      request_id: REQ_ID,
-      collection_id: COL_ID,
-      buyer_address: BUYER,
-      policy_version: 1,
-      question_digest: "0x" + "ff".repeat(32),
-      open_tx_hash: TX_HASH,
-      settle_tx_hash: TX_HASH,
-      refund_tx_hash: null,
-      chain_id: 10143,
-      contract_address: "0x" + "11".repeat(20),
-      content_hash: "0x" + "22".repeat(32),
-      passage_ids: '["p:0"]',
-      outcome: "settled",
-      claimed_at: Date.now() - 5000,
-      lease_expires_at: Date.now() + 55000,
-      created_at: Date.now() - 5000,
-      settled_at: Date.now(),
-      answer_text: "SECRET ANSWER",
-      response_digest: "sha256:abc",
-    }]);
+    db.seed("queries", [
+      {
+        request_id: REQ_ID,
+        collection_id: COL_ID,
+        buyer_address: BUYER,
+        policy_version: 1,
+        question_digest: "0x" + "ff".repeat(32),
+        open_tx_hash: TX_HASH,
+        settle_tx_hash: TX_HASH,
+        refund_tx_hash: null,
+        chain_id: 10143,
+        contract_address: "0x" + "11".repeat(20),
+        content_hash: "0x" + "22".repeat(32),
+        passage_ids: '["p:0"]',
+        outcome: "settled",
+        claimed_at: Date.now() - 5000,
+        lease_expires_at: Date.now() + 55000,
+        created_at: Date.now() - 5000,
+        settled_at: Date.now(),
+        answer_text: "SECRET ANSWER",
+        response_digest: "sha256:abc",
+      },
+    ]);
     const env = makeEnv({ DB: db });
     const res = await handleReceipt(env as never, REQ_ID);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.answer).toBeUndefined();
     expect(body.answerText).toBeUndefined();
     // Receipt does expose citedPassageIds and responseDigest (not the answer itself)
@@ -107,18 +113,22 @@ describe("POST /api/collections/:id/confirm", () => {
   beforeEach(() => {
     db = new MockD1Database();
     env = makeEnv({ DB: db, CONTRACT_ADDRESS: "0x" + "11".repeat(20) });
-    db.seed("collections", [{
-      collection_id: COL_ID,
-      owner_address: BUYER.toLowerCase(),
-      collection_name: "test-collection",
-      content_hash: "0x" + "ff".repeat(32),
-      policy_version: 1,
-      active: 1,
-      status: "staging",
-      staged_at: Date.now(),
-      confirmed_tx: null,
-      created_at: Date.now() - 1000,
-    }]);
+    db.seed("collections", [
+      {
+        collection_id: COL_ID,
+        owner_address: BUYER.toLowerCase(),
+        collection_name: "test-collection",
+        content_hash: "0x" + "ff".repeat(32),
+        chain_id: 10143,
+        contract_address: "0x" + "11".repeat(20),
+        policy_version: 1,
+        active: 1,
+        status: "staging",
+        staged_at: Date.now(),
+        confirmed_tx: null,
+        created_at: Date.now() - 1000,
+      },
+    ]);
   });
 
   it("returns 400 for invalid collectionId", async () => {

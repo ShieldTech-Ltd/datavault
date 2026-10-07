@@ -10,6 +10,8 @@ import {
 } from "../../../shared/api";
 
 const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID) || 10143;
+const CHAIN_LABEL =
+  CHAIN_ID === 31337 ? "the local test chain" : "Monad testnet";
 const HISTORY_KEY = "datavault_requests";
 const SAMPLE_QUESTIONS = [
   "What information should a freelancer include on an invoice?",
@@ -187,7 +189,7 @@ export default function BuyerDashboard({
     if (!primaryWallet) throw new Error("Connect an EVM wallet first.");
     const client = await primaryWallet.getWalletClient();
     if ((await client.getChainId()) !== CHAIN_ID)
-      throw new Error(`Switch your wallet to Monad testnet (${CHAIN_ID}).`);
+      throw new Error(`Switch your wallet to ${CHAIN_LABEL} (${CHAIN_ID}).`);
     return client;
   }
   async function signedHeaders(prefix: string, requestId: string) {
@@ -432,7 +434,9 @@ export default function BuyerDashboard({
       >
         <div className="workspace-card-header">
           <div>
-            <span className="workspace-icon">✦</span>
+            <span className="workspace-icon" aria-hidden="true">
+              Q
+            </span>
             <strong id="query-heading">Query workspace</strong>
           </div>
           <span className="workspace-caption">Buyer flow</span>
@@ -600,7 +604,9 @@ export default function BuyerDashboard({
       >
         <div className="workspace-card-header">
           <div>
-            <span className="proof-icon">◇</span>
+            <span className="proof-icon" aria-hidden="true">
+              P
+            </span>
             <strong id="proof-heading">Proof of provenance</strong>
           </div>
           <span
@@ -659,7 +665,9 @@ export default function BuyerDashboard({
           </>
         ) : (
           <div className="proof-empty">
-            <div className="proof-empty-symbol">◇</div>
+            <div className="proof-empty-symbol" aria-hidden="true">
+              P
+            </div>
             <h3>Your verified answer appears here</h3>
             <p>
               The answer, cited passages, and transaction receipt are shown

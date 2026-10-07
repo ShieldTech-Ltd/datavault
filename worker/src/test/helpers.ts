@@ -28,10 +28,7 @@ export class MockD1Database {
 class MockD1Statement {
   private boundArgs: unknown[] = [];
 
-  constructor(
-    private sql: string,
-    private tables: Map<string, Row[]>,
-  ) {}
+  constructor(private sql: string, private tables: Map<string, Row[]>) {}
 
   bind(...args: unknown[]): this {
     this.boundArgs = args;
@@ -54,26 +51,26 @@ class MockD1Statement {
         return { meta: { changes: 0 } };
       }
       queries.push({
-        request_id:       this.boundArgs[0],
-        collection_id:    this.boundArgs[1],
-        buyer_address:    this.boundArgs[2],
-        policy_version:   this.boundArgs[3],
-        question_digest:  this.boundArgs[4],
-        open_tx_hash:     this.boundArgs[5],
-        chain_id:         this.boundArgs[6],
+        request_id: this.boundArgs[0],
+        collection_id: this.boundArgs[1],
+        buyer_address: this.boundArgs[2],
+        policy_version: this.boundArgs[3],
+        question_digest: this.boundArgs[4],
+        open_tx_hash: this.boundArgs[5],
+        chain_id: this.boundArgs[6],
         contract_address: this.boundArgs[7],
-        content_hash:     this.boundArgs[8],
-        amount_wei:       this.boundArgs[9],
-        passage_ids:      "[]",
-        outcome:          "pending",
-        claimed_at:       this.boundArgs[10],
+        content_hash: this.boundArgs[8],
+        amount_wei: this.boundArgs[9],
+        passage_ids: "[]",
+        outcome: "pending",
+        claimed_at: this.boundArgs[10],
         lease_expires_at: this.boundArgs[11],
-        created_at:       this.boundArgs[12],
-        settle_tx_hash:   null,
-        refund_tx_hash:   null,
-        response_digest:  null,
-        answer_text:      null,
-        settled_at:       null,
+        created_at: this.boundArgs[12],
+        settle_tx_hash: null,
+        refund_tx_hash: null,
+        response_digest: null,
+        answer_text: null,
+        settled_at: null,
       });
       this.tables.set("queries", queries);
       return { meta: { changes: 1 } };
@@ -148,16 +145,18 @@ class MockD1Statement {
     if (su.startsWith("INSERT INTO COLLECTIONS")) {
       const collections = this.tables.get("collections") ?? [];
       collections.push({
-        collection_id:  this.boundArgs[0],
-        owner_address:  this.boundArgs[1],
+        collection_id: this.boundArgs[0],
+        owner_address: this.boundArgs[1],
         collection_name: this.boundArgs[2],
-        content_hash:   this.boundArgs[3],
+        content_hash: this.boundArgs[3],
+        chain_id: this.boundArgs[4],
+        contract_address: this.boundArgs[5],
         policy_version: 1,
-        active:         1,
-        status:         "staging",
-        staged_at:      this.boundArgs[4],
-        confirmed_tx:   null,
-        created_at:     this.boundArgs[5],
+        active: 1,
+        status: "staging",
+        staged_at: this.boundArgs[6],
+        confirmed_tx: null,
+        created_at: this.boundArgs[7],
       });
       this.tables.set("collections", collections);
       return { meta: { changes: 1 } };
@@ -218,12 +217,23 @@ class MockD1Statement {
 
     if (su.includes("FROM QUERIES WHERE REQUEST_ID")) {
       const rows = this.tables.get("queries") ?? [];
-      return (rows.find((r) => r.request_id === this.boundArgs[0]) as T | undefined) ?? null;
+      return (
+        (rows.find((r) => r.request_id === this.boundArgs[0]) as
+          | T
+          | undefined) ?? null
+      );
     }
 
     if (su.includes("FROM COLLECTIONS WHERE COLLECTION_ID")) {
       const rows = this.tables.get("collections") ?? [];
-      return (rows.find((r) => r.collection_id === this.boundArgs[0]) as T | undefined) ?? null;
+      return (
+        (rows.find(
+          (r) =>
+            r.collection_id === this.boundArgs[0] &&
+            r.chain_id === this.boundArgs[1] &&
+            r.contract_address === this.boundArgs[2]
+        ) as T | undefined) ?? null
+      );
     }
 
     if (su.includes("FROM RATE_LIMITS WHERE KEY")) {
@@ -231,7 +241,7 @@ class MockD1Statement {
       const key = this.boundArgs[0];
       const windowStart = this.boundArgs[1] as number;
       const row = rows.find(
-        (r) => r.key === key && (r.window_start as number) >= windowStart,
+        (r) => r.key === key && (r.window_start as number) >= windowStart
       );
       return (row ? { count: row.count } : null) as T | null;
     }
@@ -251,7 +261,10 @@ class MockD1Statement {
 export class MockR2Bucket {
   private objects: Map<string, string> = new Map();
 
-  async put(key: string, value: string | ReadableStream | ArrayBuffer): Promise<void> {
+  async put(
+    key: string,
+    value: string | ReadableStream | ArrayBuffer
+  ): Promise<void> {
     if (typeof value === "string") this.objects.set(key, value);
   }
 
@@ -268,26 +281,30 @@ export class MockR2Bucket {
 
 // ── Env builder ────────────────────────────────────────────────────
 
-export function makeEnv(overrides: Partial<{
-  CONTRACT_ADDRESS: string;
-  SETTLEMENT_PRIVATE_KEY: string;
-  MONAD_RPC_URL: string;
-  MODEL_PROVIDER: string;
-  CHAIN_ID: string;
-  MODEL_API_KEY: string;
-  DB: MockD1Database;
-  COLLECTION_STORE: MockR2Bucket;
-}> = {}) {
+export function makeEnv(
+  overrides: Partial<{
+    CONTRACT_ADDRESS: string;
+    SETTLEMENT_PRIVATE_KEY: string;
+    MONAD_RPC_URL: string;
+    MODEL_PROVIDER: string;
+    CHAIN_ID: string;
+    MODEL_API_KEY: string;
+    DB: MockD1Database;
+    COLLECTION_STORE: MockR2Bucket;
+  }> = {}
+) {
   return {
-    CONTRACT_ADDRESS:      overrides.CONTRACT_ADDRESS ?? "",
-    SETTLEMENT_PRIVATE_KEY: overrides.SETTLEMENT_PRIVATE_KEY ?? "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-    MONAD_RPC_URL:         overrides.MONAD_RPC_URL ?? "https://testnet-rpc.monad.xyz",
-    MODEL_PROVIDER:        overrides.MODEL_PROVIDER ?? "openai",
-    CHAIN_ID:              overrides.CHAIN_ID ?? "10143",
-    MODEL_API_KEY:         overrides.MODEL_API_KEY ?? "test-key",
-    ALLOWED_ORIGINS:       "",
-    DB:                    overrides.DB ?? new MockD1Database(),
-    COLLECTION_STORE:      overrides.COLLECTION_STORE ?? new MockR2Bucket(),
-    ASSETS:                { fetch: async () => new Response("ok") } as unknown as Fetcher,
+    CONTRACT_ADDRESS: overrides.CONTRACT_ADDRESS ?? "",
+    SETTLEMENT_PRIVATE_KEY:
+      overrides.SETTLEMENT_PRIVATE_KEY ??
+      "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+    MONAD_RPC_URL: overrides.MONAD_RPC_URL ?? "https://testnet-rpc.monad.xyz",
+    MODEL_PROVIDER: overrides.MODEL_PROVIDER ?? "openai",
+    CHAIN_ID: overrides.CHAIN_ID ?? "10143",
+    MODEL_API_KEY: overrides.MODEL_API_KEY ?? "test-key",
+    ALLOWED_ORIGINS: "",
+    DB: overrides.DB ?? new MockD1Database(),
+    COLLECTION_STORE: overrides.COLLECTION_STORE ?? new MockR2Bucket(),
+    ASSETS: { fetch: async () => new Response("ok") } as unknown as Fetcher,
   };
 }

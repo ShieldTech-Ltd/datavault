@@ -341,6 +341,14 @@ summary:focus-visible {
   font-size: 2.7rem;
   box-shadow: 0 12px 20px rgba(7, 80, 54, 0.2);
 }
+.art-check::before {
+  content: "";
+  width: 17px;
+  height: 31px;
+  border-right: 5px solid white;
+  border-bottom: 5px solid white;
+  transform: rotate(42deg) translate(-3px, -3px);
+}
 .app-hero-art p {
   position: absolute;
   right: 0;

@@ -26,7 +26,8 @@ def open_database(path: str) -> sqlite3.Connection:
 
 def test_staging(connection: sqlite3.Connection) -> None:
     sql = sql_from_source("worker/src/lib/d1.ts", "export async function insertCollection")
-    row = ("collection-1", "owner-1", "Guide", "hash-1", 1_000_000, 1_000_000, -800_000)
+    row = ("collection-1", "owner-1", "Guide", "hash-1", 10143,
+           "0x" + "11" * 20, 1_000_000, 1_000_000, -800_000)
     assert connection.execute(sql, row).rowcount == 1
     assert connection.execute(sql, row).rowcount == 0, "live staging must not be overwritten"
     connection.execute("UPDATE collections SET staged_at = ? WHERE collection_id = ?", (-900_000, "collection-1"))

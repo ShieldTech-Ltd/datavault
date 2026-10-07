@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
+vi.mock("../lib/chain-identity", () => ({
+  rpcMatchesConfiguredChain: vi.fn(async () => true),
+}));
 import type { Env } from "../lib/types";
 import {
   handleMarketplaceAnalytics,
@@ -45,7 +48,7 @@ function environment(onPrepare?: (sql: string) => void): Env {
               results:
                 sql.includes("FROM queries") &&
                 (!sql.includes("c.owner_address") ||
-                  args[1] === owner.address.toLowerCase())
+                  args[5] === owner.address.toLowerCase())
                   ? rows
                   : [],
             }),
@@ -59,6 +62,13 @@ function environment(onPrepare?: (sql: string) => void): Env {
 }
 
 describe("recorded product analytics", () => {
+  it("does not show stale records without a configured contract", async () => {
+    const response = await handleMarketplaceAnalytics({
+      ...environment(),
+      CONTRACT_ADDRESS: "",
+    });
+    expect(response.status).toBe(503);
+  });
   it("counts settlements in the last 30 days by settlement time", async () => {
     const prepare = vi.fn();
     await handleMarketplaceAnalytics(environment(prepare));
@@ -66,6 +76,10 @@ describe("recorded product analytics", () => {
       .map(([sql]) => sql as string)
       .find((sql) => sql.includes("FROM queries"));
     expect(paymentsSql).toContain("q.settled_at >= ?");
+    expect(paymentsSql).toContain(
+      "q.chain_id = ? AND LOWER(q.contract_address) = ?"
+    );
+    expect(paymentsSql).toContain("c.chain_id = ? AND c.contract_address = ?");
     expect(paymentsSql).not.toContain("q.created_at >= ?");
   });
   it("sums exact wei and discloses missing historical amount coverage", async () => {

@@ -20,6 +20,8 @@ export interface Env {
 
 export interface CollectionRow {
   collection_id: string;
+  chain_id: number | null;
+  contract_address: string | null;
   owner_address: string;
   collection_name: string;
   content_hash: string;
