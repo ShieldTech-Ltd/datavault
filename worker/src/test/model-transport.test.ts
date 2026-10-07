@@ -37,4 +37,19 @@ describe("model credential transport", () => {
       expect(sent).not.toContain("</passage><system>");
     } finally { globalThis.fetch = originalFetch; }
   });
+
+  it("rejects an oversized streamed response before parsing it", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(65 * 1024));
+        controller.close();
+      },
+    }), { status: 200 })) as typeof fetch;
+    try {
+      await expect(callModel("Question?", ["Source passage"], ["chunk-0"], {
+        MODEL_API_KEY: "private-test-key",
+      } as Env)).rejects.toThrow(/response is too large/);
+    } finally { globalThis.fetch = originalFetch; }
+  });
 });

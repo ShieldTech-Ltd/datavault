@@ -16,6 +16,7 @@ export interface ModelResponse {
 
 // Timeout for model API calls. Cloudflare Workers have a 30s CPU limit.
 const MODEL_TIMEOUT_MS = 25_000;
+const MAX_MODEL_RESPONSE_BYTES = 64 * 1024;
 
 // Max tokens to send as context (prevents runaway costs and injection vectors)
 const MAX_CONTEXT_TOKENS_APPROX = 6_000; // ~4 chars/token
@@ -85,9 +86,9 @@ export async function callModel(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), MODEL_TIMEOUT_MS);
 
-  let res: Response;
+  let data: { choices?: Array<{ message?: { content?: string } }> };
   try {
-    res = await fetch(`${apiBase}/chat/completions`, {
+    const res = await fetch(`${apiBase}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -96,24 +97,16 @@ export async function callModel(
       body: JSON.stringify({ model, messages, max_tokens: 1024, temperature: 0.2 }),
       signal: controller.signal,
     });
+    if (res.status === 429) throw new Error("Model API rate limit exceeded. Please retry shortly.");
+    if (!res.ok) throw new Error(`Model API returned ${res.status}. Please retry.`);
+    data = await readBoundedModelResponse(res);
   } catch (err: unknown) {
-    clearTimeout(timer);
+    if (err instanceof Error && err.message.startsWith("Model API")) throw err;
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Model API request failed: ${msg}`);
+  } finally {
+    clearTimeout(timer);
   }
-  clearTimeout(timer);
-
-  if (res.status === 429) {
-    throw new Error("Model API rate limit exceeded. Please retry shortly.");
-  }
-  if (!res.ok) {
-    // Do not include the raw provider body in the error (may contain internal details)
-    throw new Error(`Model API returned ${res.status}. Please retry.`);
-  }
-
-  const data = await res.json<{
-    choices?: Array<{ message?: { content?: string } }>;
-  }>();
 
   const answer = data.choices?.[0]?.message?.content?.trim() ?? "";
 
@@ -175,6 +168,40 @@ export async function callModel(
     responseDigest,
     isInsufficientEvidence,
   };
+}
+
+async function readBoundedModelResponse(res: Response): Promise<{ choices?: Array<{ message?: { content?: string } }> }> {
+  const declaredLength = Number(res.headers.get("Content-Length"));
+  if (declaredLength > MAX_MODEL_RESPONSE_BYTES) throw new Error("Model API response is too large.");
+  if (!res.body) throw new Error("Model API returned an empty body.");
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_MODEL_RESPONSE_BYTES) throw new Error("Model API response is too large.");
+      chunks.push(value);
+    }
+  } catch (error) {
+    void reader.cancel().catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    throw new Error("Model API returned invalid JSON.");
+  }
 }
 
 function modelApiBase(configured: string | undefined): string {
