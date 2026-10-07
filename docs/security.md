@@ -8,8 +8,9 @@ The paid path handles private source material, buyer questions, and a settlement
 - The model endpoint must use HTTPS and cannot embed credentials or query parameters. The Worker rejects an insecure endpoint before sending the model key.
 - Only `VITE_` values intended to be public may enter the frontend build. Inspect the built assets for secret values before deployment.
 - Use separate, low balance testnet wallets. Rotate a key immediately if it appears in a commit, log, artifact, screenshot, or chat. Removing it from a later commit does not undo exposure.
+- An early `.env.example` commit contained a low-integer example deployer key. It is public in Git history and must never hold funds or be reused. The release checks reject low-integer, repeated-byte, and the common Hardhat test wallet for production roles. They cannot prove that any other supplied key is private.
 - Keep R2 buckets private and restrict Cloudflare account access. Apply least privilege to GitHub and Cloudflare tokens.
-- The tracked credential guard scans repository files for local env files and common credential formats. It is a guardrail, not a substitute for provider secret scanning or human review.
+- The credential guard scans tracked files and reachable Git history for local env files and common credential formats. It excludes only the exact documented legacy example blob. It is a guardrail, not a substitute for provider secret scanning or human review.
 - The browser stores only request identifiers, transaction hashes, and status for recovery. It removes legacy plaintext questions from local history and only displays a recovered answer for the connected buyer wallet.
 
 ## Request and response boundary

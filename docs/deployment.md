@@ -15,7 +15,7 @@ Record the final values in a private release ledger, and publish only public add
 
 ## Deploy the contract and bindings
 
-1. Set `DEPLOYER_PRIVATE_KEY` and `MONAD_RPC_URL` locally. Deploy with `npm run deploy:testnet`. The script requires an explicit target network, checks chain ID 10143 on testnet, and refuses to proceed without a signer.
+1. Set a newly generated, private `DEPLOYER_PRIVATE_KEY` and `MONAD_RPC_URL` locally. Never fund or reuse the example key committed in early history. Deploy with `npm run deploy:testnet`. The script requires an explicit target network, rejects known unsafe example keys, checks chain ID 10143 on testnet, and refuses to proceed without a signer.
 2. Record the printed contract address and deployment transaction. The script checks that contract code exists at the address; verify the transaction again in the Monad explorer.
 3. Create private R2 buckets matching `worker/wrangler.toml`, including the preview bucket if used.
 4. Create the D1 database, replace `PLACEHOLDER_REPLACE_AFTER_D1_CREATE` with its actual ID in the deployment configuration, and apply migrations 0001 through 0006 in order.

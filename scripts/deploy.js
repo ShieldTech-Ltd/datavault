@@ -7,12 +7,23 @@ async function main() {
   if (hre.network.name === "monadTestnet" && !process.env.DEPLOYER_PRIVATE_KEY) {
     throw new Error("DEPLOYER_PRIVATE_KEY is required for Monad testnet deployment.");
   }
+  if (hre.network.name === "monadTestnet") {
+    const key = process.env.DEPLOYER_PRIVATE_KEY;
+    if (!/^0x[0-9a-fA-F]{64}$/.test(key) || BigInt(key) < (1n << 128n) ||
+        /^(?:0x)([0-9a-f]{2})\1{31}$/.test(key.toLowerCase())) {
+      throw new Error("DEPLOYER_PRIVATE_KEY is invalid or a known unsafe example key.");
+    }
+  }
   const network = await hre.ethers.provider.getNetwork();
   if (hre.network.name === "monadTestnet" && network.chainId !== 10143n) {
     throw new Error(`Unexpected chain ID ${network.chainId}; expected Monad testnet 10143.`);
   }
   const [deployer] = await hre.ethers.getSigners();
   if (!deployer) throw new Error("No deployer signer is configured.");
+  if (hre.network.name === "monadTestnet" &&
+      deployer.address.toLowerCase() === "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266") {
+    throw new Error("The public Hardhat test wallet cannot deploy to Monad testnet.");
+  }
   console.log("Deploying DataVault with account:", deployer.address);
   console.log("Network:", hre.network.name);
   console.log("Chain ID:", network.chainId.toString());

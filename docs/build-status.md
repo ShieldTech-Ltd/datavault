@@ -17,7 +17,7 @@ Updated 7 October 2026 for the stacked release branches. This is source and loca
 - `npm run test:contracts`: 20 passing.
 - `npm run typecheck` in Worker: passed.
 - `npm run typecheck` in frontend: passed.
-- `npm run test --prefix worker`: 86 passing after contributor PRs #46 and #47 merged.
+- `npm run test --prefix worker`: 89 passing after contributor PRs #46 and #47 merged.
 - `python3 scripts/check-secrets.py`: passed on the current tracked tree.
 - Frontend build passed after the registration signature change, with no generated JavaScript emitted into source files.
 

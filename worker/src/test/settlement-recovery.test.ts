@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
+import { keccak256, toBytes } from "viem";
 import { executionMessage } from "../../../shared/api";
 import { handleExecute, handleReconcile } from "../routes/queries";
 import type { Env } from "../lib/types";
@@ -39,7 +40,7 @@ const openTxHash = `0x${"cc".repeat(32)}`;
 const settleTxHash = `0x${"ee".repeat(32)}`;
 const contract = `0x${"dd".repeat(20)}`;
 const env = {
-  CONTRACT_ADDRESS: contract, SETTLEMENT_PRIVATE_KEY: `0x${"33".repeat(32)}`,
+  CONTRACT_ADDRESS: contract, SETTLEMENT_PRIVATE_KEY: keccak256(toBytes("datavault-test-operator")),
   MODEL_API_KEY: "test-model-key", CHAIN_ID: "10143", MONAD_RPC_URL: "http://localhost:8545",
 } as Env;
 const question = "What does the guide say?";

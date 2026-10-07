@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
+import { keccak256, toBytes } from "viem";
 import { handlePrepare, handleExecute, handleAnswerRecovery } from "../routes/queries";
 import { handleRegisterCollection, handleConfirmCollection } from "../routes/collections";
 import { callModel } from "../lib/model";
@@ -45,7 +46,7 @@ const collectionId = `0x${"bb".repeat(32)}`;
 const openTxHash = `0x${"cc".repeat(32)}`;
 const contract = `0x${"dd".repeat(20)}`;
 const env = {
-  CONTRACT_ADDRESS: contract, SETTLEMENT_PRIVATE_KEY: `0x${"33".repeat(32)}`,
+  CONTRACT_ADDRESS: contract, SETTLEMENT_PRIVATE_KEY: keccak256(toBytes("datavault-test-operator")),
   MODEL_API_KEY: "test-model-key", CHAIN_ID: "10143", MONAD_RPC_URL: "http://localhost:8545",
 } as Env;
 

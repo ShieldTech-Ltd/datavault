@@ -18,8 +18,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Scan tracked files
-        run: python3 scripts/check-secrets.py
+        run: python3 scripts/check-secrets.py --history
 
   database_invariants:
     name: D1 invariants
