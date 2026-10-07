@@ -45,7 +45,7 @@ class MockD1Statement {
     // INSERT OR IGNORE INTO queries
     // Bound args: request_id(0), collection_id(1), buyer_address(2), policy_version(3),
     //   question_digest(4), open_tx_hash(5), chain_id(6), contract_address(7),
-    //   content_hash(8), claimed_at(9), lease_expires_at(10), created_at(11)
+    //   content_hash(8), amount_wei(9), claimed_at(10), lease_expires_at(11), created_at(12)
     // Note: passage_ids='[]' and outcome='pending' are SQL literals, not bound args
     if (su.startsWith("INSERT OR IGNORE INTO QUERIES")) {
       const queries = this.tables.get("queries") ?? [];
@@ -63,11 +63,12 @@ class MockD1Statement {
         chain_id:         this.boundArgs[6],
         contract_address: this.boundArgs[7],
         content_hash:     this.boundArgs[8],
+        amount_wei:       this.boundArgs[9],
         passage_ids:      "[]",
         outcome:          "pending",
-        claimed_at:       this.boundArgs[9],
-        lease_expires_at: this.boundArgs[10],
-        created_at:       this.boundArgs[11],
+        claimed_at:       this.boundArgs[10],
+        lease_expires_at: this.boundArgs[11],
+        created_at:       this.boundArgs[12],
         settle_tx_hash:   null,
         refund_tx_hash:   null,
         response_digest:  null,

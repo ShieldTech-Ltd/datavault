@@ -7,6 +7,7 @@ const WINDOW_SECONDS = 60;
 const LIMITS: Record<string, number> = {
   execute:  10, // model calls are expensive
   register:  5,
+  catalogue: 30,
   default:  30,
 };
 

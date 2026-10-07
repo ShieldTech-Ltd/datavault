@@ -167,6 +167,7 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     open_tx_hash: openTxHash,
     chain_id: chainId,
     contract_address: env.CONTRACT_ADDRESS,
+    amount_wei: escrow.amount.toString(),
   }, env, LEASE_MS);
 
   if (!claimed) {
@@ -318,6 +319,7 @@ export async function handleReceipt(env: Env, requestId: string): Promise<Respon
       chainId: row.chain_id,
       contractAddress: row.contract_address,
       contentHash: row.content_hash,
+      amountWei: row.amount_wei,
       policyVersion: row.policy_version,
       openTxHash: row.open_tx_hash,
       settleTxHash: row.settle_tx_hash,

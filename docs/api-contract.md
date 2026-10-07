@@ -16,6 +16,12 @@ All signatures use EIP-191 personal signing. Send `x-signature` and `x-timestamp
 
 ## Public demo and quote
 
+`GET /api/collections?limit=12&offset=0&search=guide` returns at most 24 confirmed collection records per page. Search is a case-insensitive collection-name substring with a 64-character limit; SQL wildcard characters are treated literally. Each row is checked against current Monad owner and policy and includes name, owner, exact price, policy version, active status, recorded paid-query count, and whether the configured service can accept a new query. It never returns document text. An unavailable RPC produces 503, not an empty catalogue. `GET /api/collections/:id` returns one verified collection. The catalogue endpoints have a per-IP request quota.
+
+`GET /api/marketplace/analytics` returns settlements completed in the last 30 days, confirmed collection count, exact known revenue in wei, coverage of historical amount data, top earning collections when ranking is complete, and recent settlement metadata. Older query rows have null amounts, so revenue can be unavailable or a lower bound. No question, answer, or private passage is exposed. `GET /api/owner/analytics?address=0x...` requires a current signature over `datavault-owner-summary:<chainId>:<lowercase contract>:<lowercase owner>:<timestamp>` and limits the same data to collections registered by that owner.
+
+`GET /api/owner/collections?address=0x...&limit=12&offset=0` uses the same current owner signature as owner analytics. It returns only that owner's confirmed collections after checking each owner and policy on Monad, with current price, active status, paid-query count, and pagination metadata. It does not return private source text.
+
 `GET /api/demo` returns the configured sample collection ID, name, owner address, and current on-chain price only when its D1 row is confirmed and on-chain policy is active. Otherwise it returns 404. The sample ID is configured only after actual owner registration.
 
 `POST /api/queries/prepare` accepts `{ "collectionId": "0x...", "question": "..." }` and returns `{ "collectionId", "collectionName", "priceWei", "priceDisplay" }`. It returns 503 if contract, settlement key, or model key is absent or the configured settlement key does not match the collection's on-chain operator. A quote does not reserve a price. `openQuery` enforces the current price and active policy when the buyer signs.
@@ -47,7 +53,7 @@ A confirmed settlement returns `QueryResult` with `outcome: "settled"`, answer t
 
 To reconcile, sign `datavault-reconcile:<requestId>:<timestamp>` and `POST /api/queries/:id/reconcile` with signature headers. The response reports the current outcome and settlement hash. To recover a settled answer, sign `datavault-answer:<requestId>:<timestamp>` and `GET /api/queries/:id/answer`. Only the escrow buyer can recover it. The recovery response includes answer text, cited IDs, digest, outcome, and settlement hash.
 
-The public receipt contains request and collection IDs, buyer address, chain and contract, content hash, policy version, opening and settlement hashes, cited passage IDs, answer digest, outcome, and timestamps. It does not prove the buyer saw the answer or that the answer is factually correct.
+The public receipt contains request and collection IDs, buyer address, chain and contract, content hash, policy version, exact escrow amount when recorded, opening and settlement hashes, cited passage IDs, answer digest, outcome, and timestamps. Older receipts may have a null amount. It does not prove the buyer saw the answer or that the answer is factually correct.
 
 ## Limits and errors
 

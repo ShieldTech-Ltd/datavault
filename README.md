@@ -29,12 +29,12 @@ contracts/          Solidity contract and Hardhat tests
 frontend/           React + Vite + TypeScript UI
   src/
     lib/            Injected wallet context, Monad network, viem contract client
-    components/     ConnectButton, OwnerDashboard, BuyerDashboard
+    components/     Wallet, owner, buyer, and marketplace views
 worker/             Cloudflare Worker API
   src/
     lib/            policy.ts, model.ts, r2.ts, d1.ts, types.ts
-    routes/         collections.ts, queries.ts
-    test/           94 Vitest unit tests (validation, D1 state machine, rate limit, route auth)
+    routes/         collections, queries, catalogue, and analytics
+    test/           Worker unit and route tests
   migrations/       D1 SQL schema
 scripts/            Hardhat deploy script
 demo/               Team-authored UK Practical Guide (sample knowledge collection)
@@ -157,13 +157,13 @@ npm run typecheck:worker
 # Smart contract tests (20 Hardhat tests)
 npm run test:contracts
 
-# Worker unit tests (94 Vitest tests, no live chain or model calls)
+# Worker unit tests (no live chain or model calls)
 cd worker && npm test
 ```
 
 Contract tests cover: registerCollection, updatePolicy, openQuery, settleQuery, refundExpired, operator model, replay protection, timeout refund.
 
-Worker tests cover: input validation, D1 state machine transitions, rate limiting, route auth and access control. See `docs/testing.md` for full scope and live gate documentation.
+Worker tests cover: input validation, D1 state machine transitions, rate limiting, route auth and access control, catalogue filtering, and settlement analytics. See `docs/testing.md` for full scope and live gate documentation.
 
 ---
 
@@ -200,7 +200,7 @@ Worker tests cover: input validation, D1 state machine transitions, rate limitin
 
 ## Current release and submission status
 
-The source implements the owner and buyer flows, but a public deployment and live paid-query evidence have not yet been recorded. Use [the deployment runbook](docs/deployment.md) for the current release gates, [the security controls](docs/security.md) for credential and CI requirements, and [the API contract](docs/api-contract.md) for the buyer authorization protocol. The sample collection appears in the guided buyer view only after an actual owner registration has been confirmed and `DEMO_COLLECTION_ID` is configured. Content replacement is disabled until it can advance on-chain policy version.
+The source implements owner and buyer flows, plus a marketplace dashboard backed by verified collection metadata and recorded settlement data. A public deployment and live paid-query evidence have not yet been recorded. Use [the deployment runbook](docs/deployment.md) for the current release gates, [the security controls](docs/security.md) for credential and CI requirements, and [the API contract](docs/api-contract.md) for the buyer authorization protocol. The sample collection appears in the guided buyer view only after an actual owner registration has been confirmed and `DEMO_COLLECTION_ID` is configured. Content replacement is disabled until it can advance on-chain policy version.
 
 The repository is licensed under [MIT](LICENSE). External libraries include Hardhat and viem for contract development and chain access, React and Vite for the browser app, and Cloudflare Workers, R2, D1, and Wrangler for hosting and storage. Their package names and versions are recorded in the root, frontend, and worker package manifests and lockfiles. The team-authored sample guide is in `demo/` and must be fact-checked before public use. Any separately sourced assets or code must be attributed here before submission.
 

@@ -3,73 +3,249 @@ import { useWallet } from "./lib/wallet";
 import ConnectButton from "./components/ConnectButton";
 import OwnerDashboard from "./components/OwnerDashboard";
 import BuyerDashboard from "./components/BuyerDashboard";
+import MarketplaceOverview from "./components/MarketplaceOverview";
+import OwnerInsights from "./components/OwnerInsights";
+import "./app.css";
 
-type Tab = "owner" | "buyer";
+type View = "marketplace" | "collection";
 
 export default function App() {
   const { primaryWallet } = useWallet();
-  const [tab, setTab] = useState<Tab>("buyer");
-  const connected = Boolean(primaryWallet);
+  const [view, setView] = useState<View>("marketplace");
+  const [selectedCollection, setSelectedCollection] = useState<string | null>(
+    null
+  );
+  const [searchInput, setSearchInput] = useState("");
+  const [collectionSearch, setCollectionSearch] = useState("");
+  const [managedCollection, setManagedCollection] = useState<string | null>(
+    null
+  );
+
+  function showCollection() {
+    setView("collection");
+    window.setTimeout(
+      () =>
+        document
+          .getElementById("main-content")
+          ?.scrollIntoView({ behavior: "smooth" }),
+      0
+    );
+  }
 
   return (
-    <div style={styles.page}>
-      <header style={styles.header}>
-        <div style={styles.headerInner}>
-          <span style={styles.logo}>DataVault</span>
-          <span style={styles.tagline}>Paid, controlled AI access to private knowledge collections</span>
-          <ConnectButton />
+    <div className="app-shell">
+      <header className="app-header">
+        <div className="app-header-inner">
+          <a className="app-brand" href="/" aria-label="DataVault home">
+            <span className="app-brand-mark">D</span>
+            <span>DataVault</span>
+          </a>
+          <nav className="app-nav" aria-label="Primary navigation">
+            <button
+              type="button"
+              className={view === "marketplace" ? "active" : ""}
+              onClick={() => setView("marketplace")}
+            >
+              Marketplace
+            </button>
+            <button
+              type="button"
+              className={view === "collection" ? "active" : ""}
+              onClick={showCollection}
+            >
+              My collection
+            </button>
+          </nav>
+          <form
+            className="app-search"
+            role="search"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setCollectionSearch(searchInput.trim());
+              setView("marketplace");
+              window.setTimeout(
+                () =>
+                  document
+                    .getElementById("collections-heading")
+                    ?.scrollIntoView({ behavior: "smooth" }),
+                0
+              );
+            }}
+          >
+            <label className="sr-only" htmlFor="collection-search">
+              Search collections
+            </label>
+            <input
+              id="collection-search"
+              value={searchInput}
+              maxLength={64}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Search collections"
+            />
+            <button type="submit">Search</button>
+          </form>
+          <div className="app-header-actions">
+            <span className="app-network">
+              <span aria-hidden="true" /> Monad Testnet
+            </span>
+            <ConnectButton />
+          </div>
         </div>
       </header>
 
-      <main style={styles.main}>
-        {!connected && (
-          <div style={styles.hero}>
-            <h1>Connect your wallet to get started</h1>
-            <p>
-              Owners register a knowledge collection and set a per-query price.
-              Buyers sign a Monad transaction and receive a cited AI answer.
-            </p>
-            <p>
-              This app is a reference client for the paid-query API. Other AI services can use
-              the same escrow, policy checks, and receipt flow for their own collections.
-            </p>
-            <p style={styles.notice}>
-              Sign-in proves wallet ownership only. It does not prove content ownership or legal rights.
-            </p>
-          </div>
-        )}
-
-        {connected && (
+      <main className="app-main" id="main-content">
+        {view === "marketplace" ? (
           <>
-            <div style={styles.tabs}>
-              <button style={tab === "buyer" ? styles.tabActive : styles.tab} onClick={() => setTab("buyer")}>
-                Ask a Question
-              </button>
-              <button style={tab === "owner" ? styles.tabActive : styles.tab} onClick={() => setTab("owner")}>
-                Manage Collection
-              </button>
-            </div>
-            {tab === "buyer" ? <BuyerDashboard /> : <OwnerDashboard />}
+            <section className="app-hero" aria-labelledby="hero-heading">
+              <div className="app-hero-copy">
+                <p className="app-eyebrow">Knowledge marketplace on Monad</p>
+                <h1 id="hero-heading">
+                  Trusted knowledge,
+                  <br />
+                  <span>licensed on-chain.</span>
+                </h1>
+                <p>
+                  Owners set the price and access policy. Buyers pay for one
+                  question and receive an answer tied to private source
+                  passages.
+                </p>
+                <div className="app-hero-actions">
+                  <a className="app-primary-link" href="#workspace">
+                    Ask a paid query <span aria-hidden="true">&#8594;</span>
+                  </a>
+                  <button
+                    type="button"
+                    className="app-secondary-button"
+                    onClick={showCollection}
+                  >
+                    Publish a collection
+                  </button>
+                </div>
+                <div className="app-hero-points">
+                  <span>Source citations</span>
+                  <span>Escrow on Monad</span>
+                  <span>Owner-controlled access</span>
+                </div>
+              </div>
+              <div className="app-hero-art" aria-hidden="true">
+                <div className="art-orbit">
+                  <div className="art-sheet art-sheet-back" />
+                  <div className="art-sheet art-sheet-mid" />
+                  <div className="art-sheet art-sheet-front">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <div className="art-check">✓</div>
+                </div>
+                <p>
+                  Private knowledge
+                  <br />
+                  Clear terms
+                </p>
+              </div>
+            </section>
+
+            <section className="app-section" id="workspace">
+              <div className="app-section-heading">
+                <div>
+                  <p className="app-eyebrow">Query workspace</p>
+                  <h2>Ask a collection</h2>
+                  <p>
+                    Review the current price and policy before your wallet opens
+                    escrow.
+                  </p>
+                </div>
+                <span className="app-section-badge">Live data only</span>
+              </div>
+              <BuyerDashboard selectedCollection={selectedCollection} />
+            </section>
+            <MarketplaceOverview
+              search={collectionSearch}
+              onSelect={(id) => {
+                setSelectedCollection(id);
+                document
+                  .getElementById("workspace")
+                  ?.scrollIntoView({ behavior: "smooth" });
+              }}
+            />
+            <section className="app-process" aria-label="How DataVault works">
+              <div>
+                <span>01</span>
+                <h3>Owner sets the terms</h3>
+                <p>
+                  A collection owner registers a price and can pause new access
+                  on Monad.
+                </p>
+              </div>
+              <div>
+                <span>02</span>
+                <h3>Buyer opens escrow</h3>
+                <p>
+                  The buyer signs a transaction for the displayed price. The
+                  service verifies it before retrieval.
+                </p>
+              </div>
+              <div>
+                <span>03</span>
+                <h3>Answer has a receipt</h3>
+                <p>
+                  After a cited answer is generated, settlement pays the owner.
+                  Failed open escrow can be refunded after timeout.
+                </p>
+              </div>
+            </section>
           </>
+        ) : (
+          <section className="app-section app-owner-section">
+            <div className="app-section-heading">
+              <div>
+                <p className="app-eyebrow">Owner workspace</p>
+                <h1>Publish and control your knowledge</h1>
+                <p>
+                  Register a Markdown collection, set a query price, and pause
+                  or resume new access.
+                </p>
+              </div>
+            </div>
+            {primaryWallet ? (
+              <div className="app-owner-stack">
+                <OwnerInsights
+                  key={primaryWallet.address.toLowerCase()}
+                  onManage={setManagedCollection}
+                />
+                <div className="app-owner-card">
+                  <OwnerDashboard
+                    selectedCollection={managedCollection}
+                    onForget={() => setManagedCollection(null)}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="app-owner-card app-connect-state">
+                <h2>Connect an owner wallet</h2>
+                <p>
+                  A wallet signature is required to register a collection and
+                  change its on-chain policy.
+                </p>
+                <ConnectButton />
+              </div>
+            )}
+          </section>
         )}
       </main>
-      <footer style={{ padding: "1rem 0", borderTop: "1px solid #e5e7eb", fontSize: "0.8rem", color: "#6b7280" }}>
-        Monad testnet demo. <a href="https://github.com/ShieldTech-Ltd/datavault" target="_blank" rel="noreferrer">Source and API details</a>.
+
+      <footer className="app-footer">
+        <span>DataVault on Monad testnet</span>
+        <a
+          href="https://github.com/ShieldTech-Ltd/datavault"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Source code and API
+        </a>
+        <span>Content hashes record integrity, not ownership.</span>
       </footer>
     </div>
   );
 }
-
-const styles = {
-  page: { fontFamily: "system-ui, sans-serif", maxWidth: 900, margin: "0 auto", padding: "0 1rem" },
-  header: { borderBottom: "1px solid #e5e7eb", padding: "1rem 0", marginBottom: "2rem" },
-  headerInner: { display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" as const },
-  logo: { fontWeight: 700, fontSize: "1.25rem", letterSpacing: "-0.02em" },
-  tagline: { color: "#6b7280", fontSize: "0.875rem", flex: 1 },
-  main: { paddingBottom: "3rem" },
-  hero: { textAlign: "center" as const, padding: "3rem 1rem" },
-  notice: { color: "#9ca3af", fontSize: "0.8rem", marginTop: "1rem" },
-  tabs: { display: "flex", gap: "0.5rem", marginBottom: "1.5rem" },
-  tab: { padding: "0.5rem 1.25rem", border: "1px solid #d1d5db", borderRadius: 6, background: "white", cursor: "pointer" },
-  tabActive: { padding: "0.5rem 1.25rem", border: "1px solid #6366f1", borderRadius: 6, background: "#6366f1", color: "white", cursor: "pointer", fontWeight: 600 },
-} as const;

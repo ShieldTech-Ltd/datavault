@@ -70,6 +70,7 @@ export async function claimQuery(
     chain_id?: number;
     contract_address?: string;
     content_hash?: string;
+    amount_wei?: string;
   },
   env: Env,
   leaseMs = 60_000,
@@ -78,14 +79,15 @@ export async function claimQuery(
   const result = await env.DB.prepare(
     `INSERT OR IGNORE INTO queries
        (request_id, collection_id, buyer_address, policy_version, question_digest,
-        open_tx_hash, chain_id, contract_address, content_hash,
+        open_tx_hash, chain_id, contract_address, content_hash, amount_wei,
         passage_ids, outcome, claimed_at, lease_expires_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'pending', ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', 'pending', ?, ?, ?)`,
   )
     .bind(
       row.request_id, row.collection_id, row.buyer_address, row.policy_version,
       row.question_digest,
       row.open_tx_hash ?? null, row.chain_id ?? null, row.contract_address ?? null, row.content_hash ?? null,
+      row.amount_wei ?? null,
       now, now + leaseMs, now,
     )
     .run();

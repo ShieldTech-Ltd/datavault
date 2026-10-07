@@ -78,6 +78,11 @@ beforeEach(() => {
 });
 
 describe("settlement uncertainty after answer recording", () => {
+  it("claims the exact on-chain escrow amount for revenue records", async () => {
+    await execute();
+    expect(mocks.claimQuery).toHaveBeenCalledWith(expect.objectContaining({ amount_wei: "100" }), env, expect.any(Number));
+  });
+
   it("preserves the answer if the settlement broadcast reports an ambiguous error", async () => {
     mocks.settle.mockRejectedValue(new Error("RPC connection lost"));
     const response = await execute();

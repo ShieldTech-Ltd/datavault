@@ -18,7 +18,7 @@ Live chain and model calls are never made in PR CI. All tests run against in-mem
 # Smart contract tests (Hardhat, 20 tests)
 npm run test:contracts
 
-# Worker unit + route tests (Vitest, 53 tests)
+# Worker unit + route tests (Vitest)
 cd worker
 npm test
 

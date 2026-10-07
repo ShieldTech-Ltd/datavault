@@ -49,6 +49,7 @@ export interface QueryRow {
   chain_id: number | null;
   contract_address: string | null;
   content_hash: string | null;
+  amount_wei: string | null;
   policy_version: number;
   question_digest: string;
   passage_ids: string;

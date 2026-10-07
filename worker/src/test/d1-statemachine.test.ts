@@ -24,6 +24,7 @@ function baseRow() {
     chain_id:        10143,
     contract_address: "0x" + "11".repeat(20),
     content_hash:    "0x" + "22".repeat(32),
+    amount_wei: "1000000000000000",
   };
 }
 
@@ -50,11 +51,12 @@ describe("claimQuery", () => {
     expect(second).toBe(false);
   });
 
-  it("stores open_tx_hash, chain_id, contract_address", async () => {
+  it("stores exact escrow amount with chain and opening transaction", async () => {
     await claimQuery(baseRow(), env as never);
     const row = await getQueryRow(REQ_ID, env as never);
     expect(row?.open_tx_hash).toBe(TX_HASH);
     expect(row?.chain_id).toBe(10143);
+    expect(row?.amount_wei).toBe("1000000000000000");
   });
 });
 
