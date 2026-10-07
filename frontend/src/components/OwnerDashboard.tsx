@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
-import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
-import { isEthereumWallet } from "@dynamic-labs/ethereum";
+import { useWallet } from "@/lib/wallet";
 import { DATAVAULT_ABI, CONTRACT_ADDRESS, viemClient } from "@/lib/contract";
 import { encodeFunctionData, parseEther, formatEther, keccak256, toBytes } from "viem";
 import { registrationMessage } from "../../../shared/api";
 
-const MONAD_CHAIN_ID = 10143;
+const MONAD_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID) || 10143;
 const STORAGE_KEY = "datavault_collection_id";
 
 type Step = "idle" | "uploading" | "awaiting_wallet" | "awaiting_confirm" | "done" | "error";
@@ -19,7 +18,7 @@ interface OnChainPolicy {
 }
 
 export default function OwnerDashboard() {
-  const { primaryWallet } = useDynamicContext();
+  const { primaryWallet } = useWallet();
   const [file, setFile] = useState<File | null>(null);
   const [priceEth, setPriceEth] = useState("0.001");
   const [step, setStep] = useState<Step>("idle");
@@ -34,8 +33,11 @@ export default function OwnerDashboard() {
 
   // Load saved collection and on-chain state after connect or refresh
   useEffect(() => {
+    setPolicy(null);
+    setLoadingPolicy(false);
     const savedId = localStorage.getItem(STORAGE_KEY);
     if (!savedId || !walletAddress || !contractReady) return;
+    let active = true;
     setLoadingPolicy(true);
     viemClient
       .readContract({
@@ -46,7 +48,7 @@ export default function OwnerDashboard() {
       })
       .then((col) => {
         const c = col as [string, string, bigint, number, boolean];
-        if (c[0].toLowerCase() === walletAddress.toLowerCase() && c[2] > 0n) {
+        if (active && c[0].toLowerCase() === walletAddress.toLowerCase() && c[2] > 0n) {
           setPolicy({
             collectionId: savedId,
             price: c[2],
@@ -57,11 +59,12 @@ export default function OwnerDashboard() {
         }
       })
       .catch(() => {})
-      .finally(() => setLoadingPolicy(false));
+      .finally(() => { if (active) setLoadingPolicy(false); });
+    return () => { active = false; };
   }, [walletAddress, contractReady]);
 
   async function checkNetwork(): Promise<boolean> {
-    if (!primaryWallet || !isEthereumWallet(primaryWallet)) return false;
+    if (!primaryWallet) return false;
     const wc = await primaryWallet.getWalletClient();
     const chainId = await wc.getChainId();
     if (chainId !== MONAD_CHAIN_ID) {
@@ -86,7 +89,6 @@ export default function OwnerDashboard() {
 
     try {
       if (!(await checkNetwork())) return;
-      if (!isEthereumWallet(primaryWallet)) throw new Error("Not an Ethereum wallet");
       const walletClient = await primaryWallet.getWalletClient();
       const contentHash = keccak256(toBytes(await file.text()));
       const priceWei = parseEther(priceEth);
@@ -157,7 +159,6 @@ export default function OwnerDashboard() {
     setPolicyTxPending(true);
     try {
       const newActive = !policy.active;
-      if (!isEthereumWallet(primaryWallet)) throw new Error("Not an Ethereum wallet");
       const walletClient = await primaryWallet.getWalletClient();
       const data = encodeFunctionData({
         abi: DATAVAULT_ABI,

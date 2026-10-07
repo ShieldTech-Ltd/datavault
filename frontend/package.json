@@ -10,8 +10,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@dynamic-labs/ethereum": "^5.9.3",
-    "@dynamic-labs/sdk-react-core": "^5.9.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "viem": "^2.21.19"

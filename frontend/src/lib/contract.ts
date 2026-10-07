@@ -1,5 +1,5 @@
 import { createPublicClient, http, parseAbi } from "viem";
-import { monadTestnet } from "./dynamic";
+import { monadTestnet } from "./network";
 
 export const DATAVAULT_ABI = parseAbi([
   "function registerCollection(bytes32 collectionId, uint256 price, address operator) external",

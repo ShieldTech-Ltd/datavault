@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
-import { isEthereumWallet } from "@dynamic-labs/ethereum";
+import { useWallet } from "@/lib/wallet";
 import { encodeFunctionData, formatEther, keccak256, toBytes } from "viem";
 import { DATAVAULT_ABI, CONTRACT_ADDRESS, viemClient } from "@/lib/contract";
 import { executionMessage, type CitedPassage, type QueryResult, type RecoveredAnswer } from "../../../shared/api";
@@ -52,7 +51,7 @@ async function sha256Hex(value: string): Promise<string> {
 }
 
 export default function BuyerDashboard() {
-  const { primaryWallet } = useDynamicContext();
+  const { primaryWallet } = useWallet();
   const address = primaryWallet?.address ?? "";
   const [demo, setDemo] = useState<Demo | null>(null);
   const [collectionId, setCollectionId] = useState("");
@@ -84,7 +83,7 @@ export default function BuyerDashboard() {
   function changeQuestion(value: string) { setQuestion(value); setQuote(null); setStep("idle"); }
 
   async function wallet() {
-    if (!primaryWallet || !isEthereumWallet(primaryWallet)) throw new Error("Connect an EVM wallet first.");
+    if (!primaryWallet) throw new Error("Connect an EVM wallet first.");
     const client = await primaryWallet.getWalletClient();
     if (await client.getChainId() !== CHAIN_ID) throw new Error(`Switch your wallet to Monad testnet (${CHAIN_ID}).`);
     return client;

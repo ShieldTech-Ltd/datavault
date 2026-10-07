@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
+import { useWallet } from "./lib/wallet";
 import ConnectButton from "./components/ConnectButton";
 import OwnerDashboard from "./components/OwnerDashboard";
 import BuyerDashboard from "./components/BuyerDashboard";
@@ -7,7 +7,7 @@ import BuyerDashboard from "./components/BuyerDashboard";
 type Tab = "owner" | "buyer";
 
 export default function App() {
-  const { primaryWallet } = useDynamicContext();
+  const { primaryWallet } = useWallet();
   const [tab, setTab] = useState<Tab>("buyer");
   const connected = Boolean(primaryWallet);
 

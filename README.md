@@ -28,13 +28,13 @@ contracts/          Solidity contract and Hardhat tests
   test/             20 unit tests (all passing)
 frontend/           React + Vite + TypeScript UI
   src/
-    lib/            Dynamic SDK config, viem contract client
+    lib/            Injected wallet context, Monad network, viem contract client
     components/     ConnectButton, OwnerDashboard, BuyerDashboard
 worker/             Cloudflare Worker API
   src/
     lib/            policy.ts, model.ts, r2.ts, d1.ts, types.ts
     routes/         collections.ts, queries.ts
-    test/           53 Vitest unit tests (validation, D1 state machine, rate limit, route auth)
+    test/           79 Vitest unit tests (validation, D1 state machine, rate limit, route auth)
   migrations/       D1 SQL schema
 scripts/            Hardhat deploy script
 demo/               Team-authored UK Practical Guide (sample knowledge collection)
@@ -49,8 +49,7 @@ shared/             Shared ABI constant
 - Node.js 18+ (v25 works with a Hardhat warning)
 - npm 9+
 - Cloudflare account with Workers, R2, and D1 enabled
-- Dynamic account at app.dynamic.xyz
-- Monad testnet wallet with test MON
+- Injected EVM wallet or wallet browser with Monad testnet and test MON
 - AI model API key (OpenAI or Kimi)
 
 ---
@@ -72,7 +71,6 @@ cp frontend/.env.example frontend/.env
 ```
 
 Fill in:
-- `VITE_DYNAMIC_ENVIRONMENT_ID` from app.dynamic.xyz
 - `VITE_CONTRACT_ADDRESS` after deploying the contract (Step 4)
 
 ### 3. Configure the Worker
@@ -173,7 +171,6 @@ Worker tests cover: input validation, D1 state machine transitions, rate limitin
 
 | Variable | Purpose |
 |----------|---------|
-| `VITE_DYNAMIC_ENVIRONMENT_ID` | Dynamic SDK environment |
 | `VITE_CONTRACT_ADDRESS` | Deployed DataVault contract |
 | `VITE_CHAIN_ID` | Monad testnet chain ID (default: 10143) |
 | `VITE_CHAIN_RPC_URL` | Monad RPC (default: https://testnet-rpc.monad.xyz) |
@@ -195,7 +192,7 @@ Worker tests cover: input validation, D1 state machine transitions, rate limitin
 ## Ownership
 
 **Tanvir:** Solidity contracts, Worker API, R2 and D1, payment state machine, security checks, AI model integration.  
-**Ritik:** React frontend, Dynamic SDK sign-in flow, owner and buyer UX, demo video editing.
+**Ritik:** React frontend, injected wallet connection, owner and buyer UX, demo video editing.
 
 ---
 
@@ -203,6 +200,6 @@ Worker tests cover: input validation, D1 state machine transitions, rate limitin
 
 The source implements the owner and buyer flows, but a public deployment and live paid-query evidence have not yet been recorded. Use [the deployment runbook](docs/deployment.md) for the current release gates, [the security controls](docs/security.md) for credential and CI requirements, and [the API contract](docs/api-contract.md) for the buyer authorization protocol. The sample collection appears in the guided buyer view only after an actual owner registration has been confirmed and `DEMO_COLLECTION_ID` is configured. Content replacement is disabled until it can advance on-chain policy version.
 
-The repository is licensed under [MIT](LICENSE). External libraries include Hardhat and viem for contract development and chain access, Dynamic SDK for wallet connection, React and Vite for the browser app, and Cloudflare Workers, R2, D1, and Wrangler for hosting and storage. Their package names and versions are recorded in the root, frontend, and worker package manifests and lockfiles. The team-authored sample guide is in `demo/` and must be fact-checked before public use. Any separately sourced assets or code must be attributed here before submission.
+The repository is licensed under [MIT](LICENSE). External libraries include Hardhat and viem for contract development and chain access, React and Vite for the browser app, and Cloudflare Workers, R2, D1, and Wrangler for hosting and storage. Their package names and versions are recorded in the root, frontend, and worker package manifests and lockfiles. The team-authored sample guide is in `demo/` and must be fact-checked before public use. Any separately sourced assets or code must be attributed here before submission.
 
 AI coding tools were used to help write and revise parts of this project, including the demo readiness changes. Contributors remain responsible for reviewing, testing, and verifying the submitted code and claims. A hash records content integrity within this service. It does not establish copyright ownership, prevent external AI systems from using content, or erase answers already delivered.

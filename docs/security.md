@@ -20,8 +20,8 @@ The paid path handles private source material, buyer questions, and a settlement
 
 ## CI and release decision
 
-The existing CI runs contract tests, frontend typecheck/build, and Worker typecheck in parallel. PR #46 adds the Worker test runner and full test job. The separate Security workflow runs a dependency-free tracked credential guard and production dependency audits. It has read-only repository permission and no production secrets.
+CI runs contract tests, frontend typecheck/build, and Worker typecheck and tests in parallel. The separate Security workflow runs a tracked credential guard and production dependency audits. It has read-only repository permission and no production secrets.
 
-At this snapshot, the frontend production lockfile has ten high severity npm advisories in the Dynamic wallet dependency tree. The audit gate is expected to fail. Review upstream fixes and update dependencies with wallet connection and transaction regression tests. Do not waive the audit solely to turn CI green. The root and Worker production audits currently report zero high or critical advisories.
+The frontend uses the existing viem dependency with an injected EVM wallet. The production dependency audit currently reports zero known advisories locally. Keep the audit gate active and repeat it before deployment; registry data can change. Wallet connection and transaction flows still require a live browser regression check.
 
-Before deployment, require the CI and Security checks on the protected branch, review the combined result after PRs #46 and #47 merge, verify no keys in assets or logs, and run the live paid, recovery, pause, and refund checks in [deployment.md](deployment.md). Keep the PR in draft while any release gate fails.
+Before deployment, require the CI and Security checks on the protected branch, review the combined result, verify no keys in assets or logs, and run the live paid, recovery, pause, and refund checks in [deployment.md](deployment.md). Keep the PR in draft while any release gate fails.

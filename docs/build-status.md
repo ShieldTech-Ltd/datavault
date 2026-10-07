@@ -1,6 +1,6 @@
 # DataVault build status
 
-Updated 6 October 2026 for the demo readiness branch. This is source and local verification evidence, not a deployment claim.
+Updated 7 October 2026 for the stacked release branches. This is source and local verification evidence, not a deployment claim.
 
 ## Implemented in source
 
@@ -17,16 +17,16 @@ Updated 6 October 2026 for the demo readiness branch. This is source and local v
 - `npm run test:contracts`: 20 passing.
 - `npm run typecheck` in Worker: passed.
 - `npm run typecheck` in frontend: passed.
-- `vitest run src/test/demo-readiness.test.ts src/test/http-security.test.ts` with local Vitest install: 12 passing. The committed Vitest dependency and CI integration remain in contributor PR #46.
+- `npm run test --prefix worker`: 79 passing after contributor PRs #46 and #47 merged.
 - `python3 scripts/check-secrets.py`: passed on the current tracked tree.
 - Frontend build passed after the registration signature change, with no generated JavaScript emitted into source files.
 
 ## Gates before public deployment
 
-- Merge and rebase contributor PRs #46 and #47, then run all combined tests and update the README without overwriting their work.
-- Resolve the ten high severity advisories in the frontend production dependency tree and pass the Security workflow. See `docs/security.md`.
-- Verify a real Dynamic login, signed registration, signed payment, private R2 and D1 access, actual model response, and owner payout on the configured Monad network.
-- Add real Cloudflare D1 and R2 resource identifiers, a deployed contract, Worker secrets, Dynamic origin, and a confirmed sample collection. The tracked Wrangler configuration still contains a placeholder database ID.
+- Merge readiness PR #48 and its stacked security PR #49 after all checks and live gates pass.
+- Confirm the three production dependency audits remain clear in CI. The injected wallet replacement removed the vulnerable Dynamic dependency tree, but still needs a live browser wallet regression check.
+- Verify a real injected-wallet connection, signed registration, signed payment, private R2 and D1 access, actual model response, and owner payout on the configured Monad network.
+- Add real Cloudflare D1 and R2 resource identifiers, a deployed contract, Worker secrets, public site origin, and a confirmed sample collection. The tracked Wrangler configuration still contains a placeholder database ID.
 - Review time-sensitive claims in the sample guide and collect actual user feedback. Do not invent results.
 - Run the clean-browser live acceptance checklist in `docs/deployment.md` before calling the demo ready.
 
