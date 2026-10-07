@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useWallet } from "@/lib/wallet";
 import { encodeFunctionData, formatEther, keccak256, toBytes } from "viem";
 import { DATAVAULT_ABI, CONTRACT_ADDRESS, viemClient } from "@/lib/contract";
+import { transactionExplorerUrl } from "@/lib/network";
 import {
   buyerHistoryMessage,
   executionMessage,
@@ -737,13 +738,39 @@ export default function BuyerDashboard({
             <dl className="proof-receipt">
               <div>
                 <dt>Opening transaction</dt>
-                <dd>{visibleAnswer.openTxHash}</dd>
+                <dd>
+                  {visibleAnswer.openTxHash}
+                  {transactionExplorerUrl(visibleAnswer.openTxHash) && (
+                    <a
+                      href={transactionExplorerUrl(visibleAnswer.openTxHash)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View on Monad explorer
+                    </a>
+                  )}
+                </dd>
               </div>
               <div>
                 <dt>Settlement transaction</dt>
-                <dd>{visibleAnswer.settleTxHash ?? "Pending confirmation"}</dd>
+                <dd>
+                  {visibleAnswer.settleTxHash ?? "Pending confirmation"}
+                  {transactionExplorerUrl(visibleAnswer.settleTxHash) && (
+                    <a
+                      href={transactionExplorerUrl(visibleAnswer.settleTxHash)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View on Monad explorer
+                    </a>
+                  )}
+                </dd>
               </div>
             </dl>
+            <p className="proof-limitation">
+              The receipt links the payment to a content version and cited
+              passages. It does not establish that the answer is correct.
+            </p>
             <a
               className="workspace-secondary-button"
               href={`/api/queries/${visibleAnswer.requestId}/receipt`}

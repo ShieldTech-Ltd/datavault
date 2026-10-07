@@ -22,3 +22,13 @@ export const monadTestnet: EvmNetwork = {
   rpcUrls: [import.meta.env.VITE_CHAIN_RPC_URL || "https://testnet-rpc.monad.xyz"],
   vanityName: "Monad Testnet",
 };
+
+export function transactionExplorerUrl(hash: string | null): string | null {
+  if (
+    monadTestnet.chainId !== 10143 ||
+    !hash ||
+    !/^0x[0-9a-fA-F]{64}$/.test(hash)
+  )
+    return null;
+  return `${monadTestnet.blockExplorerUrls[0]}/tx/${hash}`;
+}

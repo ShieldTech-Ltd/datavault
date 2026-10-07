@@ -712,6 +712,19 @@ summary:focus-visible {
   text-align: right;
   font-family: ui-monospace, monospace;
 }
+.proof-receipt dd a {
+  display: block;
+  margin-top: 4px;
+  color: #075f49;
+  font-family: inherit;
+  font-weight: 700;
+}
+.proof-limitation {
+  margin: 0 0 14px;
+  color: #547070;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
 .workspace-history {
   margin-top: 22px;
   border-top: 1px solid #e4eceb;
