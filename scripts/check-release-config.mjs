@@ -40,9 +40,6 @@ const d1Id = setting("database_id");
 if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(d1Id)) {
   errors.push("worker/wrangler.toml needs the real D1 database_id");
 }
-if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(process.env.VITE_DYNAMIC_ENVIRONMENT_ID ?? "")) {
-  errors.push("VITE_DYNAMIC_ENVIRONMENT_ID must be a Dynamic environment UUID");
-}
 requiredUrl("MONAD_RPC_URL", setting("MONAD_RPC_URL"));
 if (process.env.MONAD_RPC_URL && process.env.MONAD_RPC_URL !== setting("MONAD_RPC_URL")) {
   errors.push("MONAD_RPC_URL in the shell must match worker/wrangler.toml");

@@ -13,4 +13,4 @@ Target a technical video under three minutes. Record the actual deployed app and
 
 Refund and refresh recovery require separate live acceptance evidence. A genuine ten-minute timeout cannot be compressed into a continuous three-minute demonstration. If shown in an edited clip, display the actual opening and refund transaction timestamps. Do not describe a recorded clip as a fresh live run.
 
-Before recording, verify owner and buyer balances, model quota, Dynamic origins, R2 privacy, and a clean browser. After recording, repeat one paid query against the frozen deployment and verify that the video still matches its commit, contract, and content version. Keep questions, private passages, API keys, and wallet recovery material out of editing assets and published metadata.
+Before recording, verify owner and buyer balances, model quota, public site origin, R2 privacy, and a clean browser. After recording, repeat one paid query against the frozen deployment and verify that the video still matches its commit, contract, and content version. Keep questions, private passages, API keys, and wallet recovery material out of editing assets and published metadata.
