@@ -1,30 +1,11 @@
 import { useState, useEffect } from "react";
-import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
-import { isEthereumWallet } from "@dynamic-labs/ethereum";
+import { useWallet } from "@/lib/wallet";
 import { DATAVAULT_ABI, CONTRACT_ADDRESS, viemClient } from "@/lib/contract";
-import { encodeFunctionData, parseEther, formatEther } from "viem";
+import { encodeFunctionData, parseEther, formatEther, keccak256, toBytes } from "viem";
+import { registrationMessage } from "../../../shared/api";
 
-const MONAD_CHAIN_ID = 10143;
+const MONAD_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID) || 10143;
 const STORAGE_KEY = "datavault_collection_id";
-
-async function sha256Hex(text: string): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function signUpload(
-  walletClient: { signMessage: (args: { message: string }) => Promise<`0x${string}`> },
-  collectionId: string,
-  content: string,
-): Promise<{ signature: string; timestamp: number }> {
-  const timestamp = Date.now();
-  const contentHash = await sha256Hex(content);
-  const message = `datavault-upload:${collectionId}:${contentHash}:${timestamp}`;
-  const signature = await walletClient.signMessage({ message });
-  return { signature, timestamp };
-}
 
 type Step = "idle" | "uploading" | "awaiting_wallet" | "awaiting_confirm" | "done" | "error";
 
@@ -37,7 +18,7 @@ interface OnChainPolicy {
 }
 
 export default function OwnerDashboard() {
-  const { primaryWallet } = useDynamicContext();
+  const { primaryWallet } = useWallet();
   const [file, setFile] = useState<File | null>(null);
   const [priceEth, setPriceEth] = useState("0.001");
   const [step, setStep] = useState<Step>("idle");
@@ -45,8 +26,6 @@ export default function OwnerDashboard() {
   const [policy, setPolicy] = useState<OnChainPolicy | null>(null);
   const [loadingPolicy, setLoadingPolicy] = useState(false);
   const [disclosureAccepted, setDisclosureAccepted] = useState(false);
-  const [reuploadFile, setReuploadFile] = useState<File | null>(null);
-  const [reuploadStatus, setReuploadStatus] = useState("");
   const [policyTxPending, setPolicyTxPending] = useState(false);
 
   const contractReady = Boolean(CONTRACT_ADDRESS);
@@ -54,8 +33,11 @@ export default function OwnerDashboard() {
 
   // Load saved collection and on-chain state after connect or refresh
   useEffect(() => {
+    setPolicy(null);
+    setLoadingPolicy(false);
     const savedId = localStorage.getItem(STORAGE_KEY);
     if (!savedId || !walletAddress || !contractReady) return;
+    let active = true;
     setLoadingPolicy(true);
     viemClient
       .readContract({
@@ -65,23 +47,24 @@ export default function OwnerDashboard() {
         args: [savedId as `0x${string}`],
       })
       .then((col) => {
-        const c = col as { owner: string; price: bigint; active: boolean; policyVersion: number };
-        if (c.owner.toLowerCase() === walletAddress.toLowerCase() && c.price > 0n) {
+        const c = col as [string, string, bigint, number, boolean];
+        if (active && c[0].toLowerCase() === walletAddress.toLowerCase() && c[2] > 0n) {
           setPolicy({
             collectionId: savedId,
-            price: c.price,
-            active: c.active,
-            policyVersion: c.policyVersion,
+            price: c[2],
+            active: c[4],
+            policyVersion: c[3],
             collectionName: "",
           });
         }
       })
       .catch(() => {})
-      .finally(() => setLoadingPolicy(false));
+      .finally(() => { if (active) setLoadingPolicy(false); });
+    return () => { active = false; };
   }, [walletAddress, contractReady]);
 
   async function checkNetwork(): Promise<boolean> {
-    if (!primaryWallet || !isEthereumWallet(primaryWallet)) return false;
+    if (!primaryWallet) return false;
     const wc = await primaryWallet.getWalletClient();
     const chainId = await wc.getChainId();
     if (chainId !== MONAD_CHAIN_ID) {
@@ -105,25 +88,30 @@ export default function OwnerDashboard() {
     setStatusMsg("Uploading collection to Worker...");
 
     try {
+      if (!(await checkNetwork())) return;
+      const walletClient = await primaryWallet.getWalletClient();
+      const contentHash = keccak256(toBytes(await file.text()));
+      const priceWei = parseEther(priceEth);
+      const timestamp = Date.now();
+      const signature = await walletClient.signMessage({ message: registrationMessage(
+        MONAD_CHAIN_ID, CONTRACT_ADDRESS!, walletAddress, contentHash, priceWei.toString(), timestamp,
+      ) });
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("priceWei", parseEther(priceEth).toString());
+      formData.append("priceWei", priceWei.toString());
       formData.append("ownerAddress", walletAddress);
 
-      const res = await fetch("/api/collections", { method: "POST", body: formData });
+      const res = await fetch("/api/collections", { method: "POST", body: formData,
+        headers: { "x-signature": signature, "x-timestamp": String(timestamp) } });
       if (!res.ok) {
         const text = await res.text();
         throw new Error(text);
       }
       const { collectionId, txCalldata } = (await res.json()) as { collectionId: string; txCalldata: string };
 
-      if (!(await checkNetwork())) return;
-
       setStep("awaiting_wallet");
       setStatusMsg("Sign the registration transaction in your wallet...");
 
-      if (!isEthereumWallet(primaryWallet)) throw new Error("Not an Ethereum wallet");
-      const walletClient = await primaryWallet.getWalletClient();
       let txHash: string;
       try {
         txHash = await walletClient.sendTransaction({
@@ -136,6 +124,8 @@ export default function OwnerDashboard() {
 
       setStep("awaiting_confirm");
       setStatusMsg("Waiting for on-chain confirmation...");
+      const receipt = await viemClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+      if (receipt.status !== "success") throw new Error("Registration transaction reverted.");
 
       const confirmRes = await fetch(`/api/collections/${collectionId}/confirm`, {
         method: "POST",
@@ -147,7 +137,6 @@ export default function OwnerDashboard() {
         throw new Error(text);
       }
 
-      const priceWei = parseEther(priceEth);
       localStorage.setItem(STORAGE_KEY, collectionId);
       setPolicy({
         collectionId,
@@ -164,33 +153,12 @@ export default function OwnerDashboard() {
     }
   }
 
-  async function handleReupload() {
-    if (!primaryWallet || !reuploadFile || !policy) return;
-    setReuploadStatus("Signing upload...");
-    try {
-      if (!isEthereumWallet(primaryWallet)) throw new Error("Not an Ethereum wallet");
-      const walletClient = await primaryWallet.getWalletClient();
-      const content = await reuploadFile.text();
-      const { signature, timestamp } = await signUpload(walletClient, policy.collectionId, content);
-      const res = await fetch(`/api/collections/${policy.collectionId}/upload`, {
-        method: "POST",
-        body: content,
-        headers: { "Content-Type": "text/markdown", "x-signature": signature, "x-timestamp": String(timestamp) },
-      });
-      if (!res.ok) throw new Error(await res.text());
-      setReuploadStatus("Content updated successfully.");
-    } catch (err: unknown) {
-      setReuploadStatus("Error: " + (err instanceof Error ? err.message : String(err)));
-    }
-  }
-
   async function handleTogglePause() {
     if (!primaryWallet || !policy || !contractReady) return;
     if (!(await checkNetwork())) return;
     setPolicyTxPending(true);
     try {
       const newActive = !policy.active;
-      if (!isEthereumWallet(primaryWallet)) throw new Error("Not an Ethereum wallet");
       const walletClient = await primaryWallet.getWalletClient();
       const data = encodeFunctionData({
         abi: DATAVAULT_ABI,
@@ -203,15 +171,15 @@ export default function OwnerDashboard() {
       } catch (err: unknown) {
         throw new Error("Transaction rejected: " + (err instanceof Error ? err.message : String(err)));
       }
-      // Verify on-chain before updating UI
-      await new Promise((r) => setTimeout(r, 3000));
+      const receipt = await viemClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+      if (receipt.status !== "success") throw new Error("Policy transaction reverted.");
       const col = (await viemClient.readContract({
         address: CONTRACT_ADDRESS!,
         abi: DATAVAULT_ABI,
         functionName: "getCollection",
         args: [policy.collectionId as `0x${string}`],
-      })) as { active: boolean; policyVersion: number };
-      setPolicy({ ...policy, active: col.active, policyVersion: col.policyVersion });
+      })) as [string, string, bigint, number, boolean];
+      setPolicy({ ...policy, active: col[4], policyVersion: col[3] });
       setStatusMsg(`Policy updated. Tx: ${txHash}`);
     } catch (err: unknown) {
       setStatusMsg("Error: " + (err instanceof Error ? err.message : String(err)));
@@ -341,33 +309,9 @@ export default function OwnerDashboard() {
             </button>
           </div>
 
-          <div style={{ marginTop: "1.25rem", borderTop: "1px solid #e2e8f0", paddingTop: "1rem" }}>
-            <strong style={{ fontSize: "0.9rem" }}>Update collection content</strong>
-            <p style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "0.25rem" }}>
-              Replacing the document does not affect open escrows. Buyers who already paid receive
-              answers from the version that was active when they queried.
-            </p>
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.5rem", flexWrap: "wrap" }}>
-              <input
-                type="file"
-                accept=".md,.txt"
-                onChange={(e) => setReuploadFile(e.target.files?.[0] ?? null)}
-                style={styles.input}
-              />
-              <button
-                onClick={handleReupload}
-                disabled={!reuploadFile}
-                style={{ ...styles.button, background: "#64748b" }}
-              >
-                Update (signed)
-              </button>
-            </div>
-            {reuploadStatus && (
-              <div style={{ fontSize: "0.82rem", marginTop: "0.4rem", color: reuploadStatus.startsWith("Error") ? "#dc2626" : "#16a34a" }}>
-                {reuploadStatus}
-              </div>
-            )}
-          </div>
+          <p style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "1rem" }}>
+            Document replacement is unavailable while policy versioning is being completed.
+          </p>
         </div>
       )}
     </div>

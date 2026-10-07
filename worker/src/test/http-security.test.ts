@@ -1,0 +1,38 @@
+import { describe, expect, it } from "vitest";
+import { allowedOrigin, corsHeaders, securedResponse } from "../lib/http-security";
+import type { Env } from "../lib/types";
+
+const env = { ALLOWED_ORIGINS: "https://preview.example.org" } as Env;
+
+describe("HTTP security boundary", () => {
+  it("accepts the deployment origin and an exact configured origin", () => {
+    expect(allowedOrigin(new Request("https://demo.example.org/api/demo", {
+      headers: { Origin: "https://demo.example.org" },
+    }), env)).toBe("https://demo.example.org");
+    expect(allowedOrigin(new Request("https://demo.example.org/api/demo", {
+      headers: { Origin: "https://preview.example.org" },
+    }), env)).toBe("https://preview.example.org");
+  });
+
+  it("rejects localhost and lookalike origins on public deployments", () => {
+    for (const origin of ["http://localhost:5173", "https://demo.example.org.attacker.test", "null"]) {
+      expect(allowedOrigin(new Request("https://demo.example.org/api/demo", {
+        headers: { Origin: origin },
+      }), env)).toBeNull();
+    }
+    expect(corsHeaders(null).has("Access-Control-Allow-Origin")).toBe(false);
+  });
+
+  it("allows a local Vite origin only when the Worker is local", () => {
+    expect(allowedOrigin(new Request("http://localhost:8787/api/demo", {
+      headers: { Origin: "http://localhost:5173" },
+    }), env)).toBe("http://localhost:5173");
+  });
+
+  it("sets no-store and browser hardening headers on API responses", () => {
+    const response = securedResponse(new Response("ok"), true);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+  });
+});

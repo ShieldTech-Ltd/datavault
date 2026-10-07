@@ -1,4 +1,5 @@
 import type { Env } from "./types";
+import type { CitedPassage } from "../../../shared/api";
 
 // Stores content at an immutable versioned key (by content hash) and updates
 // the 'latest' pointer. A changed document gets a new versioned key, preserving
@@ -62,6 +63,24 @@ export async function retrievePassages(
     passageIds: top.map((t) => `${contentHash}:${t.id}`),
     contentHash,
   };
+}
+
+export async function retrieveCitedPassages(
+  collectionId: string,
+  contentHash: string | null,
+  passageIds: string[],
+  env: Env,
+): Promise<CitedPassage[]> {
+  if (!contentHash || !/^0x[0-9a-fA-F]{64}$/.test(contentHash)) return [];
+  const object = await env.COLLECTION_STORE.get(`collections/${collectionId}/v/${contentHash}.md`);
+  if (!object) return [];
+  const chunks = splitIntoChunks(await object.text(), 600);
+  return passageIds.flatMap((id) => {
+    const match = /^(.+):chunk-(\d+)$/.exec(id);
+    if (!match || match[1].toLowerCase() !== contentHash.toLowerCase()) return [];
+    const text = chunks[Number(match[2])];
+    return text ? [{ id, text, version: contentHash }] : [];
+  });
 }
 
 function splitIntoChunks(text: string, targetWords: number): string[] {

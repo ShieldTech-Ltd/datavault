@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
+import { useWallet } from "./lib/wallet";
 import ConnectButton from "./components/ConnectButton";
 import OwnerDashboard from "./components/OwnerDashboard";
 import BuyerDashboard from "./components/BuyerDashboard";
@@ -7,7 +7,7 @@ import BuyerDashboard from "./components/BuyerDashboard";
 type Tab = "owner" | "buyer";
 
 export default function App() {
-  const { primaryWallet } = useDynamicContext();
+  const { primaryWallet } = useWallet();
   const [tab, setTab] = useState<Tab>("buyer");
   const connected = Boolean(primaryWallet);
 
@@ -29,6 +29,10 @@ export default function App() {
               Owners register a knowledge collection and set a per-query price.
               Buyers sign a Monad transaction and receive a cited AI answer.
             </p>
+            <p>
+              This app is a reference client for the paid-query API. Other AI services can use
+              the same escrow, policy checks, and receipt flow for their own collections.
+            </p>
             <p style={styles.notice}>
               Sign-in proves wallet ownership only. It does not prove content ownership or legal rights.
             </p>
@@ -49,6 +53,9 @@ export default function App() {
           </>
         )}
       </main>
+      <footer style={{ padding: "1rem 0", borderTop: "1px solid #e5e7eb", fontSize: "0.8rem", color: "#6b7280" }}>
+        Monad testnet demo. <a href="https://github.com/ShieldTech-Ltd/datavault" target="_blank" rel="noreferrer">Source and API details</a>.
+      </footer>
     </div>
   );
 }

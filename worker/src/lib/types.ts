@@ -9,6 +9,7 @@ export interface Env {
   MODEL_PROVIDER: string;
   CHAIN_ID: string;
   ALLOWED_ORIGINS?: string; // comma-separated list of allowed request origins
+  DEMO_COLLECTION_ID?: string;
 
   // Secrets (set via wrangler secret put)
   SETTLEMENT_PRIVATE_KEY: string;

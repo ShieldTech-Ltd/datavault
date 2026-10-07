@@ -25,6 +25,8 @@ CONTRACT_ADDRESS = ""
 MONAD_RPC_URL = "https://testnet-rpc.monad.xyz"
 MODEL_PROVIDER = "openai"
 CHAIN_ID = "10143"
+# Add DEMO_COLLECTION_ID after registering the reviewed sample collection.
+# Keep it unset until /api/demo can confirm the collection on-chain.
 
 # Secrets (never put in wrangler.toml):
 # Set via: wrangler secret put SETTLEMENT_PRIVATE_KEY

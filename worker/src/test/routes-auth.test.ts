@@ -104,7 +104,7 @@ describe("POST /api/collections/:id/confirm", () => {
 
   beforeEach(() => {
     db = new MockD1Database();
-    env = makeEnv({ DB: db });
+    env = makeEnv({ DB: db, CONTRACT_ADDRESS: "0x" + "11".repeat(20) });
     db.seed("collections", [{
       collection_id: COL_ID,
       owner_address: BUYER.toLowerCase(),

@@ -68,7 +68,7 @@ All three jobs must pass before merge to `master`:
 These require real credentials and are not run in CI:
 
 - Monad testnet transaction broadcast and confirmation
-- Dynamic wallet sign-in and embedded wallet creation
+- Injected EVM wallet connection, account change, and wrong-chain rejection
 - AI model API call with real passages
 - Cloudflare R2/D1 remote bindings
 - Settlement and refund on-chain flows

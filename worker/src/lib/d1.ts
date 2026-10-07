@@ -122,7 +122,7 @@ export async function updateQuerySettlementPending(
 
 export async function updateQuerySettled(
   requestId: string,
-  settleTxHash: string,
+  settleTxHash: string | null,
   passageIds: string[],
   responseDigest: string,
   env: Env,

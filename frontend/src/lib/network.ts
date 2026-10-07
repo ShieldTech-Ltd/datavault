@@ -1,4 +1,4 @@
-// EvmNetwork shape accepted by DynamicContextProvider overrides.evmNetworks in v5
+// Public Monad network configuration shared by the read and wallet clients.
 interface EvmNetwork {
   blockExplorerUrls: string[];
   chainId: number;
@@ -22,5 +22,3 @@ export const monadTestnet: EvmNetwork = {
   rpcUrls: [import.meta.env.VITE_CHAIN_RPC_URL || "https://testnet-rpc.monad.xyz"],
   vanityName: "Monad Testnet",
 };
-
-export const dynamicEnvironmentId = import.meta.env.VITE_DYNAMIC_ENVIRONMENT_ID || "";
