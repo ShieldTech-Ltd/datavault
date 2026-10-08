@@ -25,7 +25,7 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 - `npm run typecheck` in frontend: passed.
 - `npm test --prefix worker`: 138 passing on 9 October, including sample-guide passage retrieval, registration confirmation retry checks, bounded public quote handling, and rejection of a recovery signature for another contract.
 - `python3 scripts/verify-sql-invariants.py`: passed on 9 October, including deployment-scoped query lookup, after explicitly closing SQLite connections for Windows cleanup compatibility. Windows rerun remains pending.
-- `npm run rehearse:local`: passed again on 9 October after the guarded registration confirmation change, using a local Hardhat chain, Wrangler D1 and R2, HTTPS model stub, stored-answer settlement recovery, owner payout, pause, and refund.
+- `npm run rehearse:local`: passed again on 9 October at `9418c4d` after deployment-bound recovery signatures, using a local Hardhat chain, Wrangler D1 and R2, and HTTPS model stub. It covered registration, escrow, cited answer, owner payout, two Worker-failure recovery paths, wrong-buyer denial, buyer and owner reads, pause, and timeout refund. The throwaway local credentials and certificate were removed afterward.
 - `python3 scripts/check-secrets.py`: passed on the current tracked tree.
 - `npm audit --omit=dev --audit-level=high` in root, frontend, and Worker: zero reported production advisories on 8 October. Recheck before deployment because advisory data changes.
 - Frontend build passed after the registration signature change, with no generated JavaScript emitted into source files.
