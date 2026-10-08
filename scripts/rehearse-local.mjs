@@ -34,6 +34,8 @@ assert.match(vars.CONTRACT_ADDRESS ?? "", /^0x[0-9a-fA-F]{40}$/);
 const provider = new ethers.JsonRpcProvider(rpc);
 assert.equal((await provider.getNetwork()).chainId, 31337n);
 const contractAddress = vars.CONTRACT_ADDRESS;
+const recoveryMessage = (purpose, requestId, timestamp) =>
+  [`datavault-${purpose}`, 31337, contractAddress.toLowerCase(), requestId.toLowerCase(), timestamp].join(":");
 assert.notEqual(await provider.getCode(contractAddress), "0x");
 const artifact = JSON.parse(
   readFileSync(
@@ -248,7 +250,7 @@ const reconcileTime = Date.now();
 const reconciled = await request(`/api/queries/${requestId}/reconcile`, {
   method: "POST",
   headers: signedHeaders(
-    await buyer.signMessage(`datavault-reconcile:${requestId}:${reconcileTime}`),
+    await buyer.signMessage(recoveryMessage("reconcile", requestId, reconcileTime)),
     reconcileTime
   ),
 });
@@ -260,14 +262,14 @@ const recoveryTime = Date.now();
 const answerPath = `/api/queries/${requestId}/answer`;
 const rejectedRecovery = await request(answerPath, {
   headers: signedHeaders(
-    await stranger.signMessage(`datavault-answer:${requestId}:${recoveryTime}`),
+    await stranger.signMessage(recoveryMessage("answer", requestId, recoveryTime)),
     recoveryTime
   ),
 });
 assert.equal(rejectedRecovery.status, 403);
 const recovered = await request(answerPath, {
   headers: signedHeaders(
-    await buyer.signMessage(`datavault-answer:${requestId}:${recoveryTime}`),
+    await buyer.signMessage(recoveryMessage("answer", requestId, recoveryTime)),
     recoveryTime
   ),
 });
@@ -370,14 +372,14 @@ localSql(`INSERT INTO queries
 const storedTime = Date.now();
 const storedReconcile = await request(`/api/queries/${storedId}/reconcile`, {
   method: "POST",
-  headers: signedHeaders(await buyer.signMessage(`datavault-reconcile:${storedId}:${storedTime}`), storedTime),
+  headers: signedHeaders(await buyer.signMessage(recoveryMessage("reconcile", storedId, storedTime)), storedTime),
 });
 assert.equal(storedReconcile.status, 200, `Stored settlement did not recover: ${JSON.stringify(storedReconcile.body)}`);
 assert.equal(storedReconcile.body.outcome, "settled");
 assert.equal((await contract.getQuery(storedId)).state, 1n);
 const storedAnswerTime = Date.now();
 const storedRecovered = await request(`/api/queries/${storedId}/answer`, {
-  headers: signedHeaders(await buyer.signMessage(`datavault-answer:${storedId}:${storedAnswerTime}`), storedAnswerTime),
+  headers: signedHeaders(await buyer.signMessage(recoveryMessage("answer", storedId, storedAnswerTime)), storedAnswerTime),
 });
 assert.equal(storedRecovered.status, 200);
 assert.equal(storedRecovered.body.answer, storedAnswer);

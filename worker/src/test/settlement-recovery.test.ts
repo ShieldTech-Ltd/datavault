@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 import { keccak256, toBytes } from "viem";
 import { createHash } from "node:crypto";
-import { executionMessage } from "../../../shared/api";
+import { executionMessage, queryRecoveryMessage } from "../../../shared/api";
 import { handleExecute, handleReconcile, handleAnswerRecovery } from "../routes/queries";
 import type { Env } from "../lib/types";
 
@@ -181,7 +181,7 @@ describe("settlement uncertainty after answer recording", () => {
       response_digest: answerDigest, settle_tx_hash: settleTxHash, open_tx_hash: openTxHash });
     mocks.getOnChainQuery.mockResolvedValue({ state: 1 });
     const timestamp = Date.now();
-    const signature = await buyer.signMessage({ message: `datavault-reconcile:${requestId}:${timestamp}` });
+    const signature = await buyer.signMessage({ message: queryRecoveryMessage("reconcile", 10143, contract, requestId, timestamp) });
     const response = await handleReconcile(new Request(`http://localhost/api/queries/${requestId}/reconcile`, {
       method: "POST", headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
     }), env, requestId);
@@ -199,7 +199,7 @@ describe("settlement uncertainty after answer recording", () => {
     mocks.getOnChainQuery.mockResolvedValue({ state: 1 });
     mocks.verifiedSettlementHash.mockResolvedValue(null);
     const timestamp = Date.now();
-    const signature = await buyer.signMessage({ message: `datavault-reconcile:${requestId}:${timestamp}` });
+    const signature = await buyer.signMessage({ message: queryRecoveryMessage("reconcile", 10143, contract, requestId, timestamp) });
     const response = await handleReconcile(new Request(`http://localhost/api/queries/${requestId}/reconcile`, {
       method: "POST", headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
     }), env, requestId);
@@ -214,7 +214,7 @@ describe("settlement uncertainty after answer recording", () => {
       response_digest: answerDigest, settle_tx_hash: null, open_tx_hash: openTxHash });
     mocks.getOnChainQuery.mockResolvedValue({ state: 1 });
     const timestamp = Date.now();
-    const signature = await buyer.signMessage({ message: `datavault-reconcile:${requestId}:${timestamp}` });
+    const signature = await buyer.signMessage({ message: queryRecoveryMessage("reconcile", 10143, contract, requestId, timestamp) });
     const response = await handleReconcile(new Request(`http://localhost/api/queries/${requestId}/reconcile`, {
       method: "POST", headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
     }), env, requestId);
@@ -232,7 +232,7 @@ describe("settlement uncertainty after answer recording", () => {
       lease_expires_at: Date.now() - 1 });
     mocks.reclaimSettlementDispatch.mockResolvedValue("recovery-token");
     const timestamp = Date.now();
-    const signature = await buyer.signMessage({ message: `datavault-reconcile:${requestId}:${timestamp}` });
+    const signature = await buyer.signMessage({ message: queryRecoveryMessage("reconcile", 10143, contract, requestId, timestamp) });
     const response = await handleReconcile(new Request(`http://localhost/api/queries/${requestId}/reconcile`, {
       method: "POST", headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
     }), env, requestId);
@@ -250,7 +250,7 @@ describe("settlement uncertainty after answer recording", () => {
       policy_version: 1, chain_id: 10143, contract_address: contract, amount_wei: "100",
       lease_expires_at: Date.now() - 1 });
     const timestamp = Date.now();
-    const signature = await buyer.signMessage({ message: `datavault-reconcile:${requestId}:${timestamp}` });
+    const signature = await buyer.signMessage({ message: queryRecoveryMessage("reconcile", 10143, contract, requestId, timestamp) });
     const response = await handleReconcile(new Request(`http://localhost/api/queries/${requestId}/reconcile`, {
       method: "POST", headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
     }), env, requestId);
@@ -265,13 +265,28 @@ describe("settlement uncertainty after answer recording", () => {
       response_digest: answerDigest, settle_tx_hash: settleTxHash, open_tx_hash: openTxHash });
     mocks.getOnChainQuery.mockResolvedValue({ state: 1 });
     const timestamp = Date.now();
-    const signature = await buyer.signMessage({ message: `datavault-answer:${requestId}:${timestamp}` });
+    const signature = await buyer.signMessage({ message: queryRecoveryMessage("answer", 10143, contract, requestId, timestamp) });
     const response = await handleAnswerRecovery(new Request(`http://localhost/api/queries/${requestId}/answer`, {
       headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
     }), env, requestId);
     expect(response.status).toBe(409);
     expect(await response.text()).not.toContain("Different answer");
     expect(mocks.verifiedSettlementHash).not.toHaveBeenCalled();
+  });
+
+  it("rejects an answer signature made for another deployment", async () => {
+    mocks.getQueryRow.mockResolvedValue({ request_id: requestId, buyer_address: buyer.address,
+      outcome: "settled", answer_text: "A cited fact.", passage_ids: "[]",
+      response_digest: answerDigest, settle_tx_hash: settleTxHash, open_tx_hash: openTxHash });
+    const timestamp = Date.now();
+    const signature = await buyer.signMessage({ message: queryRecoveryMessage(
+      "answer", 10143, `0x${"ab".repeat(20)}`, requestId, timestamp,
+    ) });
+    const response = await handleAnswerRecovery(new Request(`http://localhost/api/queries/${requestId}/answer`, {
+      headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
+    }), env, requestId);
+    expect(response.status).toBe(403);
+    expect(mocks.getOnChainQuery).not.toHaveBeenCalled();
   });
 });
 

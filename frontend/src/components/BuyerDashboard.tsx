@@ -7,6 +7,7 @@ import { verifyAnswerAnchor } from "@/lib/provenance";
 import {
   buyerHistoryMessage,
   executionMessage,
+  queryRecoveryMessage,
   type CitedPassage,
   type QueryResult,
   type RecoveredAnswer,
@@ -221,11 +222,12 @@ export default function BuyerDashboard({
       throw new Error(`Switch your wallet to ${CHAIN_LABEL} (${CHAIN_ID}).`);
     return client;
   }
-  async function signedHeaders(prefix: string, requestId: string) {
+  async function signedHeaders(purpose: "answer" | "reconcile", requestId: string) {
     const client = await wallet();
+    if (!CONTRACT_ADDRESS) throw new Error("Contract is not configured.");
     const timestamp = Date.now();
     const signature = await client.signMessage({
-      message: `${prefix}:${requestId}:${timestamp}`,
+      message: queryRecoveryMessage(purpose, CHAIN_ID, CONTRACT_ADDRESS, requestId, timestamp),
     });
     return { "x-signature": signature, "x-timestamp": String(timestamp) };
   }
@@ -396,7 +398,7 @@ export default function BuyerDashboard({
     await loadRefundTime(request);
     try {
       const response = await fetch(`/api/queries/${request.requestId}/answer`, {
-        headers: await signedHeaders("datavault-answer", request.requestId),
+        headers: await signedHeaders("answer", request.requestId),
       });
       if (!response.ok) throw new Error(await response.text());
       const result = (await response.json()) as RecoveredAnswer;
@@ -494,7 +496,7 @@ export default function BuyerDashboard({
         {
           method: "POST",
           headers: await signedHeaders(
-            "datavault-reconcile",
+            "reconcile",
             current.requestId
           ),
         }

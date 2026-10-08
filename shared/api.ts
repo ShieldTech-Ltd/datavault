@@ -97,3 +97,19 @@ export function buyerHistoryMessage(
     timestamp,
   ].join(":");
 }
+
+export function queryRecoveryMessage(
+  purpose: "answer" | "reconcile",
+  chainId: number,
+  contractAddress: string,
+  requestId: string,
+  timestamp: number
+): string {
+  return [
+    `datavault-${purpose}`,
+    chainId,
+    contractAddress.toLowerCase(),
+    requestId.toLowerCase(),
+    timestamp,
+  ].join(":");
+}

@@ -2,7 +2,7 @@
 
 The buyer stores the request ID and opening transaction hash locally when the wallet broadcasts `openQuery`. The Worker then verifies the confirmed transaction and atomically claims the request ID in D1. It records the generated answer before settlement so a lost HTTP response does not require another payment.
 
-The Worker returns answer text only after on-chain settlement confirms. If a settlement transaction was broadcast but confirmation is pending, the API returns metadata with `outcome: settlement_pending`. The buyer signs `datavault-reconcile:<requestId>:<timestamp>` to check the chain. Once settled, the buyer signs `datavault-answer:<requestId>:<timestamp>` to recover the stored answer. Both calls use `x-signature` and `x-timestamp` headers and the on-chain buyer wallet.
+The Worker returns answer text only after on-chain settlement confirms. If a settlement transaction was broadcast but confirmation is pending, the API returns metadata with `outcome: settlement_pending`. The buyer signs `datavault-reconcile:<chainId>:<contractAddress>:<requestId>:<timestamp>` to check the chain. Once settled, the buyer signs `datavault-answer:<chainId>:<contractAddress>:<requestId>:<timestamp>` to recover the stored answer. The contract address and request ID are lowercase. Both calls use `x-signature` and `x-timestamp` headers and the on-chain buyer wallet.
 
 Reconciliation also checks an answer recorded before a Worker crash, even if the settlement hash was not saved. A confirmed on-chain settlement can be reflected in D1 with a null settlement hash when that hash is unavailable. The chain state is authoritative for whether the buyer may recover the answer.
 

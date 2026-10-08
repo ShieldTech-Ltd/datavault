@@ -16,14 +16,15 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 - Content replacement is disabled in the public API and UI because the former path did not advance on-chain policy version.
 - API responses have no-store and browser security headers, and public deployments reject unlisted browser origins, including localhost.
 - The production frontend build emits a public release manifest with its contract, chain, and RPC. The release guard compares those values with the selected Wrangler deployment config and rejects a stale or mismatched frontend artifact. Paid quotes also fail closed when the model endpoint is malformed or insecure, before opening escrow.
+- Answer recovery and reconciliation signatures include chain ID and contract address. Query lookup is scoped to the configured deployment, so a signed request and stored row cannot be reused across deployments.
 
 ## Local checks on this branch
 
 - `npm run test:contracts`: 21 passing on 8 October.
 - `npm run typecheck` in Worker: passed.
 - `npm run typecheck` in frontend: passed.
-- `npm test --prefix worker`: 137 passing on 9 October, including sample-guide passage retrieval, registration confirmation retry checks, and bounded public quote handling.
-- `python3 scripts/verify-sql-invariants.py`: passed on 9 October after explicitly closing SQLite connections for Windows cleanup compatibility. Windows rerun remains pending.
+- `npm test --prefix worker`: 138 passing on 9 October, including sample-guide passage retrieval, registration confirmation retry checks, bounded public quote handling, and rejection of a recovery signature for another contract.
+- `python3 scripts/verify-sql-invariants.py`: passed on 9 October, including deployment-scoped query lookup, after explicitly closing SQLite connections for Windows cleanup compatibility. Windows rerun remains pending.
 - `npm run rehearse:local`: passed again on 9 October after the guarded registration confirmation change, using a local Hardhat chain, Wrangler D1 and R2, HTTPS model stub, stored-answer settlement recovery, owner payout, pause, and refund.
 - `python3 scripts/check-secrets.py`: passed on the current tracked tree.
 - `npm audit --omit=dev --audit-level=high` in root, frontend, and Worker: zero reported production advisories on 8 October. Recheck before deployment because advisory data changes.

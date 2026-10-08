@@ -290,8 +290,10 @@ export async function getQueryRow(
   requestId: string,
   env: Env
 ): Promise<QueryRow | null> {
-  return env.DB.prepare("SELECT * FROM queries WHERE request_id = ?")
-    .bind(requestId)
+  return env.DB.prepare(
+    "SELECT * FROM queries WHERE request_id = ? AND chain_id = ? AND LOWER(contract_address) = ?"
+  )
+    .bind(requestId, Number(env.CHAIN_ID), env.CONTRACT_ADDRESS.toLowerCase())
     .first<QueryRow>();
 }
 

@@ -5,7 +5,7 @@ import { handlePrepare, handleExecute, handleAnswerRecovery } from "../routes/qu
 import { handleRegisterCollection, handleConfirmCollection } from "../routes/collections";
 import { callModel } from "../lib/model";
 import type { Env } from "../lib/types";
-import { executionMessage, registrationMessage } from "../../../shared/api";
+import { executionMessage, registrationMessage, queryRecoveryMessage } from "../../../shared/api";
 import { collectionIdFor } from "../lib/collection-id";
 
 const mocks = vi.hoisted(() => ({
@@ -232,7 +232,7 @@ describe("paid query boundary", () => {
     mocks.getQueryRow.mockResolvedValue({ buyer_address: buyer.address, outcome: "answer_recorded",
       answer_text: "Private answer", passage_ids: "[]" });
     const timestamp = Date.now();
-    const signature = await buyer.signMessage({ message: `datavault-answer:${requestId}:${timestamp}` });
+    const signature = await buyer.signMessage({ message: queryRecoveryMessage("answer", 10143, contract, requestId, timestamp) });
     const response = await handleAnswerRecovery(new Request(`http://localhost/api/queries/${requestId}/answer`, {
       headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
     }), env, requestId);
@@ -244,7 +244,7 @@ describe("paid query boundary", () => {
     mocks.getQueryRow.mockResolvedValue({ buyer_address: buyer.address, outcome: "settled",
       answer_text: "Private answer", passage_ids: "[]" });
     const timestamp = Date.now();
-    const signature = await owner.signMessage({ message: `datavault-answer:${requestId}:${timestamp}` });
+    const signature = await owner.signMessage({ message: queryRecoveryMessage("answer", 10143, contract, requestId, timestamp) });
     const response = await handleAnswerRecovery(new Request(`http://localhost/api/queries/${requestId}/answer`, {
       headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
     }), env, requestId);

@@ -52,6 +52,23 @@ def test_guarded_confirmation(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def test_query_lookup_deployment_scope(connection: sqlite3.Connection) -> None:
+    source = (ROOT / "worker/src/lib/d1.ts").read_text()
+    start = source.index("export async function getQueryRow")
+    match = re.search(r'prepare\(\s*"([^"]+)"\s*\)', source[start:])
+    assert match, "query lookup SQL not found"
+    connection.execute(
+        "INSERT INTO queries (request_id, collection_id, buyer_address, policy_version, created_at, chain_id, contract_address) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("request-1", "collection-1", "buyer-1", 1, 1_000_000, 10143, "0x" + "11" * 20),
+    )
+    sql = match.group(1)
+    assert connection.execute(sql, ("request-1", 10143, "0x" + "11" * 20)).fetchone()
+    assert connection.execute(sql, ("request-1", 31337, "0x" + "11" * 20)).fetchone() is None
+    assert connection.execute(sql, ("request-1", 10143, "0x" + "22" * 20)).fetchone() is None
+    connection.commit()
+
+
 def test_concurrent_quota(path: str) -> None:
     sql = sql_from_source("worker/src/lib/ratelimit.ts", "const result = await env.DB.prepare")
     now = 1_000_000
@@ -84,8 +101,9 @@ def main() -> None:
                     connection.executescript(migration.read_text())
                 test_staging(connection)
                 test_guarded_confirmation(connection)
+                test_query_lookup_deployment_scope(connection)
         test_concurrent_quota(path)
-    print("D1 staging, guarded confirmation, and concurrent rate-limit invariants passed.")
+    print("D1 staging, guarded confirmation, deployment-scoped lookup, and concurrent rate-limit invariants passed.")
 
 
 if __name__ == "__main__":

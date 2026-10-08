@@ -7,7 +7,7 @@ import {
 import { getOnChainCollection, getOnChainQuery } from "../lib/policy";
 import { verifyOpenReceipt, verifiedSettlementHash } from "../lib/chain-receipts";
 import { operatorMatches, paidServiceConfigured } from "../lib/config";
-import { executionMessage, type QueryResult } from "../../../shared/api";
+import { executionMessage, queryRecoveryMessage, type QueryResult } from "../../../shared/api";
 import { retrievePassages, retrieveCitedPassages } from "../lib/r2";
 import { callModel } from "../lib/model";
 import { verifyMessage } from "viem";
@@ -392,7 +392,7 @@ export async function handleReconcile(req: Request, env: Env, requestId: string)
   if (!row) return new Response("Not found", { status: 404 });
 
   // Verify caller is the original buyer
-  const message = `datavault-reconcile:${requestId}:${timestamp}`;
+  const message = queryRecoveryMessage("reconcile", Number(env.CHAIN_ID), env.CONTRACT_ADDRESS, requestId, timestamp);
   const { verifyMessage } = await import("viem");
   const valid = await verifyMessage({
     address: row.buyer_address as `0x${string}`,
@@ -503,7 +503,7 @@ export async function handleReconcile(req: Request, env: Env, requestId: string)
 
 // Recovery endpoint: returns the stored answer for the original buyer.
 // Requires an ECDSA signature from the buyer's address over:
-//   datavault-answer:<requestId>:<timestamp>
+//   datavault-answer:<chainId>:<contractAddress>:<requestId>:<timestamp>
 // This proves the caller is the same wallet that opened the escrow, without
 // requiring a separate session system.
 export async function handleAnswerRecovery(req: Request, env: Env, requestId: string): Promise<Response> {
@@ -535,7 +535,7 @@ export async function handleAnswerRecovery(req: Request, env: Env, requestId: st
   }
 
   // Verify the caller is the buyer who paid
-  const message = `datavault-answer:${requestId}:${timestamp}`;
+  const message = queryRecoveryMessage("answer", Number(env.CHAIN_ID), env.CONTRACT_ADDRESS, requestId, timestamp);
   const valid = await verifyMessage({
       address: row.buyer_address as `0x${string}`,
       message,
