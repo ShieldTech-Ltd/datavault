@@ -1,21 +1,13 @@
 import "./index.css";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { DynamicContextProvider } from "@dynamic-labs/sdk-react-core";
-import { EthereumWalletConnectors } from "@dynamic-labs/ethereum";
 import App from "./App";
-import { dynamicEnvironmentId, monadTestnet } from "./lib/dynamic";
+import { WalletProvider } from "./lib/wallet";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <DynamicContextProvider
-      settings={{
-        environmentId: dynamicEnvironmentId,
-        walletConnectors: [EthereumWalletConnectors],
-        overrides: { evmNetworks: [monadTestnet] },
-      }}
-    >
+    <WalletProvider>
       <App />
-    </DynamicContextProvider>
+    </WalletProvider>
   </React.StrictMode>,
 );

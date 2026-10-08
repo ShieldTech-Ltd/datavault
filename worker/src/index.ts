@@ -1,6 +1,7 @@
 import type { Env } from "./lib/types";
-import { handleRegisterCollection, handleUploadCollection, handleConfirmCollection } from "./routes/collections";
-import { handlePrepare, handleExecute, handleReceipt, handleAnswerRecovery, handleReconcile } from "./routes/queries";
+import { handleRegisterCollection, handleConfirmCollection } from "./routes/collections";
+import { handleDemoCollection, handlePrepare, handleExecute, handleReceipt, handleAnswerRecovery, handleReconcile } from "./routes/queries";
+import { allowedOrigin, boundedApiRequest, corsHeaders, securedResponse } from "./lib/http-security";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -10,18 +11,17 @@ export default {
 
     // ── API routes ────────────────────────────────────────────────
     if (path.startsWith("/api/")) {
-      const origin = request.headers.get("Origin") ?? "";
-      const allowedOrigin = resolveAllowedOrigin(origin, env);
-      const cors: Record<string, string> = {
-        "Access-Control-Allow-Origin": allowedOrigin,
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, x-signature, x-timestamp",
-        "Vary": "Origin",
-      };
-
-      if (method === "OPTIONS") return new Response(null, { headers: cors });
+      const origin = allowedOrigin(request, env);
+      const cors = corsHeaders(origin);
+      if (request.headers.has("Origin") && !origin) {
+        return securedResponse(new Response("Origin not allowed", { status: 403 }), true);
+      }
+      if (method === "OPTIONS") return securedResponse(new Response(null, { status: 204, headers: cors }), true);
 
       try {
+        const bounded = await boundedApiRequest(request);
+        if (bounded instanceof Response) return securedResponse(bounded, true);
+        request = bounded;
         let res: Response;
 
         if (method === "POST" && path === "/api/collections") {
@@ -30,8 +30,11 @@ export default {
           const id = path.split("/")[3];
           res = await handleConfirmCollection(request, env, id);
         } else if (method === "POST" && path.match(/^\/api\/collections\/[^/]+\/upload$/)) {
-          const id = path.split("/")[3];
-          res = await handleUploadCollection(request, env, id);
+          res = new Response(JSON.stringify({ error: "Content replacement is unavailable until it can advance on-chain policy." }), {
+            status: 410, headers: { "Content-Type": "application/json" },
+          });
+        } else if (method === "GET" && path === "/api/demo") {
+          res = await handleDemoCollection(env);
         } else if (method === "POST" && path === "/api/queries/prepare") {
           res = await handlePrepare(request, env);
         } else if (method === "POST" && path === "/api/queries/execute") {
@@ -51,39 +54,17 @@ export default {
 
         // Attach CORS headers to all API responses
         const headers = new Headers(res.headers);
-        for (const [k, v] of Object.entries(cors)) headers.set(k, v);
-        return new Response(res.body, { status: res.status, headers });
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Internal server error";
-        return new Response(JSON.stringify({ error: msg }), {
+        cors.forEach((value, key) => headers.set(key, value));
+        return securedResponse(new Response(res.body, { status: res.status, headers }), true);
+      } catch {
+        return securedResponse(new Response(JSON.stringify({ error: "Internal server error. Check request status before retrying payment." }), {
           status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
+          headers: { "Content-Type": "application/json", "Vary": "Origin" },
+        }), true);
       }
     }
 
     // ── Static assets (React app) ─────────────────────────────────
-    return env.ASSETS.fetch(request);
+    return securedResponse(await env.ASSETS.fetch(request));
   },
 };
-
-// Returns the request's Origin if it is in the allowlist, otherwise falls back
-// to the Worker's own origin. This prevents credentialed cross-origin abuse
-// while still supporting localhost dev and the deployed frontend.
-function resolveAllowedOrigin(requestOrigin: string, env: Env): string {
-  // ALLOWED_ORIGINS is an optional comma-separated list set in wrangler.toml vars.
-  // If absent, only same-origin (empty Origin header) and localhost are permitted.
-  const raw = env.ALLOWED_ORIGINS ?? "";
-  const allowed = raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  // Always allow localhost origins in development
-  const isLocalhost = /^https?:\/\/localhost(:\d+)?$/.test(requestOrigin);
-  if (isLocalhost || allowed.includes(requestOrigin)) return requestOrigin;
-
-  // Fall back to a null origin so browsers reject credentialed requests from
-  // unknown origins rather than reflecting an arbitrary origin.
-  return "null";
-}

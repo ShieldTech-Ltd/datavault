@@ -1,8 +1,8 @@
-import { keccak256, toBytes } from "viem";
+import { keccak256, toBytes, verifyMessage } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Env } from "../lib/types";
 import { storeCollection } from "../lib/r2";
-import { insertCollection, getCollectionRow, confirmCollection, markCollectionOrphaned } from "../lib/d1";
+import { insertCollection, getCollectionRow, confirmCollection } from "../lib/d1";
 import { buildRegisterCalldata, verifyUploadSignature, getOnChainCollection } from "../lib/policy";
 import {
   isValidAddress, isValidBytes32, isValidPriceWei, isValidSignature,
@@ -10,6 +10,10 @@ import {
   error400, error401, error403, error413,
 } from "../lib/validation";
 import { checkRateLimit, callerIdentity } from "../lib/ratelimit";
+import { verifyRegistrationReceipt } from "../lib/chain-receipts";
+import { registrationMessage } from "../../../shared/api";
+import { paidServiceConfigured } from "../lib/config";
+import { rpcMatchesConfiguredChain } from "../lib/chain-identity";
 
 // Staging collections expire after 30 minutes if the owner never confirms the tx.
 const STAGING_EXPIRY_MS = 30 * 60 * 1000;
@@ -17,6 +21,9 @@ const STAGING_EXPIRY_MS = 30 * 60 * 1000;
 // ── POST /api/collections ─────────────────────────────────────────
 
 export async function handleRegisterCollection(req: Request, env: Env): Promise<Response> {
+  if (!paidServiceConfigured(env)) {
+    return new Response("Collection registration is not configured on this deployment.", { status: 503 });
+  }
   const sizeErr = checkContentLength(req);
   if (sizeErr) return sizeErr;
 
@@ -40,31 +47,37 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
 
   const priceWei = BigInt(priceWeiStr as string);
   const contentHash = keccak256(toBytes(content));
+  const signature = req.headers.get("x-signature") ?? "";
+  const timestamp = Number(req.headers.get("x-timestamp"));
+  if (!isValidSignature(signature) || !isValidTimestamp(timestamp)) return error401("A current owner signature is required");
+  const authorized = await verifyMessage({
+    address: ownerAddress as `0x${string}`,
+    message: registrationMessage(Number(env.CHAIN_ID) || 10143, env.CONTRACT_ADDRESS,
+      ownerAddress as string, contentHash, priceWei.toString(), timestamp),
+    signature: signature as `0x${string}`,
+  }).catch(() => false);
+  if (!authorized) return error403("Signature does not match the collection owner");
+  if (!(await rpcMatchesConfiguredChain(env))) {
+    return new Response("Monad RPC chain does not match this deployment.", { status: 503 });
+  }
 
-  // Derive collection ID canonically from owner + content hash.
-  // An attacker submitting someone else's ownerAddress gets a different collectionId
-  // than the real owner would compute, so they cannot pre-occupy the real owner's slot.
+  // Derive the collection ID from the signed owner and content hash.
   const collectionId = keccak256(toBytes(`${ownerAddress}:${contentHash}`));
 
   const existing = await getCollectionRow(collectionId, env);
-  if (existing) {
-    // If a prior staging attempt expired, allow a fresh one
-    if (existing.status === "staging" && existing.staged_at !== null &&
-        Date.now() - existing.staged_at > STAGING_EXPIRY_MS) {
-      await markCollectionOrphaned(collectionId, env);
-    } else if (existing.status !== "orphaned") {
-      return new Response(JSON.stringify({ error: "Collection already registered" }), {
-        status: 409,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+  if (existing && existing.status !== "orphaned" &&
+      !(existing.status === "staging" && existing.staged_at !== null &&
+        Date.now() - existing.staged_at > STAGING_EXPIRY_MS)) {
+    return new Response(JSON.stringify({ error: "Collection already registered" }), {
+      status: 409, headers: { "Content-Type": "application/json" },
+    });
   }
 
   // Store content privately in R2 at a versioned key (immutable by content hash)
   await storeCollection(collectionId, content, contentHash, env);
 
   // Persist metadata in D1 as 'staging'. The row is not queryable until confirmed.
-  await insertCollection(
+  const staged = await insertCollection(
     {
       collection_id: collectionId,
       owner_address: (ownerAddress as string).toLowerCase(),
@@ -73,13 +86,12 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
     },
     env,
   );
+  if (!staged) return new Response(JSON.stringify({ error: "Collection already registered" }), {
+    status: 409, headers: { "Content-Type": "application/json" },
+  });
 
   // Derive the Worker's settlement address from the settlement private key
-  let operatorAddress = "0x0000000000000000000000000000000000000000" as `0x${string}`;
-  if (env.SETTLEMENT_PRIVATE_KEY) {
-    const account = privateKeyToAccount(env.SETTLEMENT_PRIVATE_KEY as `0x${string}`);
-    operatorAddress = account.address;
-  }
+  const operatorAddress = privateKeyToAccount(env.SETTLEMENT_PRIVATE_KEY as `0x${string}`).address;
 
   // Build the calldata the frontend will use to call registerCollection on-chain
   const txCalldata = await buildRegisterCalldata(collectionId as `0x${string}`, priceWei, operatorAddress);
@@ -100,6 +112,7 @@ export async function handleConfirmCollection(
   env: Env,
   collectionId: string,
 ): Promise<Response> {
+  if (!env.CONTRACT_ADDRESS) return new Response("Contract is not configured.", { status: 503 });
   if (!isValidBytes32(collectionId)) return error400("Invalid collectionId path segment");
 
   const body = await req.json<{ txHash: unknown; ownerAddress: unknown }>();
@@ -119,19 +132,20 @@ export async function handleConfirmCollection(
   if (col.owner_address !== (body.ownerAddress as string).toLowerCase()) {
     return error403("ownerAddress does not match the registered owner");
   }
+  if (!(await rpcMatchesConfiguredChain(env))) {
+    return new Response("Monad RPC chain does not match this deployment.", { status: 503 });
+  }
 
   // Verify on-chain: the collection must exist with the correct owner
-  if (env.CONTRACT_ADDRESS) {
-    const onChain = await getOnChainCollection(collectionId as `0x${string}`, env);
-    if (!onChain) {
-      return new Response(
-        JSON.stringify({ error: "Collection not found on-chain. The transaction may not be confirmed yet." }),
-        { status: 404, headers: { "Content-Type": "application/json" } },
-      );
-    }
-    if (onChain.owner.toLowerCase() !== col.owner_address) {
-      return error403("On-chain owner does not match the registered owner. Possible front-run.");
-    }
+  const onChain = await getOnChainCollection(collectionId as `0x${string}`, env);
+  if (!onChain) {
+    return new Response("Collection not found on-chain. The transaction may not be confirmed yet.", { status: 404 });
+  }
+  if (onChain.owner.toLowerCase() !== col.owner_address) {
+    return error403("On-chain owner does not match the registered owner.");
+  }
+  if (!(await verifyRegistrationReceipt(env, body.txHash as `0x${string}`, collectionId, col.owner_address))) {
+    return new Response("Registration transaction is unconfirmed or does not match this collection.", { status: 409 });
   }
 
   await confirmCollection(collectionId, body.txHash as string, env);

@@ -11,6 +11,8 @@ import Transactions   from "@/pages/Transactions";
 import Analytics      from "@/pages/Analytics";
 import ApiAccess      from "@/pages/ApiAccess";
 import Settings       from "@/pages/Settings";
+import BuyerDashboard from "@/components/BuyerDashboard";
+import OwnerDashboard from "@/components/OwnerDashboard";
 
 export default function App() {
   return (
@@ -22,7 +24,9 @@ export default function App() {
             <Route path="collections" element={<MyCollections />} />
             <Route path="collections/:id" element={<CollectionDetail />} />
             <Route path="marketplace" element={<Marketplace />} />
-            <Route path="query" element={<AskQuery />} />
+            <Route path="query" element={<BuyerDashboard />} />
+            <Route path="manage" element={<OwnerDashboard />} />
+            <Route path="preview/query" element={<AskQuery />} />
             <Route path="earnings" element={<Earnings />} />
             <Route path="transactions" element={<Transactions />} />
             <Route path="analytics" element={<Analytics />} />

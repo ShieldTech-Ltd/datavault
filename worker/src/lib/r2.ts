@@ -1,4 +1,8 @@
 import type { Env } from "./types";
+import type { CitedPassage } from "../../../shared/api";
+
+const MAX_PASSAGE_WORDS = 600;
+const MAX_PASSAGE_CHARS = 4_000;
 
 // Stores content at an immutable versioned key (by content hash) and updates
 // the 'latest' pointer. A changed document gets a new versioned key, preserving
@@ -38,7 +42,7 @@ export async function retrievePassages(
   if (!obj) throw new Error("Collection content version not found in storage");
 
   const content = await obj.text();
-  const chunks = splitIntoChunks(content, 600);
+  const chunks = splitIntoChunks(content);
 
   // Simple keyword relevance ranking. Replace with vector search in production.
   const queryWords = query
@@ -64,21 +68,53 @@ export async function retrievePassages(
   };
 }
 
-function splitIntoChunks(text: string, targetWords: number): string[] {
-  const paragraphs = text.split(/\n{2,}/);
+export async function retrieveCitedPassages(
+  collectionId: string,
+  contentHash: string | null,
+  passageIds: string[],
+  env: Env,
+): Promise<CitedPassage[]> {
+  if (!contentHash || !/^0x[0-9a-fA-F]{64}$/.test(contentHash)) return [];
+  const object = await env.COLLECTION_STORE.get(`collections/${collectionId}/v/${contentHash}.md`);
+  if (!object) return [];
+  const chunks = splitIntoChunks(await object.text());
+  return passageIds.flatMap((id) => {
+    const match = /^(.+):chunk-(\d+)$/.exec(id);
+    if (!match || match[1].toLowerCase() !== contentHash.toLowerCase()) return [];
+    const text = chunks[Number(match[2])];
+    return text ? [{ id, text, version: contentHash }] : [];
+  });
+}
+
+function splitIntoChunks(text: string): string[] {
+  // Bound both words and characters. A single unbroken token or long paragraph
+  // must never turn a 500 KB upload into a 500 KB model prompt passage.
+  const words = text.match(/\S+/gu) ?? [];
   const chunks: string[] = [];
   let current = "";
-
-  for (const para of paragraphs) {
-    const wordCount = (current + " " + para).trim().split(/\s+/).length;
-    if (wordCount > targetWords && current) {
-      chunks.push(current.trim());
-      current = para;
-    } else {
-      current = current ? current + "\n\n" + para : para;
+  let count = 0;
+  const flush = () => {
+    if (current) chunks.push(current);
+    current = "";
+    count = 0;
+  };
+  const append = (part: string) => {
+    const extra = current ? 1 : 0;
+    if (current && (count >= MAX_PASSAGE_WORDS || current.length + extra + part.length > MAX_PASSAGE_CHARS)) flush();
+    current = current ? `${current} ${part}` : part;
+    count++;
+  };
+  for (const word of words) {
+    let part = "";
+    for (const scalar of word) {
+      if (part.length + scalar.length > MAX_PASSAGE_CHARS) {
+        append(part);
+        part = "";
+      }
+      part += scalar;
     }
+    if (part) append(part);
   }
-  if (current.trim()) chunks.push(current.trim());
-
-  return chunks.filter((c) => c.length > 50);
+  flush();
+  return chunks;
 }

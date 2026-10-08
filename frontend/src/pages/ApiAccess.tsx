@@ -52,13 +52,15 @@ const codeBlockStyle: React.CSSProperties = {
   whiteSpace: "pre",
 };
 
-const CURL_EXAMPLE = `curl -X POST "https://api.datavault.xyz/queries/execute" \\
-  -H "Authorization: Bearer dv_dev_sk_test_..." \\
+const CURL_EXAMPLE = `curl -X POST "https://YOUR_WORKER_ORIGIN/api/queries/execute" \\
+  -H "x-signature: SIGNED_EXECUTION_MESSAGE" \\
+  -H "x-timestamp: UNIX_MILLISECONDS" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "collectionId": "0x8f3e...a1c9",
+    "requestId": "0x...",
+    "collectionId": "0x...",
     "question": "What is parallel execution?",
-    "buyerAddress": "0x3F2a...7c9D"
+    "openTxHash": "0x..."
   }'`;
 
 const RESPONSE_EXAMPLE = `{
@@ -286,10 +288,10 @@ export default function ApiAccess() {
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           {[
             { label: "DataVault API Reference", desc: "Full REST API reference with endpoints and parameters" },
-            { label: "Authentication Guide", desc: "How to authenticate requests with bearer tokens" },
+            { label: "Authentication Guide", desc: "Sign the execution message with the escrow buyer wallet after payment confirms" },
             { label: "Rate Limits & Quotas", desc: "Request limits, quotas and best practices" },
           ].map(({ label, desc }) => (
-            <a key={label} href="#" style={{ display: "flex", alignItems: "center", gap: 12, padding: "0.6rem 0.75rem", borderRadius: 8, background: "var(--surface-2)", textDecoration: "none", transition: "opacity 0.15s" }}>
+            <a key={label} href="https://github.com/ShieldTech-Ltd/datavault/blob/master/docs/api-contract.md" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 12, padding: "0.6rem 0.75rem", borderRadius: 8, background: "var(--surface-2)", textDecoration: "none", transition: "opacity 0.15s" }}>
               <div style={{ width: 32, height: 32, borderRadius: 6, background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
               </div>

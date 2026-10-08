@@ -5,15 +5,28 @@ import type { Env, CollectionRow, QueryRow } from "./types";
 export async function insertCollection(
   row: Omit<CollectionRow, "policy_version" | "active" | "status" | "staged_at" | "confirmed_tx" | "created_at">,
   env: Env,
-): Promise<void> {
+  restageAfterMs = 30 * 60 * 1000,
+): Promise<boolean> {
   const now = Date.now();
-  await env.DB.prepare(
+  const result = await env.DB.prepare(
     `INSERT INTO collections
        (collection_id, owner_address, collection_name, content_hash, policy_version, active, status, staged_at, created_at)
-     VALUES (?, ?, ?, ?, 1, 1, 'staging', ?, ?)`,
+     VALUES (?, ?, ?, ?, 1, 1, 'staging', ?, ?)
+     ON CONFLICT(collection_id) DO UPDATE SET
+       owner_address = excluded.owner_address,
+       collection_name = excluded.collection_name,
+       content_hash = excluded.content_hash,
+       policy_version = 1,
+       active = 1,
+       status = 'staging',
+       staged_at = excluded.staged_at,
+       confirmed_tx = NULL
+     WHERE collections.status = 'orphaned'
+       OR (collections.status = 'staging' AND collections.staged_at < ?)`,
   )
-    .bind(row.collection_id, row.owner_address, row.collection_name, row.content_hash, now, now)
+    .bind(row.collection_id, row.owner_address, row.collection_name, row.content_hash, now, now, now - restageAfterMs)
     .run();
+  return result.meta.changes === 1;
 }
 
 export async function confirmCollection(
@@ -122,7 +135,7 @@ export async function updateQuerySettlementPending(
 
 export async function updateQuerySettled(
   requestId: string,
-  settleTxHash: string,
+  settleTxHash: string | null,
   passageIds: string[],
   responseDigest: string,
   env: Env,

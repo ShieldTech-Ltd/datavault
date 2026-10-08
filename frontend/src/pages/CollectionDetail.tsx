@@ -4,7 +4,6 @@ import { useApp } from "@/context/AppContext";
 import {
   COLLECTION_FILES,
   TRANSACTIONS,
-  getCollectionById,
   CollectionFile,
 } from "@/lib/mockData";
 
@@ -37,7 +36,7 @@ export default function CollectionDetail() {
   const { collections, updateCollection } = useApp();
 
   const col = useMemo(
-    () => collections.find((c) => c.id === id) ?? getCollectionById(id ?? ""),
+    () => collections.find((c) => c.id === id),
     [collections, id]
   );
 

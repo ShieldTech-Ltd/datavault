@@ -4,7 +4,7 @@
 
 The Worker sends source passages and the buyer's question to an OpenAI-compatible chat completions API. The default model is `gpt-4o-mini`. Configure `MODEL_API_BASE` and `MODEL_NAME` in Worker secrets to use a different provider (e.g. Kimi via `https://api.moonshot.cn/v1`).
 
-**Data disclosure:** Selected passages from the private R2 collection are sent to the configured model provider. Buyers are informed of this before opening escrow via the prepare endpoint response. The collection owner consents to this when registering the collection.
+**Data disclosure:** Selected passages from the private R2 collection are sent to the configured model provider. The buyer UI explains this before payment, and the owner accepts the disclosure before registration. The prepare endpoint returns the quote, not a disclosure field.
 
 ## Citation format
 
@@ -16,13 +16,15 @@ The model is instructed to cite passages by their versioned ID:
 
 Example: `[Passage 0xabc123...:chunk-0]`
 
-The content hash in the ID pins the citation to the exact document version that was active at query time. Citations remain verifiable after the owner re-uploads new content.
+The content hash in the ID pins the citation to the exact document version used by the query. Content replacement is disabled in this demo until on-chain policy versioning is coupled to it.
 
 ## Passage ID versioning
 
 Passage IDs take the form `{contentHash}:{chunkId}` where:
 - `contentHash` is the `keccak256` of the collection document at the time of retrieval
-- `chunkId` is `chunk-N` where N is the zero-based index of the 600-word chunk
+- `chunkId` is `chunk-N` where N is the zero-based index of a chunk capped at 600 words and 4,000 characters
+
+The splitter normalizes whitespace and splits long tokens at Unicode character boundaries. A short nonempty document still produces a passage. An unchanged content hash must continue to use this splitter so stored passage IDs reconstruct the same text.
 
 The receipt stores the exact cited passage IDs, not all retrieved passages. Only passages the model actually cited appear in the receipt.
 
@@ -38,7 +40,7 @@ The Worker validates all citations before settling:
 
 When the model determines the passages do not contain enough information to answer, it responds with a statement like "The passages do not contain information about X." The Worker detects this using a set of regular expression patterns and sets `isInsufficientEvidence: true` in the response.
 
-**Insufficient-evidence answers are billable.** The collection was correctly accessed and the model was correctly invoked. The buyer is informed of this before signing via the prepare endpoint. The receipt records the outcome as `settled` with `isInsufficientEvidence` noted in the answer text.
+**Insufficient-evidence answers are billable.** The collection was accessed and the model was invoked. The buyer UI explains this before payment. The public receipt records the settlement outcome and digest, but does not include the answer text or an insufficiency flag.
 
 ## Prompt injection protection
 
@@ -49,7 +51,7 @@ Passage content is wrapped in `<passage id="...">` XML tags in the model prompt.
 | Bound | Value |
 |---|---|
 | Model API timeout | 25 seconds |
-| Max context (approx) | 6,000 tokens (~24,000 chars) |
+| Max retrieved text | 4 passages, each at most 600 words and 4,000 characters |
 | Max passages sent | 4 (top-ranked by keyword relevance) |
 | Max tokens in response | 1,024 |
 | Temperature | 0.2 (low randomness for factual answers) |
@@ -62,5 +64,5 @@ The receipt records `responseDigest = "sha256:" + sha256(answerText)`. This allo
 
 - Passage retrieval uses keyword overlap scoring, not vector similarity. Semantically related passages with different vocabulary may not be retrieved.
 - The model may cite a passage that only partially supports its answer.
-- At-least-once model invocation: if the Worker crashes during the model call, a retry may call the provider again. There is no provider-level idempotency key.
+- A crash during the model call leaves a claimed request that cannot currently be retried with the same request ID. The buyer can refund an open escrow after the on-chain timeout. There is no provider-level idempotency key.
 - Live evidence requires `MODEL_API_KEY` to be set in Worker secrets.

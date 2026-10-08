@@ -32,6 +32,14 @@ describe("checkRateLimit", () => {
     }
     const result = await checkRateLimit("10.0.0.1", "register", env as never);
     expect(result.allowed).toBe(false);
+    expect(db.getTable("rate_limits")[0].count).toBe(5);
+  });
+
+  it("resets the quota after the fixed window expires", async () => {
+    db.seed("rate_limits", [{ key: "register:10.0.0.1", window_start: Math.floor(Date.now() / 1000) - 61, count: 5 }]);
+    const result = await checkRateLimit("10.0.0.1", "register", env as never);
+    expect(result.allowed).toBe(true);
+    expect(db.getTable("rate_limits")[0].count).toBe(1);
   });
 
   it("different IPs have independent limits", async () => {

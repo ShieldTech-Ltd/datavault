@@ -7,6 +7,7 @@ compatibility_date = "2024-10-01"
 [assets]
 directory = "../frontend/dist"
 binding = "ASSETS"
+not_found_handling = "single-page-application"
 
 [[r2_buckets]]
 binding = "COLLECTION_STORE"
@@ -25,6 +26,8 @@ CONTRACT_ADDRESS = ""
 MONAD_RPC_URL = "https://testnet-rpc.monad.xyz"
 MODEL_PROVIDER = "openai"
 CHAIN_ID = "10143"
+# Add DEMO_COLLECTION_ID after registering the reviewed sample collection.
+# Keep it unset until /api/demo can confirm the collection on-chain.
 
 # Secrets (never put in wrangler.toml):
 # Set via: wrangler secret put SETTLEMENT_PRIVATE_KEY

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { DynamicWidget, useDynamicContext } from "@dynamic-labs/sdk-react-core";
+import { NavLink, Outlet, useNavigate, useLocation, Link } from "react-router-dom";
+import ConnectButton from "@/components/ConnectButton";
 import { useApp } from "@/context/AppContext";
 
 const NAV = [
@@ -8,6 +8,8 @@ const NAV = [
   { to: "/collections", label: "Our Collections", icon: IconCollections },
   { to: "/marketplace", label: "Marketplace",     icon: IconMarketplace },
   { to: "/query",       label: "Build Query",     icon: IconQuery },
+  { to: "/manage",      label: "Manage on-chain", icon: IconCollections },
+  { to: "/preview/query", label: "Query preview", icon: IconQuery },
   { to: "/earnings",    label: "Earnings",         icon: IconEarnings },
   { to: "/transactions",label: "Transactions",    icon: IconTransactions },
   { to: "/analytics",   label: "Analytics",       icon: IconAnalytics },
@@ -17,11 +19,9 @@ const NAV = [
 
 export default function Layout() {
   const { isDark, toggleTheme, notifCount, clearNotifs, searchQuery, setSearchQuery } = useApp();
-  const { primaryWallet } = useDynamicContext();
+  const { pathname } = useLocation();
   const navigate = useNavigate();
   const [showNotifs, setShowNotifs] = useState(false);
-  const walletAddr = primaryWallet?.address ?? "";
-  const shortAddr  = walletAddr ? `${walletAddr.slice(0, 6)}...${walletAddr.slice(-4)}` : "";
 
   return (
     <div style={s.root}>
@@ -116,17 +116,7 @@ export default function Layout() {
             </div>
 
             {/* Wallet */}
-            {walletAddr ? (
-              <div style={s.walletChip}>
-                <span style={s.walletDot}/>
-                {shortAddr}
-                <ChevronDown />
-              </div>
-            ) : (
-              <div style={{ transform:"scale(0.9)", transformOrigin:"right center" }}>
-                <DynamicWidget />
-              </div>
-            )}
+            <ConnectButton />
 
             {/* Theme toggle */}
             <button style={s.iconBtn} onClick={toggleTheme} title={isDark ? "Light mode" : "Dark mode"}>
@@ -167,6 +157,13 @@ export default function Layout() {
 
         {/* Page content */}
         <main style={s.content}>
+          {pathname !== "/query" && pathname !== "/manage" && (
+            <aside style={{ padding: "0.75rem", marginBottom: "1rem", border: "1px solid var(--accent-bdr)", borderRadius: 8 }}>
+              Dashboard preview: sample data and simulated actions. No uploads, payments, payouts, or API keys are created here.
+              {" "}<Link to="/query">Use the testnet query flow</Link>
+              {" or "}<Link to="/manage">manage an on-chain collection</Link>.
+            </aside>
+          )}
           <Outlet />
         </main>
       </div>

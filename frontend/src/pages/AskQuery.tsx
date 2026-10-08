@@ -97,11 +97,6 @@ export default function AskQuery() {
 
   const visibleCollections = activeTab === "own" ? getOwnedCollections() : getMarketplaceCollections();
 
-  useEffect(() => {
-    const hist = JSON.parse(localStorage.getItem("datavault_requests") ?? "[]") as HistoryItem[];
-    setQueryHistory(hist.slice(0, 5));
-  }, []);
-
   // Close picker on outside click
   useEffect(() => {
     function handle(e: MouseEvent) {
@@ -148,14 +143,11 @@ export default function AskQuery() {
       outcome: "settled",
     };
 
-    const hist = JSON.parse(localStorage.getItem("datavault_requests") ?? "[]") as HistoryItem[];
-    hist.unshift(newItem);
-    localStorage.setItem("datavault_requests", JSON.stringify(hist.slice(0, 10)));
-    setQueryHistory(hist.slice(0, 5));
+    // Preview history is ephemeral and never touches real payment recovery records.
+    setQueryHistory((items) => [newItem, ...items].slice(0, 5));
   }
 
   function clearHistory() {
-    localStorage.removeItem("datavault_requests");
     setQueryHistory([]);
   }
 

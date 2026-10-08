@@ -3,10 +3,12 @@
  * These verify denial before protected work, not full end-to-end execution.
  * Live chain and model calls are not made here.
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MockD1Database, makeEnv } from "./helpers";
 import { handleReceipt } from "../routes/queries";
 import { handleConfirmCollection } from "../routes/collections";
+
+vi.mock("../lib/chain-identity", () => ({ rpcMatchesConfiguredChain: vi.fn(async () => true) }));
 
 const COL_ID  = "0x" + "bb".repeat(32);
 const REQ_ID  = "0x" + "aa".repeat(32);
@@ -104,7 +106,7 @@ describe("POST /api/collections/:id/confirm", () => {
 
   beforeEach(() => {
     db = new MockD1Database();
-    env = makeEnv({ DB: db });
+    env = makeEnv({ DB: db, CONTRACT_ADDRESS: "0x" + "11".repeat(20) });
     db.seed("collections", [{
       collection_id: COL_ID,
       owner_address: BUYER.toLowerCase(),
