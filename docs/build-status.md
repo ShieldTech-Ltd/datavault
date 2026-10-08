@@ -22,6 +22,7 @@ Updated 8 October 2026 for `feat/product-backend-ritik` at `b676a28`. This is so
 - `npm test --prefix worker`: 131 passing on 8 October.
 - `npm run rehearse:local`: passed on 8 October with a local Hardhat chain, Wrangler D1 and R2, HTTPS model stub, stored-answer settlement recovery, owner payout, pause, and refund.
 - `python3 scripts/check-secrets.py`: passed on the current tracked tree.
+- `npm audit --omit=dev --audit-level=high` in root, frontend, and Worker: zero reported production advisories on 8 October. Recheck before deployment because advisory data changes.
 - Frontend build passed after the registration signature change, with no generated JavaScript emitted into source files.
 
 ## Gates before public deployment
