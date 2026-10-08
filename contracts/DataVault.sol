@@ -93,7 +93,7 @@ contract DataVault {
 
     /**
      * Register a new collection.
-     * collectionId: derived off-chain as keccak256(ownerAddress + contentHash).
+     * collectionId: derived off-chain from chain, contract, owner, and content hash.
      * operator:     the Worker's settlement wallet address. Must not be address(0).
      *               Payment always goes to msg.sender (the owner), never to the operator.
      */

@@ -14,6 +14,7 @@ import { verifyRegistrationReceipt } from "../lib/chain-receipts";
 import { registrationMessage } from "../../../shared/api";
 import { paidServiceConfigured } from "../lib/config";
 import { rpcMatchesConfiguredChain } from "../lib/chain-identity";
+import { collectionIdFor } from "../lib/collection-id";
 
 // Staging collections expire after 30 minutes if the owner never confirms the tx.
 const STAGING_EXPIRY_MS = 30 * 60 * 1000;
@@ -61,8 +62,8 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
     return new Response("Monad RPC chain does not match this deployment.", { status: 503 });
   }
 
-  // Derive the collection ID from the signed owner and content hash.
-  const collectionId = keccak256(toBytes(`${ownerAddress}:${contentHash}`));
+  const collectionId = collectionIdFor(Number(env.CHAIN_ID), env.CONTRACT_ADDRESS,
+    ownerAddress, contentHash);
 
   const existing = await getCollectionRow(collectionId, env);
   if (existing && existing.status !== "orphaned" &&

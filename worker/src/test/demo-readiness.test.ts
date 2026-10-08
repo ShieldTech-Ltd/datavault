@@ -5,7 +5,8 @@ import { handlePrepare, handleExecute, handleAnswerRecovery } from "../routes/qu
 import { handleRegisterCollection, handleConfirmCollection } from "../routes/collections";
 import { callModel } from "../lib/model";
 import type { Env } from "../lib/types";
-import { executionMessage } from "../../../shared/api";
+import { executionMessage, registrationMessage } from "../../../shared/api";
+import { collectionIdFor } from "../lib/collection-id";
 
 const mocks = vi.hoisted(() => ({
   getCollectionRow: vi.fn(),
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   markCollectionOrphaned: vi.fn(),
   getOnChainCollection: vi.fn(),
   getOnChainQuery: vi.fn(),
+  buildRegisterCalldata: vi.fn(),
   verifyOpenReceipt: vi.fn(),
   retrievePassages: vi.fn(),
   storeCollection: vi.fn(),
@@ -33,6 +35,7 @@ vi.mock("../lib/d1", () => ({
 vi.mock("../lib/policy", () => ({
   getOnChainCollection: mocks.getOnChainCollection,
   getOnChainQuery: mocks.getOnChainQuery,
+  buildRegisterCalldata: mocks.buildRegisterCalldata,
 }));
 vi.mock("../lib/chain-receipts", () => ({ verifyOpenReceipt: mocks.verifyOpenReceipt,
   verifyRegistrationReceipt: mocks.verifyRegistrationReceipt }));
@@ -62,9 +65,37 @@ beforeEach(() => {
     collectionId, policyVersion: 1, openedAt: BigInt(Math.floor(Date.now() / 1000)) });
   mocks.verifyOpenReceipt.mockResolvedValue(true);
   mocks.verifyRegistrationReceipt.mockResolvedValue(true);
+  mocks.buildRegisterCalldata.mockResolvedValue("0x1234");
 });
 
 describe("collection ownership", () => {
+  it("registers a deployment-scoped collection ID from a signed upload", async () => {
+    const content = "A useful private guide.";
+    const contentHash = keccak256(toBytes(content));
+    const price = "100";
+    const timestamp = Date.now();
+    const signature = await owner.signMessage({ message: registrationMessage(
+      10143, contract, owner.address, contentHash, price, timestamp,
+    ) });
+    const form = new FormData();
+    form.set("file", new File([content], "guide.md", { type: "text/markdown" }));
+    form.set("ownerAddress", owner.address);
+    form.set("priceWei", price);
+    mocks.getCollectionRow.mockResolvedValue(null);
+    mocks.insertCollection.mockResolvedValue(true);
+    const response = await handleRegisterCollection(new Request("http://localhost/api/collections", {
+      method: "POST", body: form,
+      headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
+    }), env);
+    expect(response.status).toBe(200);
+    const body = await response.json() as { collectionId: string };
+    const expected = collectionIdFor(10143, contract, owner.address, contentHash);
+    expect(body.collectionId).toBe(expected);
+    expect(mocks.insertCollection).toHaveBeenCalledWith(expect.objectContaining({
+      collection_id: expected, content_hash: contentHash,
+    }), env);
+  });
+
   it("rejects an unsigned staging upload before storing content", async () => {
     const form = new FormData();
     form.set("file", new File(["A useful private guide."], "guide.md", { type: "text/markdown" }));
