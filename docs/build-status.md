@@ -27,6 +27,7 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 - `python3 scripts/check-secrets.py`: passed on the current tracked tree.
 - `npm audit --omit=dev --audit-level=high` in root, frontend, and Worker: zero reported production advisories on 8 October. Recheck before deployment because advisory data changes.
 - Frontend build passed after the registration signature change, with no generated JavaScript emitted into source files.
+- The local production entry point was checked in Chrome at desktop and 390 px mobile widths on 9 October. The mobile navigation exposes all five destinations. Without a configured Worker or injected wallet, it shows unavailable and connect states rather than sample balances or receipts. This is a UI check, not a paid browser flow.
 
 ## Gates before public deployment
 

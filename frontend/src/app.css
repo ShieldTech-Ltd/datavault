@@ -1079,7 +1079,9 @@ summary:focus-visible {
     grid-template-columns: 1fr;
   }
   .app-nav {
-    overflow-x: auto;
+    flex-wrap: wrap;
+    overflow: visible;
+    row-gap: 0;
   }
   .app-header-inner {
     flex-wrap: wrap;
@@ -1097,7 +1099,10 @@ summary:focus-visible {
     max-width: none;
   }
   .app-nav button {
-    padding: 0 5px;
+    padding: 9px 5px;
+  }
+  .app-nav a {
+    padding: 9px 5px;
   }
   .app-header-actions {
     margin-left: auto;
