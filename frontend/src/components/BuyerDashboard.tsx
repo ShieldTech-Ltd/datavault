@@ -211,7 +211,7 @@ export default function BuyerDashboard({
   function changeQuestion(value: string) {
     setQuestion(value);
     setQuote(null);
-    setStep("idle");
+    if (step !== "settlement_pending" && step !== "failed") setStep("idle");
   }
 
   async function wallet() {
@@ -500,12 +500,39 @@ export default function BuyerDashboard({
         }
       );
       if (!response.ok) throw new Error(await response.text());
-      const result = (await response.json()) as { outcome: string };
-      if (result.outcome === "settled") await recover(current);
-      else
+      const result = (await response.json()) as {
+        outcome: string;
+        message?: string;
+      };
+      if (result.outcome === "settled") {
+        await recover(current);
+      } else if (result.outcome === "refunded") {
+        remember({ ...current, outcome: "refunded" });
+        setRefundAt(null);
+        setStep("idle");
+        setMessage("This escrow was refunded on Monad.");
+      } else if (result.outcome === "refundable") {
+        remember({ ...current, outcome: "refundable" });
+        await loadRefundTime(current);
+        setStep("failed");
         setMessage(
-          "Settlement is still pending. Check again shortly or claim a refund after the timeout if the escrow remains open."
+          "Escrow is still open and the refund timeout has passed. You can claim the refund below."
         );
+      } else if (result.outcome === "settlement_pending") {
+        remember({ ...current, outcome: "settlement_pending" });
+        await loadRefundTime(current);
+        setStep("settlement_pending");
+        setMessage(
+          result.message ??
+            "Settlement is still pending on Monad. Check again shortly."
+        );
+      } else {
+        setStep("failed");
+        setMessage(
+          result.message ??
+            "No answer is recorded. If escrow is open, retry the exact original question or refund after timeout."
+        );
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     }
@@ -517,6 +544,32 @@ export default function BuyerDashboard({
     setMessage("");
     try {
       const client = await wallet();
+      const query = (await viemClient.readContract({
+        address: CONTRACT_ADDRESS,
+        abi: DATAVAULT_ABI,
+        functionName: "getQuery",
+        args: [current.requestId as `0x${string}`],
+      })) as [`0x${string}`, string, bigint, number, bigint, number];
+      if (query[1].toLowerCase() !== address.toLowerCase())
+        throw new Error("Connected wallet is not the escrow buyer.");
+      if (query[5] !== 0) {
+        remember({
+          ...current,
+          outcome: query[5] === 1 ? "settlement_pending" : "refunded",
+        });
+        setRefundAt(null);
+        setStep(query[5] === 1 ? "settlement_pending" : "idle");
+        throw new Error(
+          query[5] === 1
+            ? "Escrow already settled. Check settlement to recover the answer."
+            : "Escrow was already refunded on Monad."
+        );
+      }
+      const latestBlock = await viemClient.getBlock();
+      if (latestBlock.timestamp < query[4] + 600n)
+        throw new Error(
+          "The on-chain refund timeout has not passed yet. Check again after the next block."
+        );
       const data = encodeFunctionData({
         abi: DATAVAULT_ABI,
         functionName: "refundExpired",
@@ -692,15 +745,18 @@ export default function BuyerDashboard({
             settling.
           </p>
         )}
-        {step === "settlement_pending" && (
-          <button
-            type="button"
-            onClick={reconcile}
-            className="workspace-secondary-button"
-          >
-            Check settlement
-          </button>
-        )}
+        {current &&
+          (step === "settlement_pending" || step === "failed") &&
+          current.outcome !== "refunded" &&
+          current.outcome !== "settled" && (
+            <button
+              type="button"
+              onClick={reconcile}
+              className="workspace-secondary-button"
+            >
+              Check settlement
+            </button>
+          )}
         {current &&
           (step === "settlement_pending" || step === "failed") &&
           current.outcome !== "settled" &&
