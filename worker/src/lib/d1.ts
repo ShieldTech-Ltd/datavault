@@ -205,16 +205,49 @@ export async function updateQueryAnswerRecorded(
   return result.meta.changes === 1;
 }
 
+export async function claimSettlementDispatch(
+  requestId: string,
+  token: string,
+  env: Env,
+  leaseMs = 120_000,
+): Promise<boolean> {
+  const result = await env.DB.prepare(
+    `UPDATE queries SET outcome = 'settling', lease_expires_at = ?
+     WHERE request_id = ? AND lease_token = ? AND outcome = 'answer_recorded'
+       AND answer_text IS NOT NULL AND settle_tx_hash IS NULL`
+  ).bind(Date.now() + leaseMs, requestId, token).run();
+  return result.meta.changes === 1;
+}
+
+export async function reclaimSettlementDispatch(
+  requestId: string,
+  env: Env,
+  leaseMs = 120_000,
+): Promise<string | null> {
+  const now = Date.now();
+  const token = crypto.randomUUID();
+  const result = await env.DB.prepare(
+    `UPDATE queries SET outcome = 'settling', lease_token = ?, lease_expires_at = ?
+     WHERE request_id = ? AND outcome IN ('answer_recorded', 'settling', 'settlement_pending')
+       AND answer_text IS NOT NULL AND settle_tx_hash IS NULL AND lease_expires_at <= ?`
+  ).bind(token, now + leaseMs, requestId, now).run();
+  return result.meta.changes === 1 ? token : null;
+}
+
 export async function updateQuerySettlementPending(
   requestId: string,
   settleTxHash: string,
-  env: Env
-): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE queries SET outcome = 'settlement_pending', settle_tx_hash = ? WHERE request_id = ?`
+  env: Env,
+  token?: string,
+): Promise<boolean> {
+  const result = await env.DB.prepare(
+    token
+      ? `UPDATE queries SET outcome = 'settlement_pending', settle_tx_hash = ? WHERE request_id = ? AND lease_token = ? AND outcome = 'settling'`
+      : `UPDATE queries SET outcome = 'settlement_pending', settle_tx_hash = ? WHERE request_id = ?`
   )
-    .bind(settleTxHash, requestId)
+    .bind(...(token ? [settleTxHash, requestId, token] : [settleTxHash, requestId]))
     .run();
+  return result.meta.changes === 1;
 }
 
 export async function updateQuerySettled(

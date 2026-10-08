@@ -5,6 +5,8 @@ import {
   reclaimExpiredQuery,
   updateQueryRunning,
   updateQueryAnswerRecorded,
+  claimSettlementDispatch,
+  reclaimSettlementDispatch,
   updateQuerySettlementPending,
   updateQuerySettled,
   getQueryRow,
@@ -115,6 +117,21 @@ describe("query state transitions", () => {
     const row = await getQueryRow(REQ_ID, env as never);
     expect(row?.outcome).toBe("settlement_pending");
     expect(row?.settle_tx_hash).toBe(TX_HASH2);
+  });
+
+  it("fences settlement dispatch and lets one recovery take over an expired lease", async () => {
+    await updateQueryRunning(REQ_ID, token, env as never);
+    await updateQueryAnswerRecorded(REQ_ID, "answer", [], "sha256:abc", token, env as never);
+    expect(await claimSettlementDispatch(REQ_ID, token, env as never)).toBe(true);
+    expect(await claimSettlementDispatch(REQ_ID, token, env as never)).toBe(false);
+    expect(await reclaimSettlementDispatch(REQ_ID, env as never)).toBeNull();
+    db.getTable("queries")[0].lease_expires_at = Date.now() - 1;
+    const recovered = await reclaimSettlementDispatch(REQ_ID, env as never);
+    expect(recovered).toBeTruthy();
+    expect(recovered).not.toBe(token);
+    expect(await updateQuerySettlementPending(REQ_ID, TX_HASH2, env as never, token)).toBe(false);
+    expect(await updateQuerySettlementPending(REQ_ID, TX_HASH2, env as never, recovered as string)).toBe(true);
+    expect(await reclaimSettlementDispatch(REQ_ID, env as never)).toBeNull();
   });
 
   it("settlement_pending -> settled records settled_at", async () => {

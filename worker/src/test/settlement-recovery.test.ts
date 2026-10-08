@@ -9,6 +9,7 @@ import type { Env } from "../lib/types";
 const mocks = vi.hoisted(() => ({
   getOnChainCollection: vi.fn(), getOnChainQuery: vi.fn(), verifyOpenReceipt: vi.fn(),
   claimQuery: vi.fn(), reclaimExpiredQuery: vi.fn(), getQueryRow: vi.fn(), getCollectionRow: vi.fn(), updateQueryRunning: vi.fn(),
+  claimSettlementDispatch: vi.fn(), reclaimSettlementDispatch: vi.fn(),
   updateQueryOutcome: vi.fn(),
   updateQueryAnswerRecorded: vi.fn(), updateQuerySettlementPending: vi.fn(),
   updateQuerySettled: vi.fn(), retrievePassages: vi.fn(), callModel: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("../lib/chain-receipts", () => ({ verifyOpenReceipt: mocks.verifyOpenRec
   verifiedSettlementHash: mocks.verifiedSettlementHash }));
 vi.mock("../lib/d1", () => ({
   claimQuery: mocks.claimQuery, reclaimExpiredQuery: mocks.reclaimExpiredQuery,
+  claimSettlementDispatch: mocks.claimSettlementDispatch, reclaimSettlementDispatch: mocks.reclaimSettlementDispatch,
   getQueryRow: mocks.getQueryRow, getCollectionRow: mocks.getCollectionRow,
   updateQueryRunning: mocks.updateQueryRunning, updateQueryOutcome: mocks.updateQueryOutcome,
   updateQueryAnswerRecorded: mocks.updateQueryAnswerRecorded,
@@ -78,6 +80,7 @@ beforeEach(() => {
   mocks.claimQuery.mockResolvedValue("lease-one");
   mocks.updateQueryRunning.mockResolvedValue(true);
   mocks.updateQueryAnswerRecorded.mockResolvedValue(true);
+  mocks.claimSettlementDispatch.mockResolvedValue(true);
   mocks.retrievePassages.mockResolvedValue({ passages: ["A fact."],
     passageIds: [`0x${"ff".repeat(32)}:chunk-0`], contentHash: `0x${"ff".repeat(32)}` });
   mocks.callModel.mockResolvedValue({ answer: "A cited fact.", citedPassages: [],
@@ -219,6 +222,41 @@ describe("settlement uncertainty after answer recording", () => {
     expect(mocks.verifiedSettlementHash).toHaveBeenCalledWith(env, requestId,
       `0x${answerDigest.slice(7)}`, null, openTxHash);
     expect(mocks.updateQuerySettled).toHaveBeenCalledWith(requestId, settleTxHash, [], answerDigest, env);
+  });
+
+  it("settles a stored answer after the dispatch lease expires without another model call", async () => {
+    mocks.getQueryRow.mockResolvedValue({ request_id: requestId, collection_id: collectionId,
+      buyer_address: buyer.address.toLowerCase(), outcome: "settling", answer_text: "A cited fact.",
+      passage_ids: "[]", response_digest: answerDigest, settle_tx_hash: null, open_tx_hash: openTxHash,
+      policy_version: 1, chain_id: 10143, contract_address: contract, amount_wei: "100",
+      lease_expires_at: Date.now() - 1 });
+    mocks.reclaimSettlementDispatch.mockResolvedValue("recovery-token");
+    const timestamp = Date.now();
+    const signature = await buyer.signMessage({ message: `datavault-reconcile:${requestId}:${timestamp}` });
+    const response = await handleReconcile(new Request(`http://localhost/api/queries/${requestId}/reconcile`, {
+      method: "POST", headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
+    }), env, requestId);
+    expect(response.status).toBe(200);
+    expect((await response.json() as { outcome: string }).outcome).toBe("settled");
+    expect(mocks.reclaimSettlementDispatch).toHaveBeenCalledOnce();
+    expect(mocks.settle).toHaveBeenCalledWith(requestId, `0x${answerDigest.slice(7)}`, env);
+    expect(mocks.callModel).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch a tampered stored answer", async () => {
+    mocks.getQueryRow.mockResolvedValue({ request_id: requestId, collection_id: collectionId,
+      buyer_address: buyer.address.toLowerCase(), outcome: "answer_recorded", answer_text: "Tampered answer",
+      passage_ids: "[]", response_digest: answerDigest, settle_tx_hash: null, open_tx_hash: openTxHash,
+      policy_version: 1, chain_id: 10143, contract_address: contract, amount_wei: "100",
+      lease_expires_at: Date.now() - 1 });
+    const timestamp = Date.now();
+    const signature = await buyer.signMessage({ message: `datavault-reconcile:${requestId}:${timestamp}` });
+    const response = await handleReconcile(new Request(`http://localhost/api/queries/${requestId}/reconcile`, {
+      method: "POST", headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
+    }), env, requestId);
+    expect(response.status).toBe(409);
+    expect(mocks.reclaimSettlementDispatch).not.toHaveBeenCalled();
+    expect(mocks.settle).not.toHaveBeenCalled();
   });
 
   it("withholds a tampered answer even when D1 says settled", async () => {

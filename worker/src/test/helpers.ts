@@ -110,7 +110,7 @@ class MockD1Statement {
     }
 
     // UPDATE queries SET outcome = 'answer_recorded', answer_text = ?, passage_ids = ?, response_digest = ? WHERE request_id = ?
-    if (su.includes("OUTCOME = 'ANSWER_RECORDED'")) {
+    if (su.startsWith("UPDATE QUERIES SET OUTCOME = 'ANSWER_RECORDED'")) {
       const rows = this.tables.get("queries") ?? [];
       const reqId = this.boundArgs[3];
       for (const r of rows) {
@@ -125,17 +125,37 @@ class MockD1Statement {
       return { meta: { changes: 0 } };
     }
 
+    if (su.startsWith("UPDATE QUERIES SET OUTCOME = 'SETTLING', LEASE_EXPIRES_AT")) {
+      const row = (this.tables.get("queries") ?? []).find((item) => item.request_id === this.boundArgs[1]);
+      if (!row || row.lease_token !== this.boundArgs[2] || row.outcome !== "answer_recorded" ||
+          row.answer_text === null || row.settle_tx_hash !== null) return { meta: { changes: 0 } };
+      row.outcome = "settling";
+      row.lease_expires_at = this.boundArgs[0];
+      return { meta: { changes: 1 } };
+    }
+    if (su.startsWith("UPDATE QUERIES SET OUTCOME = 'SETTLING', LEASE_TOKEN")) {
+      const row = (this.tables.get("queries") ?? []).find((item) => item.request_id === this.boundArgs[2]);
+      if (!row || !["answer_recorded", "settling", "settlement_pending"].includes(row.outcome as string) ||
+          row.answer_text === null || row.settle_tx_hash !== null ||
+          (row.lease_expires_at as number) > (this.boundArgs[3] as number)) return { meta: { changes: 0 } };
+      row.outcome = "settling";
+      row.lease_token = this.boundArgs[0];
+      row.lease_expires_at = this.boundArgs[1];
+      return { meta: { changes: 1 } };
+    }
     // UPDATE queries SET outcome = 'settlement_pending', settle_tx_hash = ? WHERE request_id = ?
     if (su.includes("OUTCOME = 'SETTLEMENT_PENDING'")) {
       const rows = this.tables.get("queries") ?? [];
       const reqId = this.boundArgs[1];
       for (const r of rows) {
-        if (r.request_id === reqId) {
+        if (r.request_id === reqId && (this.boundArgs.length === 2 ||
+            (r.lease_token === this.boundArgs[2] && r.outcome === "settling"))) {
           r.outcome = "settlement_pending";
           r.settle_tx_hash = this.boundArgs[0];
+          return { meta: { changes: 1 } };
         }
       }
-      return { meta: { changes: 1 } };
+      return { meta: { changes: 0 } };
     }
 
     // UPDATE queries SET outcome = 'settled', settle_tx_hash = ?, passage_ids = ?, response_digest = ?, settled_at = ? WHERE request_id = ?

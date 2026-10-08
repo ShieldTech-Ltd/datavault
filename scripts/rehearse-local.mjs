@@ -352,6 +352,36 @@ assert.equal(resumed.status, 200, `Expired claim did not resume: ${JSON.stringif
 assert.equal(resumed.body.outcome, "settled");
 assert.equal((await contract.getQuery(resumedId)).state, 1n);
 
+// Simulate an exit after persisting an answer but before settlement dispatch.
+// Signed reconciliation must settle that stored answer without another model call.
+const storedId = ethers.keccak256(randomBytes(32));
+const storedOpenTx = await contract.connect(buyer).openQuery(storedId, collectionId, { value: priceWei });
+assert.equal((await storedOpenTx.wait()).status, 1);
+const storedAnswer = "A stored answer for local settlement recovery.";
+const storedDigest = `sha256:${createHash("sha256").update(storedAnswer).digest("hex")}`;
+localSql(`INSERT INTO queries
+  (request_id, collection_id, buyer_address, policy_version, question_digest,
+   open_tx_hash, chain_id, contract_address, content_hash, amount_wei,
+   passage_ids, response_digest, answer_text, outcome, claimed_at, lease_expires_at, lease_token, created_at)
+  VALUES ('${storedId}', '${collectionId}', '${buyerAddress.toLowerCase()}', 1, '${digest}',
+   '${storedOpenTx.hash}', 31337, '${contractAddress.toLowerCase()}', '${contentHash}', '${priceWei}',
+   '[]', '${storedDigest}', '${storedAnswer}', 'answer_recorded', ${expiredAt}, ${expiredAt},
+   'expired-settlement-worker', ${expiredAt})`);
+const storedTime = Date.now();
+const storedReconcile = await request(`/api/queries/${storedId}/reconcile`, {
+  method: "POST",
+  headers: signedHeaders(await buyer.signMessage(`datavault-reconcile:${storedId}:${storedTime}`), storedTime),
+});
+assert.equal(storedReconcile.status, 200, `Stored settlement did not recover: ${JSON.stringify(storedReconcile.body)}`);
+assert.equal(storedReconcile.body.outcome, "settled");
+assert.equal((await contract.getQuery(storedId)).state, 1n);
+const storedAnswerTime = Date.now();
+const storedRecovered = await request(`/api/queries/${storedId}/answer`, {
+  headers: signedHeaders(await buyer.signMessage(`datavault-answer:${storedId}:${storedAnswerTime}`), storedAnswerTime),
+});
+assert.equal(storedRecovered.status, 200);
+assert.equal(storedRecovered.body.answer, storedAnswer);
+
 const refundableId = ethers.keccak256(randomBytes(32));
 const refundableTx = await contract
   .connect(buyer)
@@ -429,6 +459,7 @@ console.log(
         "receipt",
         "settlement hash discovery after Worker failure",
         "expired claim resumed with one paid escrow",
+        "stored answer settled after Worker failure",
         "answer recovery",
         "buyer history",
         "analytics",

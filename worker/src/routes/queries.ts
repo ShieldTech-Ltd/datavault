@@ -2,7 +2,7 @@ import type { Env, QueryRow } from "../lib/types";
 import {
   getCollectionRow, claimQuery, reclaimExpiredQuery, updateQuerySettled, updateQuerySettlementPending,
   updateQueryOutcome, updateQueryRunning, updateQueryAnswerRecorded,
-  getQueryRow,
+  getQueryRow, claimSettlementDispatch, reclaimSettlementDispatch,
 } from "../lib/d1";
 import { getOnChainCollection, getOnChainQuery } from "../lib/policy";
 import { verifyOpenReceipt, verifiedSettlementHash } from "../lib/chain-receipts";
@@ -272,6 +272,8 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     if (!/^sha256:[0-9a-fA-F]{64}$/.test(responseDigest) || /^0{64}$/.test(digestHex)) {
       throw new Error("Answer digest is invalid for settlement.");
     }
+    if (!(await claimSettlementDispatch(requestId as string, leaseToken, env)))
+      return new Response("Another Worker holds settlement for this request.", { status: 409 });
     const result = await settleOnChainWithConfirmation(requestId as `0x${string}`, `0x${digestHex}`, env);
     settleTxHash = result.hash;
     if (result.status === "reverted") {
@@ -281,7 +283,7 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
       });
     }
     if (result.status === "pending") {
-      await updateQuerySettlementPending(requestId as string, settleTxHash, env);
+      await updateQuerySettlementPending(requestId as string, settleTxHash, env, leaseToken);
       return new Response(JSON.stringify({
         requestId, openTxHash, settleTxHash, outcome: "settlement_pending",
         receiptUrl: `/api/queries/${requestId}/receipt`,
@@ -433,6 +435,52 @@ export async function handleReconcile(req: Request, env: Env, requestId: string)
     await updateQueryOutcome(requestId, "refunded", env);
     return new Response(JSON.stringify({ outcome: "refunded" }),
       { headers: { "Content-Type": "application/json" } });
+  }
+  if (escrow.state === 0 && row.answer_text && !row.settle_tx_hash &&
+      ["answer_recorded", "settling", "settlement_pending"].includes(row.outcome) &&
+      row.lease_expires_at !== null && Date.now() >= row.lease_expires_at &&
+      BigInt(Math.floor(Date.now() / 1000)) < escrow.openedAt + 600n) {
+    const digest = row.response_digest;
+    if (!/^sha256:[0-9a-fA-F]{64}$/.test(digest ?? "") ||
+        (await sha256Hex(row.answer_text)).toLowerCase() !== digest!.slice(7).toLowerCase())
+      return new Response(JSON.stringify({ error: "Stored answer digest is invalid. Settlement recovery is withheld." }),
+        { status: 409, headers: { "Content-Type": "application/json" } });
+    const policy = await getOnChainCollection(row.collection_id as `0x${string}`, env);
+    if (!policy || !policy.active || !operatorMatches(env, policy) ||
+        policy.policyVersion !== row.policy_version ||
+        escrow.collectionId.toLowerCase() !== row.collection_id.toLowerCase() ||
+        escrow.buyer.toLowerCase() !== row.buyer_address.toLowerCase() ||
+        escrow.policyVersion !== row.policy_version ||
+        escrow.amount.toString() !== row.amount_wei ||
+        row.chain_id !== Number(env.CHAIN_ID) ||
+        row.contract_address?.toLowerCase() !== env.CONTRACT_ADDRESS.toLowerCase() ||
+        !row.open_tx_hash ||
+        !(await verifyOpenReceipt(env, row.open_tx_hash as `0x${string}`, requestId,
+          row.collection_id, row.buyer_address, escrow.amount)))
+      return new Response(JSON.stringify({ error: "Escrow or collection policy changed. Refund after the timeout if escrow remains open." }),
+        { status: 409, headers: { "Content-Type": "application/json" } });
+    const token = await reclaimSettlementDispatch(requestId, env);
+    if (token) {
+      try {
+        const result = await settleOnChainWithConfirmation(requestId as `0x${string}`,
+          `0x${digest!.slice(7)}` as `0x${string}`, env);
+        if (result.status === "confirmed") {
+          await updateQuerySettled(requestId, result.hash, JSON.parse(row.passage_ids), digest!, env);
+          return new Response(JSON.stringify({ outcome: "settled", settleTxHash: result.hash, reconciled: true }),
+            { headers: { "Content-Type": "application/json" } });
+        }
+        if (result.status === "pending")
+          await updateQuerySettlementPending(requestId, result.hash, env, token);
+        return new Response(JSON.stringify({ outcome: "settlement_pending",
+          settleTxHash: result.status === "pending" ? result.hash : null,
+          message: result.status === "reverted" ? "Settlement did not confirm. Check again or refund after timeout." : "Settlement was broadcast and awaits confirmation." }),
+          { headers: { "Content-Type": "application/json" } });
+      } catch {
+        return new Response(JSON.stringify({ outcome: "settlement_pending", settleTxHash: null,
+          message: "Settlement broadcast is uncertain. Check again after the lease expires." }),
+          { status: 202, headers: { "Content-Type": "application/json" } });
+      }
+    }
   }
   if (escrow?.state === 0 && BigInt(Math.floor(Date.now() / 1000)) >= escrow.openedAt + 600n) {
     await updateQueryOutcome(requestId, "refundable", env);
