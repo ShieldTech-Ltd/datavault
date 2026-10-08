@@ -39,7 +39,7 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 - Confirm the three production dependency audits remain clear in CI. The injected wallet replacement removed the vulnerable Dynamic dependency tree. The wallet now offers a Monad network switch, but still needs a live browser regression check.
 - Verify a real injected-wallet connection, signed registration, signed payment, private R2 and D1 access, actual model response, and owner payout on the configured Monad network.
 - Add real Cloudflare D1 and R2 resource identifiers, a deployed contract, Worker secrets, public site origin, and a confirmed sample collection. The tracked Wrangler configuration still contains a placeholder database ID.
-- The sample guide now focuses on invoices, banking, and expense records with official source links and no tax-year rates. Complete human review and collect actual user feedback before publishing it. Do not invent results.
+- The sample guide focuses on invoices, banking, and expense records with official source links and no tax-year rates. Its linked GOV.UK and Business.gov.uk pages were checked on 9 October, and the VAT-invoice wording was corrected to match GOV.UK. Human review and actual user feedback are still required before publishing it. Do not invent results.
 - Run the clean-browser live acceptance checklist in `docs/deployment.md` before calling the demo ready.
 
 ## Submission status

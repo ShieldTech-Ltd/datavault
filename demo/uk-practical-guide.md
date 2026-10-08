@@ -1,10 +1,10 @@
 # UK Practical Guide for Freelancers
 
-*Team-authored sample collection for the DataVault demo. Reviewed against the linked UK government guidance on 8 October 2026. This guide explains recordkeeping workflows. It does not replace current HMRC guidance or advice for an individual's circumstances.*
+*Team-authored sample collection for the DataVault demo. Its linked UK government sources were checked on 9 October 2026. This guide explains recordkeeping workflows. It does not replace current HMRC guidance or advice for an individual's circumstances.*
 
 ## What to put on an invoice
 
-Give each invoice a unique identification number. Include your name, any business name you use, an address and contact details, and the customer's name and address. Describe the work clearly. Record when the work was supplied, the invoice date, the amounts charged, the VAT amount if applicable, and the total owed. A sole trader using a business name should include an address where legal documents can be delivered. Check the current rules for VAT invoices if both businesses are VAT registered.
+Give each invoice a unique identification number. Include your name, any business name you use, an address and contact details, and the customer's name and address. Describe the work clearly. Record when the work was supplied, the invoice date, the amounts charged, the VAT amount if applicable, and the total owed. A sole trader using a business name should include an address where legal documents can be delivered. If you and your customer are VAT registered, use a VAT invoice, which requires additional details.
 
 For a smoother payment process, agree the payment terms with the client before work starts. Put the due date and a payment reference on the invoice, then keep a copy with the matching payment record. These workflow details help the client identify what the payment covers; they do not replace the required invoice information.
 
