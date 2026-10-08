@@ -55,7 +55,8 @@ const env = {
 beforeEach(() => {
   vi.clearAllMocks();
   const operator = privateKeyToAccount(env.SETTLEMENT_PRIVATE_KEY as `0x${string}`).address;
-  mocks.getCollectionRow.mockResolvedValue({ status: "confirmed", active: 1, collection_name: "Guide" });
+  mocks.getCollectionRow.mockResolvedValue({ status: "confirmed", active: 1, collection_name: "Guide",
+    owner_address: owner.address.toLowerCase() });
   mocks.getOnChainCollection.mockResolvedValue({ owner: owner.address, operator, price: 100n, active: true, policyVersion: 1 });
   mocks.getOnChainQuery.mockResolvedValue({ buyer: buyer.address, amount: 100n, state: 0,
     collectionId, policyVersion: 1, openedAt: BigInt(Math.floor(Date.now() / 1000)) });
@@ -89,6 +90,40 @@ describe("collection ownership", () => {
 });
 
 describe("paid query boundary", () => {
+  it("rejects a quote when the confirmed source belongs to another owner", async () => {
+    mocks.getCollectionRow.mockResolvedValue({ status: "confirmed", active: 1,
+      collection_name: "Guide", owner_address: buyer.address.toLowerCase() });
+    const response = await handlePrepare(new Request("http://localhost/api/queries/prepare", {
+      method: "POST", body: JSON.stringify({ collectionId, question: "What is in the guide?" }),
+    }), env);
+    expect(response.status).toBe(409);
+  });
+
+  it("rejects execution before retrieval when the confirmed source owner differs", async () => {
+    mocks.getCollectionRow.mockResolvedValue({ status: "confirmed", active: 1,
+      collection_name: "Guide", owner_address: buyer.address.toLowerCase() });
+    const response = await handleExecute(new Request("http://localhost/api/queries/execute", {
+      method: "POST",
+      headers: { "x-signature": `0x${"00".repeat(65)}`, "x-timestamp": String(Date.now()) },
+      body: JSON.stringify({ requestId, collectionId, question: "What is in the guide?", openTxHash }),
+    }), env);
+    expect(response.status).toBe(409);
+    expect(mocks.claimQuery).not.toHaveBeenCalled();
+    expect(mocks.retrievePassages).not.toHaveBeenCalled();
+  });
+
+  it("rejects execution when private source registration is unconfirmed", async () => {
+    mocks.getCollectionRow.mockResolvedValue({ status: "staging", active: 1,
+      collection_name: "Guide", owner_address: owner.address.toLowerCase() });
+    const response = await handleExecute(new Request("http://localhost/api/queries/execute", {
+      method: "POST",
+      headers: { "x-signature": `0x${"00".repeat(65)}`, "x-timestamp": String(Date.now()) },
+      body: JSON.stringify({ requestId, collectionId, question: "What is in the guide?", openTxHash }),
+    }), env);
+    expect(response.status).toBe(403);
+    expect(mocks.claimQuery).not.toHaveBeenCalled();
+    expect(mocks.retrievePassages).not.toHaveBeenCalled();
+  });
   it("does not offer a paid quote without all required runtime keys", async () => {
     const response = await handlePrepare(new Request("http://localhost/api/queries/prepare", {
       method: "POST", body: JSON.stringify({ collectionId, question: "What is in the guide?" }),

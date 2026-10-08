@@ -63,6 +63,8 @@ export async function handlePrepare(req: Request, env: Env): Promise<Response> {
 
   const onChain = await getOnChainCollection(collectionId as `0x${string}`, env);
   if (!onChain) return new Response("Collection not found on-chain", { status: 404 });
+  if (onChain.owner.toLowerCase() !== col.owner_address.toLowerCase())
+    return new Response("Collection owner does not match the confirmed source.", { status: 409 });
   if (!onChain.active) return new Response("Collection is paused on-chain", { status: 403 });
   if (!operatorMatches(env, onChain)) return new Response("Collection operator is not configured for settlement.", { status: 503 });
   const priceWei = onChain.price.toString();
@@ -110,8 +112,14 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
   const questionDigest = await sha256Hex(question as string);
 
   // ── On-chain checks (before any claim attempt) ────────────────────
+  const col = await getCollectionRow(collectionId, env);
+  if (!col) return new Response("Collection source is not registered on this deployment.", { status: 404 });
+  if (col.status !== "confirmed")
+    return new Response("Collection source is not confirmed on-chain.", { status: 403 });
   const onChain = await getOnChainCollection(collectionId as `0x${string}`, env);
   if (!onChain) return new Response("Collection not found on-chain", { status: 404 });
+  if (onChain.owner.toLowerCase() !== col.owner_address.toLowerCase())
+    return new Response("Collection owner does not match the confirmed source.", { status: 409 });
   if (!onChain.active) {
     return new Response(JSON.stringify({ error: "Collection is paused." }), {
       status: 403, headers: { "Content-Type": "application/json" },
@@ -217,7 +225,7 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
   let answerMayBeRecorded = false;
   let settleTxHash: `0x${string}` | null = null;
   try {
-    const { passages, passageIds, contentHash } = await retrievePassages(collectionId as string, question as string, env);
+    const { passages, passageIds, contentHash } = await retrievePassages(collectionId as string, question as string, col.content_hash, env);
     if (passages.length === 0) {
       await updateQueryOutcome(requestId as string, "failed", env);
       return new Response("No relevant passages found", { status: 422 });

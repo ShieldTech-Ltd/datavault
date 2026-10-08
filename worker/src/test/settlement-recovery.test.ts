@@ -8,7 +8,7 @@ import type { Env } from "../lib/types";
 
 const mocks = vi.hoisted(() => ({
   getOnChainCollection: vi.fn(), getOnChainQuery: vi.fn(), verifyOpenReceipt: vi.fn(),
-  claimQuery: vi.fn(), getQueryRow: vi.fn(), updateQueryRunning: vi.fn(),
+  claimQuery: vi.fn(), getQueryRow: vi.fn(), getCollectionRow: vi.fn(), updateQueryRunning: vi.fn(),
   updateQueryOutcome: vi.fn(), updateQueryContentHash: vi.fn(),
   updateQueryAnswerRecorded: vi.fn(), updateQuerySettlementPending: vi.fn(),
   updateQuerySettled: vi.fn(), retrievePassages: vi.fn(), callModel: vi.fn(),
@@ -22,7 +22,7 @@ vi.mock("../lib/policy", () => ({
 vi.mock("../lib/chain-receipts", () => ({ verifyOpenReceipt: mocks.verifyOpenReceipt,
   verifiedSettlementHash: mocks.verifiedSettlementHash }));
 vi.mock("../lib/d1", () => ({
-  claimQuery: mocks.claimQuery, getQueryRow: mocks.getQueryRow,
+  claimQuery: mocks.claimQuery, getQueryRow: mocks.getQueryRow, getCollectionRow: mocks.getCollectionRow,
   updateQueryRunning: mocks.updateQueryRunning, updateQueryOutcome: mocks.updateQueryOutcome,
   updateQueryContentHash: mocks.updateQueryContentHash,
   updateQueryAnswerRecorded: mocks.updateQueryAnswerRecorded,
@@ -66,6 +66,8 @@ async function execute() {
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.rpcMatchesConfiguredChain.mockResolvedValue(true);
+  mocks.getCollectionRow.mockResolvedValue({ status: "confirmed", owner_address: buyer.address.toLowerCase(),
+    content_hash: `0x${"ff".repeat(32)}` });
   mocks.checkRateLimit.mockResolvedValue({ allowed: true, retryAfter: 0 });
   const operator = privateKeyToAccount(env.SETTLEMENT_PRIVATE_KEY as `0x${string}`).address;
   mocks.getOnChainCollection.mockResolvedValue({ owner: buyer.address, operator,

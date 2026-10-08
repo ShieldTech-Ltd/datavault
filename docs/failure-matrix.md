@@ -55,6 +55,7 @@ Rows marked **[LIVE GATE]** require real testnet/model credentials to verify end
 | No relevant passages found by retrieval | 422; request marked `failed` without calling the model or settling | `retrievePassages` result check |
 | Model determines supplied passages are insufficient | An insufficient-evidence answer can settle with no citations | Detection phrase check in `callModel` |
 | R2 retrieval fails (collection missing) | 500; request is marked failed. Buyer can refund the still-open escrow after timeout. | `handleExecute` catch after claim |
+| Stored source bytes differ from the confirmed content hash | No passages reach the model; query is marked failed, and an open escrow remains refundable after timeout | `retrievePassages` hash check before model use |
 
 ## Settlement failures
 

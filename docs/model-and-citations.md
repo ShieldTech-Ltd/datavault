@@ -21,7 +21,7 @@ The content hash in the ID pins the citation to the exact document version used 
 ## Passage ID versioning
 
 Passage IDs take the form `{contentHash}:{chunkId}` where:
-- `contentHash` is the `keccak256` of the collection document at the time of retrieval
+- `contentHash` is the `keccak256` of the document in the confirmed collection record. The Worker checks the bytes fetched from private R2 against that hash before sending passages to the model or recovering cited text.
 - `chunkId` is `chunk-N` where N is the zero-based index of a chunk capped at 600 words and 4,000 characters
 
 The splitter normalizes whitespace and splits long tokens at Unicode character boundaries. A short nonempty document still produces a passage. An unchanged content hash must continue to use this splitter so stored passage IDs reconstruct the same text.
