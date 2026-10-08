@@ -91,7 +91,7 @@ cd worker
 npx wrangler d1 create datavault-db
 ```
 
-Copy the returned `database_id` into `worker/wrangler.toml`.
+For a public deployment, copy `worker/wrangler.toml` to the ignored `worker/wrangler.deploy.toml` and place the returned `database_id` there. Local Wrangler development uses its simulated D1 binding without a remote ID.
 
 Apply the schema locally:
 
@@ -132,12 +132,14 @@ For UI and UX review without a wallet, open `http://localhost:5173/demo.html` wh
 
 ## Build and deploy to Cloudflare
 
+Complete [the deployment runbook](docs/deployment.md), including the release configuration checks and real resource bindings, before this command.
+
 ```sh
 # Build the frontend
 npm run build:frontend
 
 # Deploy the Worker (serves the built frontend as static assets)
-cd worker && npm run deploy
+cd worker && npx wrangler deploy --config wrangler.deploy.toml
 ```
 
 ---
