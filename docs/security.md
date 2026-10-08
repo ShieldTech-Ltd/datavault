@@ -20,7 +20,7 @@ The paid path handles private source material, buyer questions, and a settlement
 - Uploaded passage text is escaped before placement inside model prompt delimiters. Model outputs still require validated citations, and prompt injection remains a residual risk to review with real adversarial documents.
 - API responses use `Cache-Control: no-store`. All responses use `X-Content-Type-Options: nosniff`, frame denial, a CSP that restricts scripts to the site and connections to the site or HTTPS endpoints, and a restrictive referrer policy. React's inline styles require the CSP style exception. A public deployment accepts only its own browser origin and explicitly configured origins. Local cross-port origins are accepted only when the Worker itself runs on localhost.
 - The Worker caps JSON request bodies at 8 KB and registration request bodies at 512000 bytes plus 16 KB of multipart overhead before parsing. The document itself remains limited to 512000 bytes.
-- Registration and execution use an atomic D1 fixed-window quota per caller IP. This does not stop an attacker using many IPs. Set Cloudflare account-level rate and spending limits before public use.
+- Registration and execution use an atomic D1 fixed-window quota per caller IP. Quotes, public catalogue and receipt reads, registration confirmation, and signed reconciliation have separate quotas before their D1 or RPC work. This does not stop an attacker using many IPs. Set Cloudflare account-level rate and spending limits before public use.
 - The unsupported content replacement endpoint returns 410. A new content version requires an on-chain policy update first.
 
 ## CI and release decision

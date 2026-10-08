@@ -21,7 +21,7 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 - `npm run test:contracts`: 21 passing on 8 October.
 - `npm run typecheck` in Worker: passed.
 - `npm run typecheck` in frontend: passed.
-- `npm test --prefix worker`: 134 passing on 9 October, including sample-guide passage retrieval and registration confirmation retry checks.
+- `npm test --prefix worker`: 137 passing on 9 October, including sample-guide passage retrieval, registration confirmation retry checks, and bounded public quote handling.
 - `python3 scripts/verify-sql-invariants.py`: passed on 9 October after explicitly closing SQLite connections for Windows cleanup compatibility. Windows rerun remains pending.
 - `npm run rehearse:local`: passed again on 9 October after the guarded registration confirmation change, using a local Hardhat chain, Wrangler D1 and R2, HTTPS model stub, stored-answer settlement recovery, owner payout, pause, and refund.
 - `python3 scripts/check-secrets.py`: passed on the current tracked tree.

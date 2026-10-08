@@ -27,7 +27,7 @@ import {
   handleOwnerAnalytics,
 } from "./routes/analytics";
 import { handleBuyerHistory } from "./routes/buyer-history";
-import { checkRateLimit, callerIdentity } from "./lib/ratelimit";
+import { checkRateLimit, callerIdentity, routeRateBucket } from "./lib/ratelimit";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -55,24 +55,17 @@ export default {
         const bounded = await boundedApiRequest(request);
         if (bounded instanceof Response) return securedResponse(bounded, true);
         request = bounded;
-        if (
-          method === "GET" &&
-          (path === "/api/marketplace/analytics" ||
-            path === "/api/owner/analytics" ||
-            path === "/api/owner/collections" ||
-            path === "/api/buyer/queries" ||
-            path === "/api/collections" ||
-            /^\/api\/collections\/[^/]+$/.test(path))
-        ) {
+        const bucket = routeRateBucket(method, path);
+        if (bucket) {
           const quota = await checkRateLimit(
             callerIdentity(request),
-            "catalogue",
+            bucket,
             env
           );
           if (!quota.allowed)
             return securedResponse(
               new Response(
-                JSON.stringify({ error: "Too many catalogue requests." }),
+                JSON.stringify({ error: "Too many requests for this API operation." }),
                 {
                   status: 429,
                   headers: {
