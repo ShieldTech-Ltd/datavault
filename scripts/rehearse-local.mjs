@@ -70,6 +70,13 @@ async function request(path, options = {}) {
 function signedHeaders(signature, timestamp) {
   return { "x-signature": signature, "x-timestamp": String(timestamp) };
 }
+function localSql(sql) {
+  execFileSync(
+    new URL("../worker/node_modules/.bin/wrangler", import.meta.url).pathname,
+    ["d1", "execute", "datavault-db", "--local", "--command", sql],
+    { cwd: new URL("../worker/", import.meta.url), stdio: "pipe" }
+  );
+}
 
 const content = `# Local rehearsal guide\n\nKeep clear records of invoices and expenses. Retain the date, amount, and purpose of each item.\n\nRehearsal ID: ${randomBytes(
   8
@@ -236,14 +243,7 @@ assert(!JSON.stringify(receipt.body).includes(executed.body.answer));
 
 // Simulate a Worker exit after on-chain settlement but before the final D1 write.
 // The buyer must recover the transaction hash from the contract event.
-execFileSync(
-  new URL("../worker/node_modules/.bin/wrangler", import.meta.url).pathname,
-  [
-    "d1", "execute", "datavault-db", "--local", "--command",
-    `UPDATE queries SET outcome = 'answer_recorded', settle_tx_hash = NULL WHERE request_id = '${requestId}'`,
-  ],
-  { cwd: new URL("../worker/", import.meta.url), stdio: "pipe" }
-);
+localSql(`UPDATE queries SET outcome = 'answer_recorded', settle_tx_hash = NULL WHERE request_id = '${requestId}'`);
 const reconcileTime = Date.now();
 const reconciled = await request(`/api/queries/${requestId}/reconcile`, {
   method: "POST",
@@ -324,6 +324,34 @@ assert(
   )
 );
 
+// Simulate a Worker exit before answer persistence. The escrow remains open,
+// and the original signed request must resume after its D1 lease expires.
+const resumedId = ethers.keccak256(randomBytes(32));
+const resumedOpenTx = await contract.connect(buyer).openQuery(resumedId, collectionId, { value: priceWei });
+assert.equal((await resumedOpenTx.wait()).status, 1);
+const expiredAt = Date.now() - 120_000;
+localSql(`INSERT INTO queries
+  (request_id, collection_id, buyer_address, policy_version, question_digest,
+   open_tx_hash, chain_id, contract_address, content_hash, amount_wei,
+   passage_ids, outcome, claimed_at, lease_expires_at, lease_token, created_at)
+  VALUES ('${resumedId}', '${collectionId}', '${buyerAddress.toLowerCase()}', 1, '${digest}',
+   '${resumedOpenTx.hash}', 31337, '${contractAddress.toLowerCase()}', '${contentHash}', '${priceWei}',
+   '[]', 'running', ${expiredAt}, ${expiredAt}, 'expired-local-worker', ${expiredAt})`);
+const resumeTime = Date.now();
+const resumeMessage = [
+  "datavault-execute", 31337, contractAddress.toLowerCase(), resumedId.toLowerCase(),
+  collectionId.toLowerCase(), digest, resumedOpenTx.hash.toLowerCase(), resumeTime,
+].join(":");
+const resumed = await request("/api/queries/execute", {
+  method: "POST",
+  headers: { "content-type": "application/json",
+    ...signedHeaders(await buyer.signMessage(resumeMessage), resumeTime) },
+  body: JSON.stringify({ requestId: resumedId, collectionId, question, openTxHash: resumedOpenTx.hash }),
+});
+assert.equal(resumed.status, 200, `Expired claim did not resume: ${JSON.stringify(resumed.body)}`);
+assert.equal(resumed.body.outcome, "settled");
+assert.equal((await contract.getQuery(resumedId)).state, 1n);
+
 const refundableId = ethers.keccak256(randomBytes(32));
 const refundableTx = await contract
   .connect(buyer)
@@ -400,6 +428,7 @@ console.log(
         "owner payout",
         "receipt",
         "settlement hash discovery after Worker failure",
+        "expired claim resumed with one paid escrow",
         "answer recovery",
         "buyer history",
         "analytics",

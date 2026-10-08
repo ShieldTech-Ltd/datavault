@@ -8,8 +8,8 @@ import type { Env } from "../lib/types";
 
 const mocks = vi.hoisted(() => ({
   getOnChainCollection: vi.fn(), getOnChainQuery: vi.fn(), verifyOpenReceipt: vi.fn(),
-  claimQuery: vi.fn(), getQueryRow: vi.fn(), getCollectionRow: vi.fn(), updateQueryRunning: vi.fn(),
-  updateQueryOutcome: vi.fn(), updateQueryContentHash: vi.fn(),
+  claimQuery: vi.fn(), reclaimExpiredQuery: vi.fn(), getQueryRow: vi.fn(), getCollectionRow: vi.fn(), updateQueryRunning: vi.fn(),
+  updateQueryOutcome: vi.fn(),
   updateQueryAnswerRecorded: vi.fn(), updateQuerySettlementPending: vi.fn(),
   updateQuerySettled: vi.fn(), retrievePassages: vi.fn(), callModel: vi.fn(),
   settle: vi.fn(), checkRateLimit: vi.fn(), rpcMatchesConfiguredChain: vi.fn(),
@@ -22,9 +22,9 @@ vi.mock("../lib/policy", () => ({
 vi.mock("../lib/chain-receipts", () => ({ verifyOpenReceipt: mocks.verifyOpenReceipt,
   verifiedSettlementHash: mocks.verifiedSettlementHash }));
 vi.mock("../lib/d1", () => ({
-  claimQuery: mocks.claimQuery, getQueryRow: mocks.getQueryRow, getCollectionRow: mocks.getCollectionRow,
+  claimQuery: mocks.claimQuery, reclaimExpiredQuery: mocks.reclaimExpiredQuery,
+  getQueryRow: mocks.getQueryRow, getCollectionRow: mocks.getCollectionRow,
   updateQueryRunning: mocks.updateQueryRunning, updateQueryOutcome: mocks.updateQueryOutcome,
-  updateQueryContentHash: mocks.updateQueryContentHash,
   updateQueryAnswerRecorded: mocks.updateQueryAnswerRecorded,
   updateQuerySettlementPending: mocks.updateQuerySettlementPending,
   updateQuerySettled: mocks.updateQuerySettled,
@@ -75,7 +75,9 @@ beforeEach(() => {
   mocks.getOnChainQuery.mockResolvedValue({ buyer: buyer.address, amount: 100n, state: 0,
     collectionId, policyVersion: 1, openedAt: BigInt(Math.floor(Date.now() / 1000)) });
   mocks.verifyOpenReceipt.mockResolvedValue(true);
-  mocks.claimQuery.mockResolvedValue(true);
+  mocks.claimQuery.mockResolvedValue("lease-one");
+  mocks.updateQueryRunning.mockResolvedValue(true);
+  mocks.updateQueryAnswerRecorded.mockResolvedValue(true);
   mocks.retrievePassages.mockResolvedValue({ passages: ["A fact."],
     passageIds: [`0x${"ff".repeat(32)}:chunk-0`], contentHash: `0x${"ff".repeat(32)}` });
   mocks.callModel.mockResolvedValue({ answer: "A cited fact.", citedPassages: [],
@@ -85,6 +87,33 @@ beforeEach(() => {
 });
 
 describe("settlement uncertainty after answer recording", () => {
+  it("resumes an expired claim with the original paid request", async () => {
+    mocks.claimQuery.mockResolvedValue(null);
+    mocks.getQueryRow.mockResolvedValue({
+      request_id: requestId, collection_id: collectionId, buyer_address: buyer.address.toLowerCase(),
+      open_tx_hash: openTxHash, chain_id: 10143, contract_address: contract,
+      policy_version: 1, amount_wei: "100", content_hash: `0x${"ff".repeat(32)}`,
+      question_digest: await questionHash(),
+      outcome: "running", lease_expires_at: Date.now() - 1, answer_text: null,
+    });
+    mocks.reclaimExpiredQuery.mockResolvedValue("lease-two");
+    const response = await execute();
+    expect(response.status).toBe(200);
+    expect(mocks.reclaimExpiredQuery).toHaveBeenCalledOnce();
+    expect(mocks.updateQueryRunning).toHaveBeenCalledWith(requestId, "lease-two", env);
+    expect(mocks.updateQueryAnswerRecorded).toHaveBeenCalledWith(
+      requestId, "A cited fact.", expect.any(Array), answerDigest, "lease-two", env
+    );
+  });
+
+  it("does not settle an answer after the Worker loses its lease", async () => {
+    mocks.updateQueryAnswerRecorded.mockResolvedValue(false);
+    const response = await execute();
+    expect(response.status).toBe(409);
+    expect(mocks.settle).not.toHaveBeenCalled();
+    expect(mocks.updateQueryOutcome).not.toHaveBeenCalled();
+  });
+
   it("claims the exact on-chain escrow amount for revenue records", async () => {
     await execute();
     expect(mocks.claimQuery).toHaveBeenCalledWith(expect.objectContaining({ amount_wei: "100" }), env, expect.any(Number));
@@ -116,7 +145,7 @@ describe("settlement uncertainty after answer recording", () => {
     const response = await execute();
     expect(response.status).toBe(409);
     expect(await response.text()).not.toContain("A cited fact.");
-    expect(mocks.updateQueryOutcome).toHaveBeenCalledWith(requestId, "failed", env);
+    expect(mocks.updateQueryOutcome).toHaveBeenCalledWith(requestId, "failed", env, "lease-one");
   });
 
   it("marks a model failure before answer recording as failed", async () => {
@@ -124,7 +153,7 @@ describe("settlement uncertainty after answer recording", () => {
     const response = await execute();
     expect(response.status).toBe(500);
     expect(mocks.updateQueryAnswerRecorded).not.toHaveBeenCalled();
-    expect(mocks.updateQueryOutcome).toHaveBeenCalledWith(requestId, "failed", env);
+    expect(mocks.updateQueryOutcome).toHaveBeenCalledWith(requestId, "failed", env, "lease-one");
   });
 
   it("reconciles a recorded answer only after on-chain settlement", async () => {
@@ -191,3 +220,8 @@ describe("settlement uncertainty after answer recording", () => {
     expect(mocks.verifiedSettlementHash).not.toHaveBeenCalled();
   });
 });
+
+async function questionHash(): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(question));
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}

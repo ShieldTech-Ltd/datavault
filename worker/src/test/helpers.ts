@@ -42,7 +42,7 @@ class MockD1Statement {
     // INSERT OR IGNORE INTO queries
     // Bound args: request_id(0), collection_id(1), buyer_address(2), policy_version(3),
     //   question_digest(4), open_tx_hash(5), chain_id(6), contract_address(7),
-    //   content_hash(8), amount_wei(9), claimed_at(10), lease_expires_at(11), created_at(12)
+    //   content_hash(8), amount_wei(9), claimed_at(10), lease_expires_at(11), lease_token(12), created_at(13)
     // Note: passage_ids='[]' and outcome='pending' are SQL literals, not bound args
     if (su.startsWith("INSERT OR IGNORE INTO QUERIES")) {
       const queries = this.tables.get("queries") ?? [];
@@ -65,7 +65,8 @@ class MockD1Statement {
         outcome: "pending",
         claimed_at: this.boundArgs[10],
         lease_expires_at: this.boundArgs[11],
-        created_at: this.boundArgs[12],
+        lease_token: this.boundArgs[12],
+        created_at: this.boundArgs[13],
         settle_tx_hash: null,
         refund_tx_hash: null,
         response_digest: null,
@@ -76,14 +77,36 @@ class MockD1Statement {
       return { meta: { changes: 1 } };
     }
 
-    // UPDATE queries SET outcome = 'running' WHERE request_id = ?
+    // An expired pending/running claim may be resumed by one Worker.
+    if (su.startsWith("UPDATE QUERIES SET OUTCOME = 'PENDING', CLAIMED_AT")) {
+      const rows = this.tables.get("queries") ?? [];
+      const row = rows.find((item) => item.request_id === this.boundArgs[3]);
+      if (!row || !["pending", "running"].includes(row.outcome as string) ||
+          row.answer_text !== null || (row.lease_expires_at as number) > (this.boundArgs[4] as number) ||
+          row.collection_id !== this.boundArgs[5] || row.buyer_address !== this.boundArgs[6] ||
+          row.policy_version !== this.boundArgs[7] || row.question_digest !== this.boundArgs[8] ||
+          row.open_tx_hash !== this.boundArgs[9] || row.chain_id !== this.boundArgs[10] ||
+          row.contract_address !== this.boundArgs[11] || row.amount_wei !== this.boundArgs[12] ||
+          row.content_hash !== this.boundArgs[13])
+        return { meta: { changes: 0 } };
+      row.outcome = "pending";
+      row.claimed_at = this.boundArgs[0];
+      row.lease_expires_at = this.boundArgs[1];
+      row.lease_token = this.boundArgs[2];
+      return { meta: { changes: 1 } };
+    }
+
+    // UPDATE queries SET outcome = 'running' with a fencing token.
     if (su.startsWith("UPDATE QUERIES SET OUTCOME = 'RUNNING'")) {
       const rows = this.tables.get("queries") ?? [];
       const reqId = this.boundArgs[0];
       for (const r of rows) {
-        if (r.request_id === reqId) r.outcome = "running";
+        if (r.request_id === reqId && r.lease_token === this.boundArgs[1] && r.outcome === "pending") {
+          r.outcome = "running";
+          return { meta: { changes: 1 } };
+        }
       }
-      return { meta: { changes: 1 } };
+      return { meta: { changes: 0 } };
     }
 
     // UPDATE queries SET outcome = 'answer_recorded', answer_text = ?, passage_ids = ?, response_digest = ? WHERE request_id = ?
@@ -91,14 +114,15 @@ class MockD1Statement {
       const rows = this.tables.get("queries") ?? [];
       const reqId = this.boundArgs[3];
       for (const r of rows) {
-        if (r.request_id === reqId) {
+        if (r.request_id === reqId && r.lease_token === this.boundArgs[4] && r.outcome === "running") {
           r.outcome = "answer_recorded";
           r.answer_text = this.boundArgs[0];
           r.passage_ids = this.boundArgs[1];
           r.response_digest = this.boundArgs[2];
+          return { meta: { changes: 1 } };
         }
       }
-      return { meta: { changes: 1 } };
+      return { meta: { changes: 0 } };
     }
 
     // UPDATE queries SET outcome = 'settlement_pending', settle_tx_hash = ? WHERE request_id = ?
@@ -136,9 +160,12 @@ class MockD1Statement {
       const newOutcome = this.boundArgs[0];
       const reqId = this.boundArgs[1];
       for (const r of rows) {
-        if (r.request_id === reqId) r.outcome = newOutcome;
+        if (r.request_id === reqId && (this.boundArgs.length < 3 || r.lease_token === this.boundArgs[2])) {
+          r.outcome = newOutcome;
+          return { meta: { changes: 1 } };
+        }
       }
-      return { meta: { changes: 1 } };
+      return { meta: { changes: 0 } };
     }
 
     // INSERT INTO collections

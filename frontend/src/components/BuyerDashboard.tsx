@@ -154,7 +154,9 @@ export default function BuyerDashboard({
   const [step, setStep] = useState<Step>("idle");
   const [message, setMessage] = useState("");
   const [answer, setAnswer] = useState<DisplayAnswer | null>(null);
-  const [anchorStatus, setAnchorStatus] = useState<"idle" | "checking" | "verified" | "unavailable" | "mismatch">("idle");
+  const [anchorStatus, setAnchorStatus] = useState<
+    "idle" | "checking" | "verified" | "unavailable" | "mismatch"
+  >("idle");
   const [requests, setRequests] = useState<SavedRequest[]>([]);
   const [historyStatus, setHistoryStatus] = useState<
     "idle" | "loading" | "error"
@@ -300,59 +302,7 @@ export default function BuyerDashboard({
           "Opening transaction reverted. No payment was escrowed."
         );
       await loadRefundTime(request);
-      const timestamp = Date.now();
-      const signature = await client.signMessage({
-        message: executionMessage(
-          CHAIN_ID,
-          CONTRACT_ADDRESS,
-          requestId,
-          quote.collectionId,
-          await sha256Hex(question),
-          openTxHash,
-          timestamp
-        ),
-      });
-      setStep("answering");
-      const response = await fetch("/api/queries/execute", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-signature": signature,
-          "x-timestamp": String(timestamp),
-        },
-        body: JSON.stringify({
-          requestId,
-          collectionId: quote.collectionId,
-          question,
-          openTxHash,
-        }),
-      });
-      if (!response.ok) throw new Error(await response.text());
-      const result = (await response.json()) as QueryResult;
-      if (result.outcome === "settlement_pending") {
-        remember({ ...request, outcome: "settlement_pending" });
-        setStep("settlement_pending");
-        setMessage(
-          result.settleTxHash
-            ? "Settlement confirmation is uncertain. Check the chain status before retrying payment. Your answer remains private until settlement is confirmed."
-            : "Settlement broadcast is uncertain. Check the chain status before retrying payment. If escrow stays open, you can refund after the timeout."
-        );
-        return;
-      }
-      if (result.outcome !== "settled" || !result.answer)
-        throw new Error("Unexpected query result.");
-      setAnswer({
-        answer: result.answer,
-        buyerAddress: request.buyerAddress,
-        citedPassageIds: result.citedPassageIds ?? [],
-        citedPassages: result.citedPassages ?? [],
-        requestId,
-        openTxHash,
-        settleTxHash: result.settleTxHash,
-        responseDigest: result.responseDigest ?? "",
-      });
-      remember({ ...request, outcome: "settled" });
-      setStep("done");
+      await runOpenedRequest(request, question);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
       setStep("failed");
@@ -360,6 +310,82 @@ export default function BuyerDashboard({
         remember({ ...request, outcome: "failed" });
         await loadRefundTime(request);
       }
+    }
+  }
+
+  async function runOpenedRequest(request: SavedRequest, queryText: string) {
+    if (!CONTRACT_ADDRESS) throw new Error("Contract is not configured.");
+    const client = await wallet();
+    const timestamp = Date.now();
+    const signature = await client.signMessage({
+      message: executionMessage(
+        CHAIN_ID,
+        CONTRACT_ADDRESS,
+        request.requestId,
+        request.collectionId,
+        await sha256Hex(queryText),
+        request.openTxHash,
+        timestamp
+      ),
+    });
+    setStep("answering");
+    const response = await fetch("/api/queries/execute", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-signature": signature,
+        "x-timestamp": String(timestamp),
+      },
+      body: JSON.stringify({
+        requestId: request.requestId,
+        collectionId: request.collectionId,
+        question: queryText,
+        openTxHash: request.openTxHash,
+      }),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const result = (await response.json()) as QueryResult;
+    if (result.outcome === "settlement_pending") {
+      remember({ ...request, outcome: "settlement_pending" });
+      setStep("settlement_pending");
+      setMessage(
+        result.settleTxHash
+          ? "Settlement confirmation is uncertain. Check the chain status before retrying payment. Your answer remains private until settlement is confirmed."
+          : "Settlement broadcast is uncertain. Check the chain status before retrying payment. If escrow stays open, you can refund after the timeout."
+      );
+      return;
+    }
+    if (result.outcome !== "settled" || !result.answer)
+      throw new Error("Unexpected query result.");
+    setAnswer({
+      answer: result.answer,
+      buyerAddress: request.buyerAddress,
+      citedPassageIds: result.citedPassageIds ?? [],
+      citedPassages: result.citedPassages ?? [],
+      requestId: request.requestId,
+      openTxHash: request.openTxHash,
+      settleTxHash: result.settleTxHash,
+      responseDigest: result.responseDigest ?? "",
+    });
+    remember({ ...request, outcome: "settled" });
+    setStep("done");
+  }
+
+  async function resumeOpenRequest() {
+    if (
+      !current ||
+      !question.trim() ||
+      current.buyerAddress.toLowerCase() !== address.toLowerCase()
+    )
+      return;
+    setMessage("");
+    try {
+      await runOpenedRequest(current, question);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+      setStep("failed");
+      remember({ ...current, outcome: "failed" });
+      await loadRefundTime(current);
     }
   }
 
@@ -532,7 +558,9 @@ export default function BuyerDashboard({
     void verifyAnswerAnchor(visibleAnswer).then((status) => {
       if (active) setAnchorStatus(status);
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [visibleAnswer]);
   return (
     <div className="workspace-grid">
@@ -673,6 +701,27 @@ export default function BuyerDashboard({
             Check settlement
           </button>
         )}
+        {current &&
+          (step === "settlement_pending" || step === "failed") &&
+          current.outcome !== "settled" &&
+          current.outcome !== "refunded" &&
+          current.buyerAddress.toLowerCase() === address.toLowerCase() && (
+            <div className="workspace-recovery">
+              <p>
+                If escrow is still open, re-enter the exact original question
+                above and retry this request. This uses the existing payment.
+                Questions are not saved in this browser.
+              </p>
+              <button
+                type="button"
+                onClick={() => void resumeOpenRequest()}
+                disabled={!primaryWallet || !question.trim()}
+                className="workspace-secondary-button"
+              >
+                Retry this paid request
+              </button>
+            </div>
+          )}
         {message && (
           <p
             role="status"
@@ -756,10 +805,10 @@ export default function BuyerDashboard({
               {anchorStatus === "verified"
                 ? "Answer digest matches the Monad settlement event."
                 : anchorStatus === "checking"
-                  ? "Checking the answer digest against Monad..."
-                  : anchorStatus === "mismatch"
-                    ? "Answer digest does not match the settlement event. Do not rely on this answer."
-                    : "Answer digest verification is unavailable. Check the receipt and transaction manually."}
+                ? "Checking the answer digest against Monad..."
+                : anchorStatus === "mismatch"
+                ? "Answer digest does not match the settlement event. Do not rely on this answer."
+                : "Answer digest verification is unavailable. Check the receipt and transaction manually."}
             </p>
             <dl className="proof-receipt">
               <div>
@@ -848,6 +897,8 @@ export default function BuyerDashboard({
                     type="button"
                     onClick={async () => {
                       setCurrent(request);
+                      setCollectionId(request.collectionId);
+                      setQuote(null);
                       await loadRefundTime(request);
                       setStep("settlement_pending");
                     }}

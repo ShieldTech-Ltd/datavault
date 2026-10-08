@@ -1,8 +1,8 @@
 import type { Env, QueryRow } from "../lib/types";
 import {
-  getCollectionRow, claimQuery, updateQuerySettled, updateQuerySettlementPending,
+  getCollectionRow, claimQuery, reclaimExpiredQuery, updateQuerySettled, updateQuerySettlementPending,
   updateQueryOutcome, updateQueryRunning, updateQueryAnswerRecorded,
-  updateQueryContentHash, getQueryRow,
+  getQueryRow,
 } from "../lib/d1";
 import { getOnChainCollection, getOnChainQuery } from "../lib/policy";
 import { verifyOpenReceipt, verifiedSettlementHash } from "../lib/chain-receipts";
@@ -166,7 +166,7 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
   // ── Atomic claim ─────────────────────────────────────────────────
   // INSERT OR IGNORE: only one Worker instance wins. If we lose the race,
   // inspect the existing row to return the right response.
-  const claimed = await claimQuery({
+  const claimFields = {
     request_id: requestId as string,
     collection_id: collectionId as string,
     buyer_address: buyerAddress,
@@ -176,16 +176,26 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     chain_id: chainId,
     contract_address: env.CONTRACT_ADDRESS,
     amount_wei: escrow.amount.toString(),
-  }, env, LEASE_MS);
+    content_hash: col.content_hash,
+  };
+  let leaseToken = await claimQuery(claimFields, env, LEASE_MS);
 
-  if (!claimed) {
+  if (!leaseToken) {
     const existing = await getQueryRow(requestId as string, env);
     if (!existing) return new Response("Claim race: please retry.", { status: 409 });
 
     // Question substitution attempt
-    if (existing.question_digest !== questionDigest) {
+    if (existing.question_digest !== questionDigest ||
+        existing.collection_id.toLowerCase() !== collectionId.toLowerCase() ||
+        existing.buyer_address.toLowerCase() !== buyerAddress.toLowerCase() ||
+        existing.open_tx_hash?.toLowerCase() !== openTxHash.toLowerCase() ||
+        existing.chain_id !== chainId ||
+        existing.contract_address?.toLowerCase() !== env.CONTRACT_ADDRESS.toLowerCase() ||
+        existing.policy_version !== currentPolicyVersion ||
+        existing.amount_wei !== escrow.amount.toString() ||
+        existing.content_hash?.toLowerCase() !== col.content_hash.toLowerCase()) {
       return new Response(
-        JSON.stringify({ error: "requestId already used with a different question." }),
+        JSON.stringify({ error: "requestId is already bound to a different paid request." }),
         { status: 409, headers: { "Content-Type": "application/json" } },
       );
     }
@@ -199,40 +209,34 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     }
 
     // Another instance is running and its lease has not expired
-    if (
-      existing.outcome === "running" &&
-      existing.lease_expires_at !== null &&
-      Date.now() < existing.lease_expires_at
-    ) {
-      return new Response(
-        JSON.stringify({ error: "Request is being processed by another instance. Retry after lease expires.", retryAfter: Math.ceil((existing.lease_expires_at - Date.now()) / 1000) }),
-        { status: 409, headers: { "Content-Type": "application/json" } },
-      );
-    }
-
-    // Lease expired (Worker crashed mid-execution): reclaim is not implemented in this
-    // iteration. Return 409 and document in recovery guide. The buyer can refundExpired
-    // after the on-chain timeout.
-    return new Response(
-      JSON.stringify({ error: "Duplicate requestId or stale claim. Call refundExpired after the on-chain timeout if the escrow is still open." }),
-      { status: 409, headers: { "Content-Type": "application/json" } },
-    );
+    if (existing.outcome !== "pending" && existing.outcome !== "running")
+      return new Response(JSON.stringify({ error: "This request cannot be executed again. Check settlement or refund status." }),
+        { status: 409, headers: { "Content-Type": "application/json" } });
+    if (existing.lease_expires_at === null || Date.now() < existing.lease_expires_at)
+      return new Response(JSON.stringify({ error: "Request is still being processed.",
+        retryAfter: existing.lease_expires_at === null ? null : Math.ceil((existing.lease_expires_at - Date.now()) / 1000) }),
+        { status: 409, headers: { "Content-Type": "application/json" } });
+    leaseToken = await reclaimExpiredQuery(claimFields, env, LEASE_MS);
+    if (!leaseToken)
+      return new Response(JSON.stringify({ error: "Another Worker resumed this request. Retry shortly." }),
+        { status: 409, headers: { "Content-Type": "application/json" } });
   }
 
   // ── Execution (this instance holds the claim) ─────────────────────
-  await updateQueryRunning(requestId as string, env);
+  if (!(await updateQueryRunning(requestId as string, leaseToken, env)))
+    return new Response("Another Worker holds this request lease.", { status: 409 });
 
-  let answerMayBeRecorded = false;
+  let answerWriteAttempted = false;
   let settleTxHash: `0x${string}` | null = null;
   try {
     const { passages, passageIds, contentHash } = await retrievePassages(collectionId as string, question as string, col.content_hash, env);
     if (passages.length === 0) {
-      await updateQueryOutcome(requestId as string, "failed", env);
+      await updateQueryOutcome(requestId as string, "failed", env, leaseToken);
       return new Response("No relevant passages found", { status: 422 });
     }
 
-    // Record the content version used so the receipt is self-describing
-    await updateQueryContentHash(requestId as string, contentHash, env);
+    if (contentHash.toLowerCase() !== col.content_hash.toLowerCase())
+      throw new Error("Collection content version changed during retrieval.");
 
     const { answer, citedPassages, citedPassageIds, responseDigest, isInsufficientEvidence } =
       await callModel(question as string, passages, passageIds, env);
@@ -240,13 +244,14 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     // Persist answer BEFORE broadcasting the settlement tx.
     // If the Worker crashes after settle but before response delivery, the buyer
     // can recover via GET /api/queries/:id/answer.
-    answerMayBeRecorded = true;
-    await updateQueryAnswerRecorded(requestId as string, answer, citedPassageIds, responseDigest, env);
+    answerWriteAttempted = true;
+    if (!(await updateQueryAnswerRecorded(requestId as string, answer, citedPassageIds, responseDigest, leaseToken, env)))
+      throw new Error("Request lease was taken over by another Worker.");
 
     // Recheck policy immediately before settlement
     const preSettlePolicy = await getOnChainCollection(collectionId as `0x${string}`, env);
     if (!preSettlePolicy || !preSettlePolicy.active || preSettlePolicy.policyVersion !== currentPolicyVersion) {
-      await updateQueryOutcome(requestId as string, "failed", env);
+      await updateQueryOutcome(requestId as string, "failed", env, leaseToken);
       return new Response(
         JSON.stringify({ error: "Collection policy changed before settlement. Call refundExpired to recover payment." }),
         { status: 409, headers: { "Content-Type": "application/json" } },
@@ -257,7 +262,7 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     // before confirmation, mark as settlement_pending so the buyer can reconcile.
     const preSettleEscrow = await getOnChainQuery(requestId as `0x${string}`, env);
     if (!preSettleEscrow || preSettleEscrow.state !== 0 || BigInt(Math.floor(Date.now() / 1000)) >= preSettleEscrow.openedAt + REFUND_TIMEOUT_S) {
-      await updateQueryOutcome(requestId as string, "failed", env);
+      await updateQueryOutcome(requestId as string, "failed", env, leaseToken);
       return new Response("Escrow is no longer open for settlement.", { status: 409 });
     }
     const digestHex = responseDigest.slice("sha256:".length);
@@ -267,7 +272,7 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     const result = await settleOnChainWithConfirmation(requestId as `0x${string}`, `0x${digestHex}`, env);
     settleTxHash = result.hash;
     if (result.status === "reverted") {
-      await updateQueryOutcome(requestId as string, "failed", env);
+      await updateQueryOutcome(requestId as string, "failed", env, leaseToken);
       return new Response(JSON.stringify({ error: "Settlement transaction reverted. Check escrow status and refund after the timeout if it remains open.", settleTxHash }), {
         status: 409, headers: { "Content-Type": "application/json" },
       });
@@ -298,7 +303,10 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
       { headers: { "Content-Type": "application/json" } },
     );
   } catch (err: unknown) {
-    if (answerMayBeRecorded) {
+    if (err instanceof Error && err.message === "Request lease was taken over by another Worker.")
+      return new Response(JSON.stringify({ error: "Another Worker resumed this request. Check status before retrying payment." }),
+        { status: 409, headers: { "Content-Type": "application/json" } });
+    if (answerWriteAttempted) {
       // The answer write or settlement may have completed before an RPC or D1
       // error reached this Worker. Preserve the row for authenticated chain
       // reconciliation instead of writing a false terminal failure.
@@ -307,7 +315,7 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
         receiptUrl: `/api/queries/${requestId}/receipt`,
       } satisfies QueryResult), { status: 202, headers: { "Content-Type": "application/json" } });
     }
-    await updateQueryOutcome(requestId as string, "failed", env);
+    await updateQueryOutcome(requestId as string, "failed", env, leaseToken);
     const knownModelFailure = err instanceof Error && err.message.startsWith("Model API");
     return new Response(JSON.stringify({ error: knownModelFailure
       ? "Model provider unavailable. If escrow remains open, refund after the timeout."

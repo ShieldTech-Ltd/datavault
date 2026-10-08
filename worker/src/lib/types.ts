@@ -56,6 +56,7 @@ export interface QueryRow {
   outcome: string;
   claimed_at: number | null;
   lease_expires_at: number | null;
+  lease_token: string | null;
   created_at: number;
   settled_at: number | null;
 }

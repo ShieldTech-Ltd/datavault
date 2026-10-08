@@ -36,6 +36,14 @@ export default function App() {
     );
   }
 
+  function showMarketplaceSection(id: string) {
+    setView("marketplace");
+    window.setTimeout(
+      () => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" }),
+      0
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -52,6 +60,24 @@ export default function App() {
             >
               Marketplace
             </button>
+            <a
+              href="#collections-heading"
+              onClick={() => showMarketplaceSection("collections-heading")}
+            >
+              Collections
+            </a>
+            <a
+              href="#workspace"
+              onClick={() => showMarketplaceSection("workspace")}
+            >
+              Query workspace
+            </a>
+            <a
+              href="#marketplace-analytics"
+              onClick={() => showMarketplaceSection("marketplace-analytics")}
+            >
+              Analytics
+            </a>
             <button
               type="button"
               className={view === "collection" ? "active" : ""}
@@ -100,70 +126,78 @@ export default function App() {
       <main className="app-main" id="main-content">
         {view === "marketplace" ? (
           <>
-            <section className="app-hero" aria-labelledby="hero-heading">
-              <div className="app-hero-copy">
-                <p className="app-eyebrow">Knowledge marketplace on Monad</p>
-                <h1 id="hero-heading">
-                  Trusted knowledge,
-                  <br />
-                  <span>licensed on-chain.</span>
-                </h1>
-                <p>
-                  Owners set the price and access policy. Buyers pay for one
-                  question and receive an answer tied to private source
-                  passages.
-                </p>
-                <div className="app-hero-actions">
-                  <a className="app-primary-link" href="#workspace">
-                    Ask a paid query <span aria-hidden="true">&#8594;</span>
-                  </a>
-                  <button
-                    type="button"
-                    className="app-secondary-button"
-                    onClick={showCollection}
-                  >
-                    Publish a collection
-                  </button>
-                </div>
-                <div className="app-hero-points">
-                  <span>Source citations</span>
-                  <span>Escrow on Monad</span>
-                  <span>Owner-controlled access</span>
-                </div>
-              </div>
-              <div className="app-hero-art" aria-hidden="true">
-                <div className="art-orbit">
-                  <div className="art-sheet art-sheet-back" />
-                  <div className="art-sheet art-sheet-mid" />
-                  <div className="art-sheet art-sheet-front">
-                    <span />
-                    <span />
-                    <span />
+            <div className="app-top-grid">
+              <section className="app-hero" aria-labelledby="hero-heading">
+                <div className="app-hero-copy">
+                  <div className="app-welcome">
+                    <strong>Welcome to DataVault</strong>
+                    <span>
+                      Explore knowledge collections and verify each paid answer.
+                    </span>
                   </div>
-                  <div className="art-check" />
-                </div>
-                <p>
-                  Private knowledge
-                  <br />
-                  Clear terms
-                </p>
-              </div>
-            </section>
-
-            <section className="app-section" id="workspace">
-              <div className="app-section-heading">
-                <div>
-                  <p className="app-eyebrow">Query workspace</p>
-                  <h2>Ask a collection</h2>
+                  <p className="app-eyebrow">Knowledge marketplace on Monad</p>
+                  <h1 id="hero-heading">
+                    Trusted knowledge,
+                    <br />
+                    <span>licensed on-chain.</span>
+                  </h1>
                   <p>
-                    Review the current price and policy before your wallet opens
-                    escrow.
+                    Owners set the price and access policy. Buyers pay for one
+                    question and receive an answer tied to private source
+                    passages.
+                  </p>
+                  <div className="app-hero-actions">
+                    <a className="app-primary-link" href="#workspace">
+                      Ask a paid query <span aria-hidden="true">&#8594;</span>
+                    </a>
+                    <button
+                      type="button"
+                      className="app-secondary-button"
+                      onClick={showCollection}
+                    >
+                      Publish a collection
+                    </button>
+                  </div>
+                  <div className="app-hero-points">
+                    <span>Source citations</span>
+                    <span>Escrow on Monad</span>
+                    <span>Owner-controlled access</span>
+                  </div>
+                </div>
+                <div className="app-hero-art" aria-hidden="true">
+                  <div className="art-orbit">
+                    <div className="art-sheet art-sheet-back" />
+                    <div className="art-sheet art-sheet-mid" />
+                    <div className="art-sheet art-sheet-front">
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                    <div className="art-check" />
+                  </div>
+                  <p>
+                    Private knowledge
+                    <br />
+                    Clear terms
                   </p>
                 </div>
-                <span className="app-section-badge">Live data only</span>
-              </div>
-              <BuyerDashboard selectedCollection={selectedCollection} />
-            </section>
+              </section>
+
+              <section className="app-section" id="workspace">
+                <div className="app-section-heading">
+                  <div>
+                    <p className="app-eyebrow">Query workspace</p>
+                    <h2>Ask a collection</h2>
+                    <p>
+                      Review the current price and policy before your wallet
+                      opens escrow.
+                    </p>
+                  </div>
+                  <span className="app-section-badge">Live data only</span>
+                </div>
+                <BuyerDashboard selectedCollection={selectedCollection} />
+              </section>
+            </div>
             <MarketplaceOverview
               search={collectionSearch}
               onSelect={(id) => {

@@ -178,6 +178,7 @@ export default function MarketplaceOverview({
         )}
       </section>
       <section
+        id="marketplace-analytics"
         className="app-section app-analytics"
         aria-labelledby="activity-heading"
       >

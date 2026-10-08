@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { MockD1Database, makeEnv } from "./helpers";
 import {
   claimQuery,
+  reclaimExpiredQuery,
   updateQueryRunning,
   updateQueryAnswerRecorded,
   updateQuerySettlementPending,
@@ -45,7 +46,7 @@ describe("claimQuery", () => {
 
   it("returns true and inserts on first claim", async () => {
     const claimed = await claimQuery(baseRow(), env as never);
-    expect(claimed).toBe(true);
+    expect(claimed).toMatch(/^[0-9a-f-]{36}$/);
     const row = await getQueryRow(REQ_ID, env as never);
     expect(row?.outcome).toBe("pending");
     expect(row?.buyer_address).toBe(BUYER);
@@ -54,7 +55,7 @@ describe("claimQuery", () => {
   it("returns false when requestId already claimed (idempotent)", async () => {
     await claimQuery(baseRow(), env as never);
     const second = await claimQuery(baseRow(), env as never);
-    expect(second).toBe(false);
+    expect(second).toBeNull();
   });
 
   it("stores exact escrow amount with chain and opening transaction", async () => {
@@ -69,26 +70,28 @@ describe("claimQuery", () => {
 describe("query state transitions", () => {
   let db: MockD1Database;
   let env: ReturnType<typeof makeEnv>;
+  let token: string;
 
   beforeEach(async () => {
     db = new MockD1Database();
     env = makeEnv({ DB: db }) as ReturnType<typeof makeEnv>;
-    await claimQuery(baseRow(), env as never);
+    token = (await claimQuery(baseRow(), env as never)) as string;
   });
 
   it("pending -> running", async () => {
-    await updateQueryRunning(REQ_ID, env as never);
+    expect(await updateQueryRunning(REQ_ID, token, env as never)).toBe(true);
     const row = await getQueryRow(REQ_ID, env as never);
     expect(row?.outcome).toBe("running");
   });
 
   it("running -> answer_recorded stores answer and passage IDs", async () => {
-    await updateQueryRunning(REQ_ID, env as never);
+    await updateQueryRunning(REQ_ID, token, env as never);
     await updateQueryAnswerRecorded(
       REQ_ID,
       "The answer.",
       ["p:0", "p:1"],
       "sha256:abc",
+      token,
       env as never
     );
     const row = await getQueryRow(REQ_ID, env as never);
@@ -99,11 +102,13 @@ describe("query state transitions", () => {
   });
 
   it("answer_recorded -> settlement_pending stores settle tx hash", async () => {
+    await updateQueryRunning(REQ_ID, token, env as never);
     await updateQueryAnswerRecorded(
       REQ_ID,
       "ans",
       [],
       "sha256:x",
+      token,
       env as never
     );
     await updateQuerySettlementPending(REQ_ID, TX_HASH2, env as never);
@@ -113,11 +118,13 @@ describe("query state transitions", () => {
   });
 
   it("settlement_pending -> settled records settled_at", async () => {
+    await updateQueryRunning(REQ_ID, token, env as never);
     await updateQueryAnswerRecorded(
       REQ_ID,
       "ans",
       ["p:0"],
       "sha256:y",
+      token,
       env as never
     );
     await updateQuerySettled(
@@ -131,6 +138,20 @@ describe("query state transitions", () => {
     expect(row?.outcome).toBe("settled");
     expect(row?.settle_tx_hash).toBe(TX_HASH2);
     expect(row?.settled_at).toBeGreaterThan(0);
+  });
+
+  it("lets one Worker resume an expired claim and fences the old Worker", async () => {
+    await updateQueryRunning(REQ_ID, token, env as never);
+    db.getTable("queries")[0].lease_expires_at = Date.now() - 1;
+    const resumed = await reclaimExpiredQuery(baseRow() as never, env as never);
+    expect(resumed).toBeTruthy();
+    expect(resumed).not.toBe(token);
+    expect(await updateQueryRunning(REQ_ID, token, env as never)).toBe(false);
+    expect(await updateQueryRunning(REQ_ID, resumed as string, env as never)).toBe(true);
+    expect(await updateQueryAnswerRecorded(REQ_ID, "old answer", [], "sha256:old", token, env as never)).toBe(false);
+    expect(await updateQueryAnswerRecorded(REQ_ID, "new answer", [], "sha256:new", resumed as string, env as never)).toBe(true);
+    expect((await getQueryRow(REQ_ID, env as never))?.answer_text).toBe("new answer");
+    expect(await reclaimExpiredQuery(baseRow() as never, env as never)).toBeNull();
   });
 });
 
