@@ -13,6 +13,7 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 - Owner registration now records a pending transaction for resuming Worker confirmation after a browser interruption. A manual ID and transaction fallback covers lost browser storage. Confirmation retries must match the recorded owner and transaction and cannot overwrite a confirmed D1 row.
 - The reference dashboard layout has a live collection catalogue, search by collection name, verified query workspace, provenance receipt, and recorded marketplace and owner analytics. It has no team invitation or permission system. It does not store question text for a saved-query list or emit a numerical answer-confidence score.
 - The ten-page contributor dashboard merged through PR #50 uses local sample state. It is available only under `/preview` in local development. The production entry point remains the API-connected app. The preview is not evidence of implemented API keys, balances, settings, or activity.
+- The production buyer and owner workspaces remount on wallet account changes, clearing in-flight view state from the previous account. The local rehearsal network is labelled as a local chain in the wallet switch control.
 - Content replacement is disabled in the public API and UI because the former path did not advance on-chain policy version.
 - API responses have no-store and browser security headers, and public deployments reject unlisted browser origins, including localhost.
 - The production frontend build emits a public release manifest with its contract, chain, and RPC. The release guard compares those values with the selected Wrangler deployment config and rejects a stale or mismatched frontend artifact. Paid quotes also fail closed when the model endpoint is malformed or insecure, before opening escrow.
@@ -29,6 +30,7 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 - `python3 scripts/check-secrets.py`: passed on the current tracked tree.
 - `npm audit --omit=dev --audit-level=high` in root, frontend, and Worker: zero reported production advisories on 8 October. Recheck before deployment because advisory data changes.
 - Frontend build passed after the registration signature change, with no generated JavaScript emitted into source files.
+- Frontend production build and routing test passed after the wallet-switch state change. The routing test needs localhost access; its first sandboxed attempt was denied with `listen EPERM`, and it passed when rerun with local socket access.
 - The local production entry point was checked in Chrome at desktop and 390 px mobile widths on 9 October. The mobile navigation exposes all five destinations. Without a configured Worker or injected wallet, it shows unavailable and connect states rather than sample balances or receipts. This is a UI check, not a paid browser flow.
 
 ## Gates before public deployment

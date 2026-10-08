@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useWallet } from "./lib/wallet";
 import ConnectButton from "./components/ConnectButton";
 import OwnerDashboard from "./components/OwnerDashboard";
@@ -24,6 +24,10 @@ export default function App() {
   const [managedCollection, setManagedCollection] = useState<string | null>(
     null
   );
+
+  useEffect(() => {
+    setManagedCollection(null);
+  }, [primaryWallet?.address]);
 
   function showCollection() {
     setView("collection");
@@ -195,7 +199,10 @@ export default function App() {
                   </div>
                   <span className="app-section-badge">Live data only</span>
                 </div>
-                <BuyerDashboard selectedCollection={selectedCollection} />
+                <BuyerDashboard
+                  key={primaryWallet?.address.toLowerCase() ?? "disconnected"}
+                  selectedCollection={selectedCollection}
+                />
               </section>
             </div>
             <MarketplaceOverview
@@ -254,6 +261,7 @@ export default function App() {
                 />
                 <div className="app-owner-card">
                   <OwnerDashboard
+                    key={primaryWallet.address.toLowerCase()}
                     selectedCollection={managedCollection}
                     onForget={() => setManagedCollection(null)}
                   />

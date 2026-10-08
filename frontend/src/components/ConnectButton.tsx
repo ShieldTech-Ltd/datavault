@@ -25,7 +25,9 @@ export default function ConnectButton() {
       )}
       {primaryWallet && !correctNetwork && (
         <button type="button" onClick={() => void switchNetwork()}>
-          Switch to Monad testnet
+          {Number(import.meta.env.VITE_CHAIN_ID) === 31337
+            ? "Switch to local test chain"
+            : "Switch to Monad testnet"}
         </button>
       )}
       {!hasProvider && !error && (
