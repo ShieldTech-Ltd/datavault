@@ -1,6 +1,6 @@
 # DataVault build status
 
-Updated 8 October 2026 for `feat/product-backend-ritik` at `b676a28`. This is source and local verification evidence, not a deployment claim. PRs #48 and #49 are merged on GitHub; this branch has no PR yet.
+Updated 9 October 2026 for draft PR #51. This is source and local verification evidence, not a deployment claim. PRs #48, #49, and #50 are merged on GitHub.
 
 ## Implemented in source
 
@@ -11,6 +11,7 @@ Updated 8 October 2026 for `feat/product-backend-ritik` at `b676a28`. This is so
 - Expired no-answer claims can be retried against the same escrow. Signed reconciliation can settle an already stored answer after a Worker exit. D1 lease tokens fence competing Workers.
 - Buyer UI has a guided sample entry when a real confirmed sample ID is configured, wallet payment, settlement status, signed recovery, and on-chain refund action. Owner UI supports registration and pause or resume.
 - The reference dashboard layout has a live collection catalogue, search by collection name, verified query workspace, provenance receipt, and recorded marketplace and owner analytics. It has no team invitation or permission system. It does not store question text for a saved-query list or emit a numerical answer-confidence score.
+- The ten-page contributor dashboard merged through PR #50 uses local sample state. It is available only under `/preview` in local development. The production entry point remains the API-connected app. The preview is not evidence of implemented API keys, balances, settings, or activity.
 - Content replacement is disabled in the public API and UI because the former path did not advance on-chain policy version.
 - API responses have no-store and browser security headers, and public deployments reject unlisted browser origins, including localhost.
 
@@ -28,7 +29,7 @@ Updated 8 October 2026 for `feat/product-backend-ritik` at `b676a28`. This is so
 
 ## Gates before public deployment
 
-- Review and merge the current backend and frontend branch only after its required CI and the user's full production-state end-to-end gate pass. No PR has been opened for this branch.
+- Review draft PR #51 after CI and source readiness checks. Keep it in draft until the frontend, Worker, database, and security controls form a production candidate. Run the full live end-to-end gate after that candidate is configured; do not treat local rehearsal as live proof.
 - Confirm the three production dependency audits remain clear in CI. The injected wallet replacement removed the vulnerable Dynamic dependency tree. The wallet now offers a Monad network switch, but still needs a live browser regression check.
 - Verify a real injected-wallet connection, signed registration, signed payment, private R2 and D1 access, actual model response, and owner payout on the configured Monad network.
 - Add real Cloudflare D1 and R2 resource identifiers, a deployed contract, Worker secrets, public site origin, and a confirmed sample collection. The tracked Wrangler configuration still contains a placeholder database ID.
