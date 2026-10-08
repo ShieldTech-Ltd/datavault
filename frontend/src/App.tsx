@@ -136,14 +136,14 @@ export default function App() {
                   <div className="app-welcome">
                     <strong>Welcome to DataVault</strong>
                     <span>
-                      Explore knowledge collections and verify each paid answer.
+                      Explore knowledge collections and review each paid answer's receipt.
                     </span>
                   </div>
                   <p className="app-eyebrow">Knowledge marketplace on Monad</p>
                   <h1 id="hero-heading">
-                    Trusted knowledge,
+                    Private knowledge,
                     <br />
-                    <span>licensed on-chain.</span>
+                    <span>paid queries on Monad.</span>
                   </h1>
                   <p>
                     Owners set the price and access policy. Buyers pay for one
