@@ -1,3 +1,4 @@
+import "./index.css";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { DynamicContextProvider } from "@dynamic-labs/sdk-react-core";
@@ -11,9 +12,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       settings={{
         environmentId: dynamicEnvironmentId,
         walletConnectors: [EthereumWalletConnectors],
-        overrides: {
-          evmNetworks: [monadTestnet],
-        },
+        overrides: { evmNetworks: [monadTestnet] },
       }}
     >
       <App />
