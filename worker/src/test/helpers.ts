@@ -77,11 +77,11 @@ class MockD1Statement {
       return { meta: { changes: 1 } };
     }
 
-    // An expired pending/running claim may be resumed by one Worker.
+    // An expired claim without an answer may be resumed by one Worker.
     if (su.startsWith("UPDATE QUERIES SET OUTCOME = 'PENDING', CLAIMED_AT")) {
       const rows = this.tables.get("queries") ?? [];
       const row = rows.find((item) => item.request_id === this.boundArgs[3]);
-      if (!row || !["pending", "running"].includes(row.outcome as string) ||
+      if (!row || !["pending", "running", "failed"].includes(row.outcome as string) ||
           row.answer_text !== null || (row.lease_expires_at as number) > (this.boundArgs[4] as number) ||
           row.collection_id !== this.boundArgs[5] || row.buyer_address !== this.boundArgs[6] ||
           row.policy_version !== this.boundArgs[7] || row.question_digest !== this.boundArgs[8] ||

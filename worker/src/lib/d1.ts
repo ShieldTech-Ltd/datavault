@@ -152,7 +152,7 @@ export async function reclaimExpiredQuery(
   const token = crypto.randomUUID();
   const result = await env.DB.prepare(
     `UPDATE queries SET outcome = 'pending', claimed_at = ?, lease_expires_at = ?, lease_token = ?
-     WHERE request_id = ? AND outcome IN ('pending', 'running') AND answer_text IS NULL
+     WHERE request_id = ? AND outcome IN ('pending', 'running', 'failed') AND answer_text IS NULL
        AND lease_expires_at <= ? AND collection_id = ? AND buyer_address = ?
        AND policy_version = ? AND question_digest = ? AND open_tx_hash = ?
        AND chain_id = ? AND LOWER(contract_address) = ? AND amount_wei = ? AND content_hash = ?`

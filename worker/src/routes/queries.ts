@@ -209,8 +209,11 @@ export async function handleExecute(req: Request, env: Env): Promise<Response> {
     }
 
     // Another instance is running and its lease has not expired
-    if (existing.outcome !== "pending" && existing.outcome !== "running")
+    if (existing.outcome !== "pending" && existing.outcome !== "running" && existing.outcome !== "failed")
       return new Response(JSON.stringify({ error: "This request cannot be executed again. Check settlement or refund status." }),
+        { status: 409, headers: { "Content-Type": "application/json" } });
+    if (existing.answer_text)
+      return new Response(JSON.stringify({ error: "An answer is already recorded. Check settlement or refund status." }),
         { status: 409, headers: { "Content-Type": "application/json" } });
     if (existing.lease_expires_at === null || Date.now() < existing.lease_expires_at)
       return new Response(JSON.stringify({ error: "Request is still being processed.",

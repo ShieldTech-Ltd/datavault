@@ -50,8 +50,8 @@ Rows marked **[LIVE GATE]** require real testnet/model credentials to verify end
 |---|---|---|
 | Model returns no citations | A substantive answer is rejected; an explicit insufficient-evidence answer may have no citations | Citation and insufficiency checks in `callModel` |
 | Model cites out-of-range passage index | Answer rejected; error thrown | Index validation in `callModel` |
-| Model API times out (>25s) | Answer rejected; query marked `failed` | 25-second `AbortController` timer |
-| Model API returns non-200 | Answer rejected; query marked `failed` | HTTP status check |
+| Model API times out (>25s) | Answer rejected; query marked `failed`. Buyer may retry the same open escrow after the claim lease expires. | 25-second `AbortController` timer and fenced D1 reclaim |
+| Model API returns non-200 | Answer rejected; query marked `failed`. Buyer may retry the same open escrow after the claim lease expires. | HTTP status check and fenced D1 reclaim |
 | No relevant passages found by retrieval | 422; request marked `failed` without calling the model or settling | `retrievePassages` result check |
 | Model determines supplied passages are insufficient | An insufficient-evidence answer can settle with no citations | Detection phrase check in `callModel` |
 | R2 retrieval fails (collection missing) | 500; request is marked failed. Buyer can refund the still-open escrow after timeout. | `handleExecute` catch after claim |

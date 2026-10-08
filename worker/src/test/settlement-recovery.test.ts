@@ -106,6 +106,22 @@ describe("settlement uncertainty after answer recording", () => {
     );
   });
 
+  it("retries a transient failure without opening another escrow", async () => {
+    mocks.claimQuery.mockResolvedValue(null);
+    mocks.getQueryRow.mockResolvedValue({
+      request_id: requestId, collection_id: collectionId, buyer_address: buyer.address.toLowerCase(),
+      open_tx_hash: openTxHash, chain_id: 10143, contract_address: contract,
+      policy_version: 1, amount_wei: "100", content_hash: `0x${"ff".repeat(32)}`,
+      question_digest: await questionHash(), outcome: "failed", answer_text: null,
+      lease_expires_at: Date.now() - 1,
+    });
+    mocks.reclaimExpiredQuery.mockResolvedValue("retry-lease");
+    const response = await execute();
+    expect(response.status).toBe(200);
+    expect(mocks.reclaimExpiredQuery).toHaveBeenCalledOnce();
+    expect(mocks.settle).toHaveBeenCalledOnce();
+  });
+
   it("does not settle an answer after the Worker loses its lease", async () => {
     mocks.updateQueryAnswerRecorded.mockResolvedValue(false);
     const response = await execute();

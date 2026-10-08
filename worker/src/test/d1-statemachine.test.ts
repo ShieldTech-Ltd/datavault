@@ -153,6 +153,19 @@ describe("query state transitions", () => {
     expect((await getQueryRow(REQ_ID, env as never))?.answer_text).toBe("new answer");
     expect(await reclaimExpiredQuery(baseRow() as never, env as never)).toBeNull();
   });
+
+  it("retries a failed no-answer claim after its lease but never a recorded answer", async () => {
+    const row = db.getTable("queries")[0];
+    row.outcome = "failed";
+    row.lease_expires_at = Date.now() - 1;
+    const resumed = await reclaimExpiredQuery(baseRow() as never, env as never);
+    expect(resumed).toBeTruthy();
+    expect(await updateQueryRunning(REQ_ID, resumed as string, env as never)).toBe(true);
+    row.outcome = "failed";
+    row.answer_text = "already generated";
+    row.lease_expires_at = Date.now() - 1;
+    expect(await reclaimExpiredQuery(baseRow() as never, env as never)).toBeNull();
+  });
 });
 
 describe("requestIdExists", () => {
