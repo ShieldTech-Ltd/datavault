@@ -2,6 +2,7 @@
 """Exercise the Worker SQL against the actual D1 migration schema with SQLite."""
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from pathlib import Path
 import re
 import sqlite3
@@ -45,28 +46,31 @@ def test_concurrent_quota(path: str) -> None:
     args = ("execute:buyer", now, now - 60, now - 60, now, now - 60, 10)
 
     def attempt(_: int) -> int:
-        with open_database(path) as connection:
-            return connection.execute(sql, args).rowcount
+        with closing(open_database(path)) as connection:
+            with connection:
+                return connection.execute(sql, args).rowcount
 
     with ThreadPoolExecutor(max_workers=20) as pool:
         admitted = list(pool.map(attempt, range(40)))
     assert sum(admitted) == 10, f"expected 10 admissions, got {sum(admitted)}"
-    with open_database(path) as connection:
-        count = connection.execute("SELECT count FROM rate_limits WHERE key = ?", ("execute:buyer",)).fetchone()[0]
-        assert count == 10
-        reset_args = ("execute:buyer", now + 61, now + 1, now + 1, now + 61, now + 1, 10)
-        assert connection.execute(sql, reset_args).rowcount == 1
-        assert connection.execute("SELECT count FROM rate_limits WHERE key = ?", ("execute:buyer",)).fetchone()[0] == 1
+    with closing(open_database(path)) as connection:
+        with connection:
+            count = connection.execute("SELECT count FROM rate_limits WHERE key = ?", ("execute:buyer",)).fetchone()[0]
+            assert count == 10
+            reset_args = ("execute:buyer", now + 61, now + 1, now + 1, now + 61, now + 1, 10)
+            assert connection.execute(sql, reset_args).rowcount == 1
+            assert connection.execute("SELECT count FROM rate_limits WHERE key = ?", ("execute:buyer",)).fetchone()[0] == 1
 
 
 def main() -> None:
     with tempfile.TemporaryDirectory() as temporary:
         path = str(Path(temporary) / "d1.sqlite")
-        with open_database(path) as connection:
-            connection.execute("PRAGMA journal_mode = WAL")
-            for migration in sorted((ROOT / "worker/migrations").glob("*.sql")):
-                connection.executescript(migration.read_text())
-            test_staging(connection)
+        with closing(open_database(path)) as connection:
+            with connection:
+                connection.execute("PRAGMA journal_mode = WAL")
+                for migration in sorted((ROOT / "worker/migrations").glob("*.sql")):
+                    connection.executescript(migration.read_text())
+                test_staging(connection)
         test_concurrent_quota(path)
     print("D1 staging and concurrent rate-limit invariants passed.")
 

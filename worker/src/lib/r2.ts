@@ -2,8 +2,8 @@ import type { Env } from "./types";
 import type { CitedPassage } from "../../../shared/api";
 import { keccak256, toBytes } from "viem";
 
-const MAX_PASSAGE_WORDS = 600;
-const MAX_PASSAGE_CHARS = 4_000;
+const MAX_PASSAGE_WORDS = 200;
+const MAX_PASSAGE_CHARS = 1_600;
 
 // Store immutable content under its verified hash. The confirmed D1 record
 // selects the version used for paid retrieval.
@@ -40,14 +40,15 @@ export async function retrievePassages(
     throw new Error("Collection content failed integrity verification");
   const chunks = splitIntoChunks(content);
 
-  // Simple keyword relevance ranking. Replace with vector search in production.
-  const queryWords = query
-    .toLowerCase()
-    .split(/\W+/)
-    .filter((w) => w.length > 3);
+  // Rank bounded passages by distinctive question words.
+  const stopWords = new Set(["what", "which", "where", "when", "should", "could", "would", "does", "about", "from", "with", "their", "they", "your", "have", "include"]);
+  const queryWords = [...new Set((query.toLowerCase().match(/[a-z0-9]+/g) ?? [])
+    .filter((word) => word.length > 3 && !stopWords.has(word)))];
 
   const scored = chunks.map((chunk, i) => {
-    const lower = chunk.toLowerCase();
+    // URLs and link labels are attribution, not evidence that a passage
+    // answers the question. Exclude them from lexical scoring.
+    const lower = chunk.toLowerCase().replace(/\[[^\]]+\]\([^)]+\)/g, "");
     const score = queryWords.reduce((acc, w) => acc + (lower.split(w).length - 1), 0);
     return { chunk, score, id: `chunk-${i}` };
   });
@@ -85,34 +86,44 @@ export async function retrieveCitedPassages(
 }
 
 function splitIntoChunks(text: string): string[] {
-  // Bound both words and characters. A single unbroken token or long paragraph
-  // must never turn a 500 KB upload into a 500 KB model prompt passage.
-  const words = text.match(/\S+/gu) ?? [];
+  // Keep citations close to one paragraph and its section heading. Bound both
+  // words and characters, including a single unbroken token.
   const chunks: string[] = [];
-  let current = "";
-  let count = 0;
-  const flush = () => {
-    if (current) chunks.push(current);
-    current = "";
-    count = 0;
-  };
-  const append = (part: string) => {
-    const extra = current ? 1 : 0;
-    if (current && (count >= MAX_PASSAGE_WORDS || current.length + extra + part.length > MAX_PASSAGE_CHARS)) flush();
-    current = current ? `${current} ${part}` : part;
-    count++;
-  };
-  for (const word of words) {
-    let part = "";
-    for (const scalar of word) {
-      if (part.length + scalar.length > MAX_PASSAGE_CHARS) {
-        append(part);
-        part = "";
-      }
-      part += scalar;
+  let heading = "";
+  for (const block of text.split(/\n\s*\n/u)) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+    const lines = trimmed.split("\n");
+    while (lines.length && /^#{1,6}\s+\S/u.test(lines[0].trim())) {
+      heading = lines.shift()!.trim().slice(0, 160);
     }
-    if (part) append(part);
+    const words = lines.join(" ").match(/\S+/gu) ?? [];
+    const prefix = heading ? `${heading}\n` : "";
+    let current = prefix;
+    let count = 0;
+    const flush = () => {
+      if (count) chunks.push(current.trim());
+      current = prefix;
+      count = 0;
+    };
+    const append = (part: string) => {
+      const separator = count ? " " : "";
+      if (count && (count >= MAX_PASSAGE_WORDS || current.length + separator.length + part.length > MAX_PASSAGE_CHARS)) flush();
+      current += (count ? " " : "") + part;
+      count++;
+    };
+    for (const word of words) {
+      let part = "";
+      for (const scalar of word) {
+        if (prefix.length + part.length + scalar.length > MAX_PASSAGE_CHARS) {
+          if (part) append(part);
+          part = "";
+        }
+        part += scalar;
+      }
+      if (part) append(part);
+    }
+    flush();
   }
-  flush();
   return chunks;
 }

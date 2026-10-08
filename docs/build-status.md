@@ -19,7 +19,8 @@ Updated 8 October 2026 for `feat/product-backend-ritik` at `b676a28`. This is so
 - `npm run test:contracts`: 21 passing on 8 October.
 - `npm run typecheck` in Worker: passed.
 - `npm run typecheck` in frontend: passed.
-- `npm test --prefix worker`: 131 passing on 8 October.
+- `npm test --prefix worker`: 132 passing on 9 October, including sample-guide passage retrieval.
+- `python3 scripts/verify-sql-invariants.py`: passed on 9 October after explicitly closing SQLite connections for Windows cleanup compatibility. Windows rerun remains pending.
 - `npm run rehearse:local`: passed on 8 October with a local Hardhat chain, Wrangler D1 and R2, HTTPS model stub, stored-answer settlement recovery, owner payout, pause, and refund.
 - `python3 scripts/check-secrets.py`: passed on the current tracked tree.
 - `npm audit --omit=dev --audit-level=high` in root, frontend, and Worker: zero reported production advisories on 8 October. Recheck before deployment because advisory data changes.
@@ -31,7 +32,7 @@ Updated 8 October 2026 for `feat/product-backend-ritik` at `b676a28`. This is so
 - Confirm the three production dependency audits remain clear in CI. The injected wallet replacement removed the vulnerable Dynamic dependency tree. The wallet now offers a Monad network switch, but still needs a live browser regression check.
 - Verify a real injected-wallet connection, signed registration, signed payment, private R2 and D1 access, actual model response, and owner payout on the configured Monad network.
 - Add real Cloudflare D1 and R2 resource identifiers, a deployed contract, Worker secrets, public site origin, and a confirmed sample collection. The tracked Wrangler configuration still contains a placeholder database ID.
-- Review time-sensitive claims in the sample guide and collect actual user feedback. Do not invent results.
+- The sample guide now focuses on invoices, banking, and expense records with official source links and no tax-year rates. Complete human review and collect actual user feedback before publishing it. Do not invent results.
 - Run the clean-browser live acceptance checklist in `docs/deployment.md` before calling the demo ready.
 
 ## Submission status

@@ -11,7 +11,7 @@ Record the final values in a private release ledger, and publish only public add
 4. Confirm a Cloudflare account with a private R2 bucket, a D1 database, and permission to deploy Workers.
 5. Confirm the public HTTPS origin and Monad testnet RPC are configured.
 6. Confirm model access and set a spending cap. Fund only authorized test wallets and the settlement operator.
-7. Verify the sample guide and obtain permission to publish it. The guide currently contains time-sensitive factual claims.
+7. Review the focused sample guide against its linked official sources, obtain permission to publish it, and record feedback from three likely users. Its tax rates and thresholds were removed to avoid stale claims.
 
 ## Deploy the contract and bindings
 
