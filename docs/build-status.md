@@ -10,6 +10,7 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 - Model calls use selected passages and validate versioned citation IDs. Answer text is stored in D1, but returned only after settlement confirmation. Public receipts exclude answer and source text.
 - Expired no-answer claims can be retried against the same escrow. Signed reconciliation can settle an already stored answer after a Worker exit. D1 lease tokens fence competing Workers.
 - Buyer UI has a guided sample entry when a real confirmed sample ID is configured, wallet payment, settlement status, signed recovery, and on-chain refund action. Owner UI supports registration and pause or resume.
+- Owner registration now records a pending transaction for resuming Worker confirmation after a browser interruption. A manual ID and transaction fallback covers lost browser storage. Confirmation retries must match the recorded owner and transaction and cannot overwrite a confirmed D1 row.
 - The reference dashboard layout has a live collection catalogue, search by collection name, verified query workspace, provenance receipt, and recorded marketplace and owner analytics. It has no team invitation or permission system. It does not store question text for a saved-query list or emit a numerical answer-confidence score.
 - The ten-page contributor dashboard merged through PR #50 uses local sample state. It is available only under `/preview` in local development. The production entry point remains the API-connected app. The preview is not evidence of implemented API keys, balances, settings, or activity.
 - Content replacement is disabled in the public API and UI because the former path did not advance on-chain policy version.
@@ -20,9 +21,9 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 - `npm run test:contracts`: 21 passing on 8 October.
 - `npm run typecheck` in Worker: passed.
 - `npm run typecheck` in frontend: passed.
-- `npm test --prefix worker`: 132 passing on 9 October, including sample-guide passage retrieval.
+- `npm test --prefix worker`: 134 passing on 9 October, including sample-guide passage retrieval and registration confirmation retry checks.
 - `python3 scripts/verify-sql-invariants.py`: passed on 9 October after explicitly closing SQLite connections for Windows cleanup compatibility. Windows rerun remains pending.
-- `npm run rehearse:local`: passed on 8 October with a local Hardhat chain, Wrangler D1 and R2, HTTPS model stub, stored-answer settlement recovery, owner payout, pause, and refund.
+- `npm run rehearse:local`: passed again on 9 October after the guarded registration confirmation change, using a local Hardhat chain, Wrangler D1 and R2, HTTPS model stub, stored-answer settlement recovery, owner payout, pause, and refund.
 - `python3 scripts/check-secrets.py`: passed on the current tracked tree.
 - `npm audit --omit=dev --audit-level=high` in root, frontend, and Worker: zero reported production advisories on 8 October. Recheck before deployment because advisory data changes.
 - Frontend build passed after the registration signature change, with no generated JavaScript emitted into source files.

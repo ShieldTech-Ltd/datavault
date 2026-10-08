@@ -118,6 +118,33 @@ describe("collection ownership", () => {
     expect(response.status).toBe(409);
     expect(mocks.confirmCollection).not.toHaveBeenCalled();
   });
+
+  it("accepts only the recorded owner and transaction on confirmation retry", async () => {
+    mocks.getCollectionRow.mockResolvedValue({
+      status: "confirmed", owner_address: owner.address.toLowerCase(),
+      confirmed_tx: openTxHash,
+    });
+    const request = (txHash: string, ownerAddress = owner.address) =>
+      new Request("http://localhost/api/collections/confirm", {
+        method: "POST", body: JSON.stringify({ txHash, ownerAddress }),
+      });
+    expect((await handleConfirmCollection(request(openTxHash), env, collectionId)).status).toBe(200);
+    expect((await handleConfirmCollection(request(requestId), env, collectionId)).status).toBe(409);
+    expect((await handleConfirmCollection(request(openTxHash, buyer.address), env, collectionId)).status).toBe(409);
+    expect(mocks.confirmCollection).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite a concurrent confirmation with another transaction", async () => {
+    mocks.getCollectionRow
+      .mockResolvedValueOnce({ status: "staging", owner_address: owner.address.toLowerCase() })
+      .mockResolvedValueOnce({ status: "confirmed", owner_address: owner.address.toLowerCase(),
+        confirmed_tx: requestId });
+    mocks.confirmCollection.mockResolvedValue(false);
+    const response = await handleConfirmCollection(new Request("http://localhost/api/collections/confirm", {
+      method: "POST", body: JSON.stringify({ txHash: openTxHash, ownerAddress: owner.address }),
+    }), env, collectionId);
+    expect(response.status).toBe(409);
+  });
 });
 
 describe("paid query boundary", () => {

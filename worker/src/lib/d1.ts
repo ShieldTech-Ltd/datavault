@@ -55,12 +55,15 @@ export async function confirmCollection(
   collectionId: string,
   txHash: string,
   env: Env
-): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE collections SET status = 'confirmed', confirmed_tx = ? WHERE collection_id = ?`
+): Promise<boolean> {
+  const result = await env.DB.prepare(
+    `UPDATE collections SET status = 'confirmed', confirmed_tx = ?
+     WHERE collection_id = ? AND status = 'staging' AND chain_id = ?
+       AND contract_address = ?`
   )
-    .bind(txHash, collectionId)
+    .bind(txHash, collectionId, Number(env.CHAIN_ID), env.CONTRACT_ADDRESS.toLowerCase())
     .run();
+  return result.meta.changes === 1;
 }
 
 export async function markCollectionOrphaned(

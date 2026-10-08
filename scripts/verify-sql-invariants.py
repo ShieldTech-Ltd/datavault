@@ -40,6 +40,18 @@ def test_staging(connection: sqlite3.Connection) -> None:
     connection.commit()
 
 
+def test_guarded_confirmation(connection: sqlite3.Connection) -> None:
+    sql = sql_from_source("worker/src/lib/d1.ts", "export async function confirmCollection")
+    deployment = "0x" + "11" * 20
+    assert connection.execute(sql, ("tx-a", "collection-1", 10143, deployment)).rowcount == 1
+    assert connection.execute(sql, ("tx-b", "collection-1", 10143, deployment)).rowcount == 0
+    row = connection.execute(
+        "SELECT status, confirmed_tx FROM collections WHERE collection_id = ?", ("collection-1",)
+    ).fetchone()
+    assert row == ("confirmed", "tx-a"), "a retry must not overwrite the recorded transaction"
+    connection.commit()
+
+
 def test_concurrent_quota(path: str) -> None:
     sql = sql_from_source("worker/src/lib/ratelimit.ts", "const result = await env.DB.prepare")
     now = 1_000_000
@@ -71,8 +83,9 @@ def main() -> None:
                 for migration in sorted((ROOT / "worker/migrations").glob("*.sql")):
                     connection.executescript(migration.read_text())
                 test_staging(connection)
+                test_guarded_confirmation(connection)
         test_concurrent_quota(path)
-    print("D1 staging and concurrent rate-limit invariants passed.")
+    print("D1 staging, guarded confirmation, and concurrent rate-limit invariants passed.")
 
 
 if __name__ == "__main__":

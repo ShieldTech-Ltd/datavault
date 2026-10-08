@@ -212,13 +212,17 @@ class MockD1Statement {
     // UPDATE collections SET status = 'confirmed'
     if (su.startsWith("UPDATE COLLECTIONS SET STATUS = 'CONFIRMED'")) {
       const rows = this.tables.get("collections") ?? [];
+      let changes = 0;
       for (const r of rows) {
-        if (r.collection_id === this.boundArgs[1]) {
+        if (r.collection_id === this.boundArgs[1] && r.status === "staging" &&
+            r.chain_id === this.boundArgs[2] &&
+            r.contract_address === this.boundArgs[3]) {
           r.status = "confirmed";
           r.confirmed_tx = this.boundArgs[0];
+          changes++;
         }
       }
-      return { meta: { changes: 1 } };
+      return { meta: { changes } };
     }
 
     // UPDATE collections SET status = 'orphaned'

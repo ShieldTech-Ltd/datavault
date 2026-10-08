@@ -14,6 +14,43 @@ const MONAD_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID) || 10143;
 const NETWORK_LABEL =
   MONAD_CHAIN_ID === 31337 ? "the local test chain" : "Monad testnet";
 const STORAGE_KEY = "datavault_collection_id";
+const PENDING_KEY = `datavault_pending_registration:${MONAD_CHAIN_ID}:${
+  CONTRACT_ADDRESS?.toLowerCase() ?? "unconfigured"
+}`;
+const HASH_RE = /^0x[0-9a-fA-F]{64}$/;
+
+interface PendingRegistration {
+  collectionId: string;
+  txHash: string;
+  ownerAddress: string;
+  name: string;
+}
+
+function readPending(ownerAddress: string): PendingRegistration | null {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY);
+    if (!raw || raw.length > 2_000) return null;
+    const item: unknown = JSON.parse(raw);
+    if (!item || typeof item !== "object") return null;
+    const value = item as Partial<PendingRegistration>;
+    if (!HASH_RE.test(value.collectionId ?? "") ||
+        !HASH_RE.test(value.txHash ?? "") ||
+        value.ownerAddress?.toLowerCase() !== ownerAddress.toLowerCase() ||
+        typeof value.name !== "string") return null;
+    return value as PendingRegistration;
+  } catch {
+    return null;
+  }
+}
+
+function storePending(value: PendingRegistration | null) {
+  try {
+    if (value) localStorage.setItem(PENDING_KEY, JSON.stringify(value));
+    else localStorage.removeItem(PENDING_KEY);
+  } catch {
+    // Recovery still works in the current tab when storage is unavailable.
+  }
+}
 
 type Step =
   | "idle"
@@ -47,15 +84,25 @@ export default function OwnerDashboard({
   const [loadingPolicy, setLoadingPolicy] = useState(false);
   const [disclosureAccepted, setDisclosureAccepted] = useState(false);
   const [policyTxPending, setPolicyTxPending] = useState(false);
+  const [pending, setPending] = useState<PendingRegistration | null>(null);
+  const [recoveryCollectionId, setRecoveryCollectionId] = useState("");
+  const [recoveryTxHash, setRecoveryTxHash] = useState("");
 
   const contractReady = Boolean(CONTRACT_ADDRESS);
   const walletAddress = primaryWallet?.address ?? "";
+
+  useEffect(() => {
+    setPending(walletAddress ? readPending(walletAddress) : null);
+  }, [walletAddress]);
 
   // Load saved collection and on-chain state after connect or refresh
   useEffect(() => {
     setPolicy(null);
     setLoadingPolicy(false);
-    const savedId = selectedCollection ?? localStorage.getItem(STORAGE_KEY);
+    let savedId = selectedCollection;
+    if (!savedId) {
+      try { savedId = localStorage.getItem(STORAGE_KEY); } catch { savedId = null; }
+    }
     if (!savedId || !walletAddress || !contractReady) return;
     let active = true;
     setLoadingPolicy(true);
@@ -172,38 +219,99 @@ export default function OwnerDashboard({
 
       setStep("awaiting_confirm");
       setStatusMsg("Waiting for on-chain confirmation...");
-      const receipt = await viemClient.waitForTransactionReceipt({
-        hash: txHash as `0x${string}`,
-      });
-      if (receipt.status !== "success")
-        throw new Error("Registration transaction reverted.");
-
-      const confirmRes = await fetch(
-        `/api/collections/${collectionId}/confirm`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ txHash, ownerAddress: walletAddress }),
-        }
-      );
-      if (!confirmRes.ok) {
-        const text = await confirmRes.text();
-        throw new Error(text);
-      }
-
-      localStorage.setItem(STORAGE_KEY, collectionId);
-      setPolicy({
+      const registration = {
         collectionId,
-        price: priceWei,
-        active: true,
-        policyVersion: 1,
-        collectionName: file.name.replace(/\.md$/i, ""),
-      });
-      setStep("done");
-      setStatusMsg(`Registered and confirmed. Tx: ${txHash}`);
+        txHash,
+        ownerAddress: walletAddress,
+        name: file.name.replace(/\.md$/i, ""),
+      };
+      setPending(registration);
+      storePending(registration);
+      await confirmPending(registration);
     } catch (err: unknown) {
       setStep("error");
       setStatusMsg(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function confirmPending(registration: PendingRegistration) {
+    if (!CONTRACT_ADDRESS || !primaryWallet ||
+        registration.ownerAddress.toLowerCase() !== primaryWallet.address.toLowerCase())
+      throw new Error("Connect the wallet that registered this collection.");
+    setStep("awaiting_confirm");
+    const receipt = await viemClient.waitForTransactionReceipt({
+      hash: registration.txHash as `0x${string}`,
+    });
+    if (receipt.status !== "success") {
+      setPending(null);
+      storePending(null);
+      throw new Error("Registration transaction reverted. No collection was registered.");
+    }
+    const confirmRes = await fetch(
+      `/api/collections/${registration.collectionId}/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          txHash: registration.txHash,
+          ownerAddress: registration.ownerAddress,
+        }),
+      }
+    );
+    if (!confirmRes.ok) throw new Error(await confirmRes.text());
+    const col = (await viemClient.readContract({
+      address: CONTRACT_ADDRESS,
+      abi: DATAVAULT_ABI,
+      functionName: "getCollection",
+      args: [registration.collectionId as `0x${string}`],
+    })) as [string, string, bigint, number, boolean];
+    if (col[0].toLowerCase() !== registration.ownerAddress.toLowerCase())
+      throw new Error("Confirmed collection owner does not match this wallet.");
+    try { localStorage.setItem(STORAGE_KEY, registration.collectionId); } catch {}
+    setPolicy({
+      collectionId: registration.collectionId,
+      price: col[2],
+      active: col[4],
+      policyVersion: col[3],
+      collectionName: registration.name,
+    });
+    setPending(null);
+    storePending(null);
+    setStep("done");
+    setStatusMsg(`Registered and confirmed. Tx: ${registration.txHash}`);
+  }
+
+  async function resumeConfirmation() {
+    if (!pending) return;
+    setStatusMsg("Checking the registration transaction and collection state...");
+    try {
+      await confirmPending(pending);
+    } catch (cause) {
+      setStep("error");
+      setStatusMsg(cause instanceof Error ? cause.message : "Confirmation is unavailable.");
+    }
+  }
+
+  async function recoverFromTransaction(event: React.FormEvent) {
+    event.preventDefault();
+    if (!primaryWallet || !HASH_RE.test(recoveryCollectionId) ||
+        !HASH_RE.test(recoveryTxHash)) return;
+    const registration = {
+      collectionId: recoveryCollectionId,
+      txHash: recoveryTxHash,
+      ownerAddress: primaryWallet.address,
+      name: "",
+    };
+    setPending(registration);
+    storePending(registration);
+    setStatusMsg("Checking the registration transaction and collection state...");
+    try {
+      await confirmPending(registration);
+      setRecoveryCollectionId("");
+      setRecoveryTxHash("");
+    } catch (cause) {
+      setStep("error");
+      setStatusMsg(cause instanceof Error ? cause.message : "Confirmation is unavailable.");
     }
   }
 
@@ -254,7 +362,7 @@ export default function OwnerDashboard({
   }
 
   function handleForgetCollection() {
-    localStorage.removeItem(STORAGE_KEY);
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
     onForget?.();
     setPolicy(null);
     setStep("idle");
@@ -286,7 +394,23 @@ export default function OwnerDashboard({
         <div style={styles.info}>Loading your collection from chain...</div>
       )}
 
-      {!policy && !loadingPolicy && (
+      {pending && walletAddress.toLowerCase() === pending.ownerAddress.toLowerCase() && (
+        <div style={styles.warning}>
+          <strong>Registration needs confirmation</strong>
+          <p>Transaction: {pending.txHash}</p>
+          <p>Collection: {pending.collectionId}</p>
+          <button type="button" onClick={() => void resumeConfirmation()}
+            disabled={isLoading} style={styles.button}>
+            {isLoading ? "Checking registration..." : "Resume confirmation"}
+          </button>
+          <button type="button" onClick={() => { setPending(null); storePending(null); }}
+            disabled={isLoading} style={{ ...styles.linkButton, marginLeft: "0.75rem" }}>
+            Clear local record
+          </button>
+        </div>
+      )}
+
+      {!policy && !loadingPolicy && !pending && (
         <form onSubmit={handleRegister} style={styles.form}>
           <label style={styles.label}>
             Knowledge collection (Markdown file)
@@ -362,6 +486,32 @@ export default function OwnerDashboard({
             </div>
           )}
         </form>
+      )}
+
+      {!policy && !pending && walletAddress && (
+        <details style={{ marginTop: "1rem" }}>
+          <summary>Already sent a registration transaction?</summary>
+          <p>
+            If this browser lost the pending record, enter the collection ID
+            shown after you submitted registration and the transaction hash from
+            your wallet. The Worker verifies both against Monad.
+          </p>
+          <form onSubmit={(event) => void recoverFromTransaction(event)} style={styles.form}>
+            <label style={styles.label}>
+              Collection ID
+              <input value={recoveryCollectionId} onChange={(event) => setRecoveryCollectionId(event.target.value)}
+                pattern="0x[0-9a-fA-F]{64}" required style={styles.input} />
+            </label>
+            <label style={styles.label}>
+              Registration transaction hash
+              <input value={recoveryTxHash} onChange={(event) => setRecoveryTxHash(event.target.value)}
+                pattern="0x[0-9a-fA-F]{64}" required style={styles.input} />
+            </label>
+            <button type="submit" disabled={isLoading || !contractReady} style={styles.button}>
+              Recover registration
+            </button>
+          </form>
+        </details>
       )}
 
       {statusMsg && (

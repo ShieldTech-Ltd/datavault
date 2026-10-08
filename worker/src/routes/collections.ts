@@ -123,9 +123,13 @@ export async function handleConfirmCollection(
   const col = await getCollectionRow(collectionId, env);
   if (!col) return new Response("Collection not found", { status: 404 });
   if (col.status === "confirmed") {
-    return new Response(JSON.stringify({ ok: true, alreadyConfirmed: true }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    if (col.owner_address === (body.ownerAddress as string).toLowerCase() &&
+        col.confirmed_tx?.toLowerCase() === (body.txHash as string).toLowerCase()) {
+      return new Response(JSON.stringify({ ok: true, alreadyConfirmed: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("Confirmed registration does not match this owner and transaction.", { status: 409 });
   }
   if (col.status === "orphaned") return error400("Staging window expired. Please register again.");
 
@@ -149,7 +153,18 @@ export async function handleConfirmCollection(
     return new Response("Registration transaction is unconfirmed or does not match this collection.", { status: 409 });
   }
 
-  await confirmCollection(collectionId, body.txHash as string, env);
+  const confirmed = await confirmCollection(collectionId, body.txHash as string, env);
+  if (!confirmed) {
+    const latest = await getCollectionRow(collectionId, env);
+    if (latest?.status === "confirmed" &&
+        latest.owner_address === (body.ownerAddress as string).toLowerCase() &&
+        latest.confirmed_tx?.toLowerCase() === (body.txHash as string).toLowerCase()) {
+      return new Response(JSON.stringify({ ok: true, alreadyConfirmed: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("Registration state changed during confirmation.", { status: 409 });
+  }
 
   return new Response(
     JSON.stringify({ ok: true, collectionId, status: "confirmed" }),
