@@ -48,7 +48,7 @@ const answerDigest = `sha256:${createHash("sha256").update("A cited fact.").dige
 const contract = `0x${"dd".repeat(20)}`;
 const env = {
   CONTRACT_ADDRESS: contract, SETTLEMENT_PRIVATE_KEY: keccak256(toBytes("datavault-test-operator")),
-  MODEL_API_KEY: "test-model-key", CHAIN_ID: "10143", MONAD_RPC_URL: "http://localhost:8545",
+  MODEL_API_KEY: "test-model-key", MODEL_PROVIDER: "openai", CHAIN_ID: "10143", MONAD_RPC_URL: "http://localhost:8545",
 } as Env;
 const question = "What does the guide say?";
 

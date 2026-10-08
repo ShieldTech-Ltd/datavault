@@ -15,6 +15,7 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 - The ten-page contributor dashboard merged through PR #50 uses local sample state. It is available only under `/preview` in local development. The production entry point remains the API-connected app. The preview is not evidence of implemented API keys, balances, settings, or activity.
 - Content replacement is disabled in the public API and UI because the former path did not advance on-chain policy version.
 - API responses have no-store and browser security headers, and public deployments reject unlisted browser origins, including localhost.
+- The production frontend build emits a public release manifest with its contract, chain, and RPC. The release guard compares those values with the selected Wrangler deployment config and rejects a stale or mismatched frontend artifact. Paid quotes also fail closed when the model endpoint is malformed or insecure, before opening escrow.
 
 ## Local checks on this branch
 

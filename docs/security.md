@@ -6,7 +6,7 @@ The paid path handles private source material, buyer questions, and a settlement
 
 - Store the settlement and model keys only as Wrangler secrets. Keep deployer keys in untracked local environment files or an approved secret manager. Never use the deployer key as the settlement key.
 - The model endpoint must use HTTPS and cannot embed credentials or query parameters. The Worker rejects an insecure endpoint before sending the model key.
-- Only `VITE_` values intended to be public may enter the frontend build. Inspect the built assets for secret values before deployment.
+- Only `VITE_` values intended to be public may enter the frontend build. The build emits a public manifest containing its contract, chain, and browser RPC; the release guard compares it with the selected Wrangler config. Inspect the built assets for secret values before deployment.
 - Use separate, low balance testnet wallets. Rotate a key immediately if it appears in a commit, log, artifact, screenshot, or chat. Removing it from a later commit does not undo exposure.
 - An early `.env.example` commit contained a low-integer example deployer key. It is public in Git history and must never hold funds or be reused. The release checks reject low-integer, repeated-byte, and all 20 default Hardhat test wallets for production roles. They cannot prove that any other supplied key is private.
 - Keep R2 buckets private and restrict Cloudflare account access. Apply least privilege to GitHub and Cloudflare tokens.

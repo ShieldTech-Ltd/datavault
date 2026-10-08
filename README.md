@@ -195,9 +195,9 @@ For a local paid-flow integration rehearsal using a Hardhat chain, Wrangler D1/R
 | `MONAD_RPC_URL` | Monad RPC endpoint |
 | `SETTLEMENT_PRIVATE_KEY` | Key used by Worker to call settleQuery |
 | `MODEL_API_KEY` | AI model provider key |
-| `MODEL_PROVIDER` | `openai` or `kimi` |
-| `MODEL_API_BASE` | API base URL (default: OpenAI) |
-| `MODEL_NAME` | Model name (default: gpt-4o-mini) |
+| `MODEL_PROVIDER` | `openai` or `kimi`; both use an OpenAI-compatible chat-completions endpoint |
+| `MODEL_API_BASE` | HTTPS API base URL (default: OpenAI); required for `kimi` |
+| `MODEL_NAME` | Model name (default: gpt-4o-mini); required for `kimi` |
 
 ---
 
