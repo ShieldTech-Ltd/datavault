@@ -8,6 +8,12 @@ An owner uploads a private Markdown document, sets a per-query price, and regist
 **Track:** Trust, Identity and AI Infrastructure  
 **Deadline:** 14 October 2026 at 04:59 GMT+1
 
+## Frontend dashboard preview
+
+The routed dashboard uses sample collections, earnings, transactions, API keys, and settings. Its actions simulate the interface and do not create uploads, payments, payouts, or credentials. Preview query history stays in memory and does not read or modify wallet recovery records.
+
+Use `/query` for the existing Monad testnet paid-query, answer recovery, reconciliation, and refund flow. Use `/manage` for signed collection registration, confirmation, and policy updates. These flows require the configured Worker, contract, and an EVM wallet. `/preview/query` shows the simulated query interface. The current wallet implementation uses an injected EVM provider.
+
 ---
 
 ## What this is not
