@@ -34,10 +34,6 @@ export interface CollectionRow {
 }
 
 // outcome state machine:
-//   pending -> running -> answer_recorded -> settled
-//                     \-> failed
-//   pending -> refundable  (set externally when timeout observed)
-// outcome state machine:
 //   pending -> running -> answer_recorded -> settlement_pending -> settled
 //                     \-> failed
 //   pending -> refundable  (set externally when timeout observed)

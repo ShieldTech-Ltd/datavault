@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 import { keccak256, toBytes } from "viem";
+import { createHash } from "node:crypto";
 import { executionMessage } from "../../../shared/api";
-import { handleExecute, handleReconcile } from "../routes/queries";
+import { handleExecute, handleReconcile, handleAnswerRecovery } from "../routes/queries";
 import type { Env } from "../lib/types";
 
 const mocks = vi.hoisted(() => ({
@@ -12,12 +13,14 @@ const mocks = vi.hoisted(() => ({
   updateQueryAnswerRecorded: vi.fn(), updateQuerySettlementPending: vi.fn(),
   updateQuerySettled: vi.fn(), retrievePassages: vi.fn(), callModel: vi.fn(),
   settle: vi.fn(), checkRateLimit: vi.fn(), rpcMatchesConfiguredChain: vi.fn(),
+  verifiedSettlementHash: vi.fn(),
 }));
 
 vi.mock("../lib/policy", () => ({
   getOnChainCollection: mocks.getOnChainCollection, getOnChainQuery: mocks.getOnChainQuery,
 }));
-vi.mock("../lib/chain-receipts", () => ({ verifyOpenReceipt: mocks.verifyOpenReceipt }));
+vi.mock("../lib/chain-receipts", () => ({ verifyOpenReceipt: mocks.verifyOpenReceipt,
+  verifiedSettlementHash: mocks.verifiedSettlementHash }));
 vi.mock("../lib/d1", () => ({
   claimQuery: mocks.claimQuery, getQueryRow: mocks.getQueryRow,
   updateQueryRunning: mocks.updateQueryRunning, updateQueryOutcome: mocks.updateQueryOutcome,
@@ -39,7 +42,7 @@ const requestId = `0x${"aa".repeat(32)}`;
 const collectionId = `0x${"bb".repeat(32)}`;
 const openTxHash = `0x${"cc".repeat(32)}`;
 const settleTxHash = `0x${"ee".repeat(32)}`;
-const answerDigest = `sha256:${"ab".repeat(32)}`;
+const answerDigest = `sha256:${createHash("sha256").update("A cited fact.").digest("hex")}`;
 const contract = `0x${"dd".repeat(20)}`;
 const env = {
   CONTRACT_ADDRESS: contract, SETTLEMENT_PRIVATE_KEY: keccak256(toBytes("datavault-test-operator")),
@@ -76,13 +79,14 @@ beforeEach(() => {
   mocks.callModel.mockResolvedValue({ answer: "A cited fact.", citedPassages: [],
     citedPassageIds: [`0x${"ff".repeat(32)}:chunk-0`], responseDigest: answerDigest, isInsufficientEvidence: false });
   mocks.settle.mockResolvedValue({ hash: settleTxHash, status: "confirmed" });
+  mocks.verifiedSettlementHash.mockResolvedValue(settleTxHash);
 });
 
 describe("settlement uncertainty after answer recording", () => {
   it("claims the exact on-chain escrow amount for revenue records", async () => {
     await execute();
     expect(mocks.claimQuery).toHaveBeenCalledWith(expect.objectContaining({ amount_wei: "100" }), env, expect.any(Number));
-    expect(mocks.settle).toHaveBeenCalledWith(requestId, `0x${"ab".repeat(32)}`, env);
+    expect(mocks.settle).toHaveBeenCalledWith(requestId, `0x${answerDigest.slice(7)}`, env);
   });
 
   it("preserves the answer if the settlement broadcast reports an ambiguous error", async () => {
@@ -122,9 +126,9 @@ describe("settlement uncertainty after answer recording", () => {
   });
 
   it("reconciles a recorded answer only after on-chain settlement", async () => {
-    mocks.getQueryRow.mockResolvedValue({ buyer_address: buyer.address,
+    mocks.getQueryRow.mockResolvedValue({ request_id: requestId, buyer_address: buyer.address,
       outcome: "answer_recorded", answer_text: "A cited fact.", passage_ids: "[]",
-      response_digest: answerDigest, settle_tx_hash: settleTxHash });
+      response_digest: answerDigest, settle_tx_hash: settleTxHash, open_tx_hash: openTxHash });
     mocks.getOnChainQuery.mockResolvedValue({ state: 1 });
     const timestamp = Date.now();
     const signature = await buyer.signMessage({ message: `datavault-reconcile:${requestId}:${timestamp}` });
@@ -133,6 +137,55 @@ describe("settlement uncertainty after answer recording", () => {
     }), env, requestId);
     expect(response.status).toBe(200);
     expect(await response.text()).not.toContain("A cited fact.");
+    expect(mocks.verifiedSettlementHash).toHaveBeenCalledWith(env, requestId,
+      `0x${answerDigest.slice(7)}`, settleTxHash, openTxHash);
     expect(mocks.updateQuerySettled).toHaveBeenCalledWith(requestId, settleTxHash, [], answerDigest, env);
+  });
+
+  it("keeps a paid answer private if the settlement event does not match", async () => {
+    mocks.getQueryRow.mockResolvedValue({ request_id: requestId, buyer_address: buyer.address,
+      outcome: "answer_recorded", answer_text: "A cited fact.", passage_ids: "[]",
+      response_digest: answerDigest, settle_tx_hash: settleTxHash, open_tx_hash: openTxHash });
+    mocks.getOnChainQuery.mockResolvedValue({ state: 1 });
+    mocks.verifiedSettlementHash.mockResolvedValue(null);
+    const timestamp = Date.now();
+    const signature = await buyer.signMessage({ message: `datavault-reconcile:${requestId}:${timestamp}` });
+    const response = await handleReconcile(new Request(`http://localhost/api/queries/${requestId}/reconcile`, {
+      method: "POST", headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
+    }), env, requestId);
+    expect(response.status).toBe(409);
+    expect(await response.text()).not.toContain("A cited fact.");
+    expect(mocks.updateQuerySettled).not.toHaveBeenCalled();
+  });
+
+  it("discovers a settlement hash missing after a Worker crash", async () => {
+    mocks.getQueryRow.mockResolvedValue({ request_id: requestId, buyer_address: buyer.address,
+      outcome: "answer_recorded", answer_text: "A cited fact.", passage_ids: "[]",
+      response_digest: answerDigest, settle_tx_hash: null, open_tx_hash: openTxHash });
+    mocks.getOnChainQuery.mockResolvedValue({ state: 1 });
+    const timestamp = Date.now();
+    const signature = await buyer.signMessage({ message: `datavault-reconcile:${requestId}:${timestamp}` });
+    const response = await handleReconcile(new Request(`http://localhost/api/queries/${requestId}/reconcile`, {
+      method: "POST", headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
+    }), env, requestId);
+    expect(response.status).toBe(200);
+    expect(mocks.verifiedSettlementHash).toHaveBeenCalledWith(env, requestId,
+      `0x${answerDigest.slice(7)}`, null, openTxHash);
+    expect(mocks.updateQuerySettled).toHaveBeenCalledWith(requestId, settleTxHash, [], answerDigest, env);
+  });
+
+  it("withholds a tampered answer even when D1 says settled", async () => {
+    mocks.getQueryRow.mockResolvedValue({ request_id: requestId, buyer_address: buyer.address,
+      outcome: "settled", answer_text: "Different answer", passage_ids: "[]",
+      response_digest: answerDigest, settle_tx_hash: settleTxHash, open_tx_hash: openTxHash });
+    mocks.getOnChainQuery.mockResolvedValue({ state: 1 });
+    const timestamp = Date.now();
+    const signature = await buyer.signMessage({ message: `datavault-answer:${requestId}:${timestamp}` });
+    const response = await handleAnswerRecovery(new Request(`http://localhost/api/queries/${requestId}/answer`, {
+      headers: { "x-signature": signature, "x-timestamp": String(timestamp) },
+    }), env, requestId);
+    expect(response.status).toBe(409);
+    expect(await response.text()).not.toContain("Different answer");
+    expect(mocks.verifiedSettlementHash).not.toHaveBeenCalled();
   });
 });

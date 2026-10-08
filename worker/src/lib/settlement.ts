@@ -2,6 +2,7 @@ import { createPublicClient, createWalletClient, encodeFunctionData, http, parse
 import { privateKeyToAccount } from "viem/accounts";
 import type { Env } from "./types";
 import { rpcMatchesConfiguredChain } from "./chain-identity";
+import { settlementReceiptMatches } from "./chain-receipts";
 
 export type SettlementResult = {
   hash: `0x${string}`;
@@ -39,7 +40,12 @@ export async function settleOnChainWithConfirmation(
 
   try {
     const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 20_000, confirmations: 1 });
-    return { hash, status: receipt.status === "success" ? "confirmed" : "reverted" };
+    if (receipt.status !== "success") return { hash, status: "reverted" };
+    return {
+      hash,
+      status: settlementReceiptMatches(receipt, env.CONTRACT_ADDRESS, requestId, answerDigest)
+        ? "confirmed" : "pending",
+    };
   } catch {
     return { hash, status: "pending" };
   }

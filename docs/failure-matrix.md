@@ -17,7 +17,7 @@ Rows marked **[LIVE GATE]** require real testnet/model credentials to verify end
 | Staging window expires (30 min, no confirm) | Row marked `orphaned`; a new registration attempt can reuse the same collection ID and replace the stale staging metadata | `STAGING_EXPIRY_MS` check and D1 upsert on re-register |
 | Re-upload signed by different address | 410; the legacy upload route is disabled before checking a signature | Worker router in `index.ts` |
 | Re-upload while collection is paused | 410; the legacy upload route is disabled | Worker router in `index.ts` |
-| Collection paused before quote | 503 "collection not active" from prepare | `handlePrepare` on-chain active check **[LIVE GATE]** |
+| Collection paused before quote | 403 from prepare | `handlePrepare` on-chain active check **[LIVE GATE]** |
 | Collection paused after quote but before escrow | `openQuery` reverts on-chain ("collection paused") | Contract `require(col.active)` **[LIVE GATE]** |
 | Collection paused after escrow | If paused before execution, the Worker returns 403 without claiming. If paused after the claim, it marks the request `failed` before settlement. The buyer can refund after the on-chain timeout. | Worker `active` checks in `handleExecute` before claim and before settle **[LIVE GATE]** |
 
@@ -29,7 +29,7 @@ Rows marked **[LIVE GATE]** require real testnet/model credentials to verify end
 | Buyer uses wrong contract address | `openQuery` to wrong contract; Worker sees no escrow for requestId | `getOnChainQuery` returns null; execute fails **[LIVE GATE]** |
 | Duplicate requestId (replay) | `openQuery` reverts ("requestId already used") | Contract mapping check **[LIVE GATE]** |
 | Buyer submits execute without opening escrow | Worker reads on-chain state; escrow not found | `getOnChainQuery` check in execute **[LIVE GATE]** |
-| Escrow already settled when execute called | Duplicate D1 claim returns false; 409 "already claimed" | `INSERT OR IGNORE` + `meta.changes === 0` |
+| Escrow already settled when execute called | 409 before any D1 claim or model call | On-chain escrow state check in `handleExecute` |
 | Two Workers race on same requestId | Second INSERT OR IGNORE fails; first Worker continues | Atomic D1 `INSERT OR IGNORE` |
 | Escrow timeout reached before settlement | Buyer can call `refundExpired` on-chain | Contract `REFUND_TIMEOUT = 10 minutes` **[LIVE GATE]** |
 | Worker tries to settle after buyer already refunded | `settleQuery` reverts ("already finalised") | Contract state check **[LIVE GATE]** |
@@ -54,16 +54,16 @@ Rows marked **[LIVE GATE]** require real testnet/model credentials to verify end
 | Model API returns non-200 | Answer rejected; query marked `failed` | HTTP status check |
 | No relevant passages found by retrieval | 422; request marked `failed` without calling the model or settling | `retrievePassages` result check |
 | Model determines supplied passages are insufficient | An insufficient-evidence answer can settle with no citations | Detection phrase check in `callModel` |
-| R2 retrieval fails (collection missing) | 500; request remains claimed in D1 (R2 retrieval happens after `claimQuery` succeeds — the claim cannot be retried with the same requestId) | `retrievePassages` throws after claim; `claimQuery` has already written the row |
+| R2 retrieval fails (collection missing) | 500; request is marked failed. Buyer can refund the still-open escrow after timeout. | `handleExecute` catch after claim |
 
 ## Settlement failures
 
 | Scenario | Expected behavior | Enforcement |
 |---|---|---|
-| `settleQuery` tx broadcast but not confirmed within 20s | Response body contains `outcome: "settlement_pending"` and `receiptUrl`; buyer calls `POST /api/queries/:id/reconcile` with ECDSA auth (`x-signature` / `x-timestamp` headers) to check on-chain state | `waitForTransactionReceipt` 20s timeout; `handleReconcile` |
-| Worker crashes after answer recorded but before settle | Answer remains in D1 with `outcome: "answer_recorded"`. Reconcile checks the chain and reports settlement status; it cannot broadcast a missing settlement. The authenticated answer endpoint only releases the answer after on-chain settlement is confirmed. | `updateQueryAnswerRecorded`, `handleReconcile`, `handleAnswerRecovery` |
+| `settleQuery` tx broadcast but not confirmed within 20s | Response body contains `outcome: "settlement_pending"` and `receiptUrl`; buyer calls signed reconcile, which checks escrow state and the matching digest event | `waitForTransactionReceipt` 20s timeout; `handleReconcile` |
+| Worker crashes after answer recorded but before settle | Answer remains in D1 with `outcome: "answer_recorded"`. Reconcile checks the chain and reports pending; it cannot broadcast a missing settlement. The buyer can refund after timeout. | `updateQueryAnswerRecorded`, `handleReconcile` |
 | Settlement tx confirms with a reverted receipt | Worker marks the query `failed`, withholds the answer, and directs the buyer to check escrow and refund after timeout if still open | Receipt status check in `settleOnChainWithConfirmation` **[LIVE GATE]** |
-| Settlement broadcast or final D1 write is uncertain after answer recording | Worker preserves the answer row and returns `settlement_pending` without answer text; signed reconcile checks the chain before releasing the answer | `handleExecute` uncertainty branch and `handleReconcile` **[LIVE GATE]** |
+| Settlement broadcast or final D1 write is uncertain after answer recording | Worker preserves the answer row and returns `settlement_pending` without answer text; signed reconcile searches for a matching digest event if the transaction hash was lost, then restores the settled record | `handleExecute` uncertainty branch and `handleReconcile` **[LIVE GATE]** |
 | Operator key rotated mid-flight | Pending settleQuery uses stale key; reverts; owner can call `updateOperator` to restore | Contract `require(col.operator == msg.sender)` **[LIVE GATE]** |
 
 ## Security and privacy
@@ -82,7 +82,7 @@ These items must be demonstrated on the live testnet before the demo is consider
 
 - [ ] Owner registers, confirms, and queries are accepted by Worker (confirmed collection required)
 - [ ] Buyer pays exact price, Worker settles, owner receives funds
-- [ ] Pause blocks new queries; existing escrowed queries still settle
+- [ ] Pause blocks new quotes and execution; an existing open escrow can be refunded after timeout
 - [ ] Expired escrow refund succeeds after 10-minute window
 - [ ] Answer recovery after page reload using ECDSA auth
 - [ ] `settlement_pending` reconcile flow resolves to `settled`

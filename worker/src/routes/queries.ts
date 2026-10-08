@@ -1,11 +1,11 @@
-import type { Env } from "../lib/types";
+import type { Env, QueryRow } from "../lib/types";
 import {
   getCollectionRow, claimQuery, updateQuerySettled, updateQuerySettlementPending,
   updateQueryOutcome, updateQueryRunning, updateQueryAnswerRecorded,
   updateQueryContentHash, getQueryRow,
 } from "../lib/d1";
 import { getOnChainCollection, getOnChainQuery } from "../lib/policy";
-import { verifyOpenReceipt } from "../lib/chain-receipts";
+import { verifyOpenReceipt, verifiedSettlementHash } from "../lib/chain-receipts";
 import { operatorMatches, paidServiceConfigured } from "../lib/config";
 import { executionMessage, type QueryResult } from "../../../shared/api";
 import { retrievePassages, retrieveCitedPassages } from "../lib/r2";
@@ -384,26 +384,28 @@ export async function handleReconcile(req: Request, env: Env, requestId: string)
     });
   }
 
-  if (row.outcome === "settled") {
-    return new Response(
-      JSON.stringify({ outcome: "settled", settleTxHash: row.settle_tx_hash }),
-      { headers: { "Content-Type": "application/json" } },
-    );
-  }
-
   // Check on-chain escrow state
+  if (!(await rpcMatchesConfiguredChain(env))) {
+    return new Response(JSON.stringify({ error: "Monad RPC chain does not match this deployment." }),
+      { status: 503, headers: { "Content-Type": "application/json" } });
+  }
   const escrow = await getOnChainQuery(requestId as `0x${string}`, env);
-  if (escrow && escrow.state === 1 && row.answer_text) {
-    // Settled on-chain: update D1
-    await updateQuerySettled(
-      requestId,
-      row.settle_tx_hash ?? null,
-      JSON.parse(row.passage_ids),
-      row.response_digest ?? "",
-      env,
-    );
+  if (!escrow)
+    return new Response(JSON.stringify({ error: "Monad escrow state is unavailable." }),
+      { status: 503, headers: { "Content-Type": "application/json" } });
+  if (escrow?.state === 1) {
+    const proof = await settlementProof(row, env);
+    if (proof === "unavailable")
+      return new Response(JSON.stringify({ error: "Settlement proof is temporarily unavailable." }),
+        { status: 503, headers: { "Content-Type": "application/json" } });
+    if (!proof)
+      return new Response(JSON.stringify({ error: "Settled escrow has no matching recorded answer digest. Manual recovery is required." }),
+        { status: 409, headers: { "Content-Type": "application/json" } });
+    if (row.outcome !== "settled" || row.settle_tx_hash?.toLowerCase() !== proof.toLowerCase()) {
+      await updateQuerySettled(requestId, proof, JSON.parse(row.passage_ids), row.response_digest as string, env);
+    }
     return new Response(
-      JSON.stringify({ outcome: "settled", settleTxHash: row.settle_tx_hash, reconciled: true }),
+      JSON.stringify({ outcome: "settled", settleTxHash: proof, reconciled: row.outcome !== "settled" }),
       { headers: { "Content-Type": "application/json" } },
     );
   }
@@ -478,6 +480,27 @@ export async function handleAnswerRecovery(req: Request, env: Env, requestId: st
       });
   }
 
+  if (!(await rpcMatchesConfiguredChain(env))) {
+    return new Response(JSON.stringify({ error: "Monad RPC chain does not match this deployment." }),
+      { status: 503, headers: { "Content-Type": "application/json" } });
+  }
+  const escrow = await getOnChainQuery(requestId as `0x${string}`, env);
+  if (!escrow) {
+    return new Response(JSON.stringify({ error: "Monad escrow state is unavailable." }),
+      { status: 503, headers: { "Content-Type": "application/json" } });
+  }
+  if (escrow.state !== 1) {
+    return new Response(JSON.stringify({ error: "Settlement is not confirmed on-chain." }),
+      { status: 409, headers: { "Content-Type": "application/json" } });
+  }
+  const proof = await settlementProof(row, env);
+  if (proof === "unavailable")
+    return new Response(JSON.stringify({ error: "Settlement proof is temporarily unavailable." }),
+      { status: 503, headers: { "Content-Type": "application/json" } });
+  if (!proof)
+    return new Response(JSON.stringify({ error: "Answer does not match the on-chain settlement digest." }),
+      { status: 409, headers: { "Content-Type": "application/json" } });
+
   const citedPassageIds = JSON.parse(row.passage_ids) as string[];
   const citedPassages = await retrieveCitedPassages(row.collection_id, row.content_hash, citedPassageIds, env)
     .catch(() => []);
@@ -488,7 +511,7 @@ export async function handleAnswerRecovery(req: Request, env: Env, requestId: st
       citedPassageIds,
       citedPassages,
       responseDigest: row.response_digest,
-      settleTxHash: row.settle_tx_hash,
+      settleTxHash: proof,
       outcome: "settled",
       requestId,
       recovered: true,
@@ -504,4 +527,15 @@ async function sha256Hex(text: string): Promise<string> {
   return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+async function settlementProof(row: QueryRow, env: Env): Promise<`0x${string}` | null | "unavailable"> {
+  if (!row.answer_text || !/^sha256:[0-9a-fA-F]{64}$/.test(row.response_digest ?? "")) return null;
+  const digest = `0x${(row.response_digest as string).slice(7)}` as `0x${string}`;
+  if ((await sha256Hex(row.answer_text)).toLowerCase() !== digest.slice(2).toLowerCase()) return null;
+  try {
+    return await verifiedSettlementHash(env, row.request_id as `0x${string}`, digest, row.settle_tx_hash, row.open_tx_hash);
+  } catch {
+    return "unavailable";
+  }
 }

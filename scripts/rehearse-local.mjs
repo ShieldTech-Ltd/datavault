@@ -3,6 +3,7 @@
 // Requires Hardhat on 127.0.0.1:8545 and Wrangler on 127.0.0.1:8790.
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { ethers } from "ethers";
 
@@ -233,6 +234,28 @@ assert.equal(receipt.body.outcome, "settled");
 assert.equal(receipt.body.responseDigest, executed.body.responseDigest);
 assert(!JSON.stringify(receipt.body).includes(executed.body.answer));
 
+// Simulate a Worker exit after on-chain settlement but before the final D1 write.
+// The buyer must recover the transaction hash from the contract event.
+execFileSync(
+  new URL("../worker/node_modules/.bin/wrangler", import.meta.url).pathname,
+  [
+    "d1", "execute", "datavault-db", "--local", "--command",
+    `UPDATE queries SET outcome = 'answer_recorded', settle_tx_hash = NULL WHERE request_id = '${requestId}'`,
+  ],
+  { cwd: new URL("../worker/", import.meta.url), stdio: "pipe" }
+);
+const reconcileTime = Date.now();
+const reconciled = await request(`/api/queries/${requestId}/reconcile`, {
+  method: "POST",
+  headers: signedHeaders(
+    await buyer.signMessage(`datavault-reconcile:${requestId}:${reconcileTime}`),
+    reconcileTime
+  ),
+});
+assert.equal(reconciled.status, 200, `Reconciliation failed: ${JSON.stringify(reconciled.body)}`);
+assert.equal(reconciled.body.outcome, "settled");
+assert.equal(reconciled.body.settleTxHash, executed.body.settleTxHash);
+
 const recoveryTime = Date.now();
 const answerPath = `/api/queries/${requestId}/answer`;
 const rejectedRecovery = await request(answerPath, {
@@ -376,6 +399,7 @@ console.log(
         "on-chain answer digest",
         "owner payout",
         "receipt",
+        "settlement hash discovery after Worker failure",
         "answer recovery",
         "buyer history",
         "analytics",
