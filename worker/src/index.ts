@@ -1,3 +1,4 @@
+import { handleStatus } from './routes/status';
 import { handleCollectionRevisions } from "./routes/collection-revisions";
 import { handleCollectionMetadata } from './routes/collection-metadata';
 import { handleAccountRoute } from "./routes/account";
@@ -82,7 +83,9 @@ export default {
         }
         let res: Response;
 
-        if (path === "/api/account" || path.startsWith("/api/account/") || path.startsWith("/api/auth/")) {
+        if ((method === "GET" && ["/api/status","/api/health"].includes(path)) || (method === "POST" && path === "/api/status/observations")) {
+          res = await handleStatus(request, env);
+        } else if (path === "/api/account" || path.startsWith("/api/account/") || path.startsWith("/api/auth/")) {
           res = await handleAccountRoute(request, env);
         } else if (method === "GET" && path === "/api/marketplace/analytics") {
           res = await handleMarketplaceAnalytics(env);

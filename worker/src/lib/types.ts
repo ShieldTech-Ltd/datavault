@@ -1,4 +1,5 @@
 export interface Env {
+  MONITOR_SECRET?: string;
   COLLECTION_STORE: R2Bucket;
   DB: D1Database;
   ASSETS: Fetcher;

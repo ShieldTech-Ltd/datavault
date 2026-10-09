@@ -138,3 +138,8 @@
 .dv-collection-edit-form .dv-button { justify-self:start; }
 .dv-collection-edit-form p { margin:0; color:var(--text-2); font-size:12px; line-height:1.6; }
 .dv-collection-price-form { margin-top:20px; }
+.dv-notifications { position: relative; }
+.dv-notification-popover { position: absolute; right: 0; top: 100%; width: min(380px, 90vw); max-height: 70vh; overflow: auto; padding: 20px; z-index: 50; }
+.dv-notification-popover ul { list-style: none; padding: 0; }
+.dv-notification-popover li { border-top: 1px solid #e5e7eb; padding: 12px 0; overflow-wrap: anywhere; }
+.dv-notification-popover h2 { margin-top: 0; font-size: 18px; }

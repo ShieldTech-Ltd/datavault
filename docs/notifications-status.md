@@ -1,0 +1,29 @@
+# Notifications and observed availability
+
+In-app delivery uses deployment-scoped events created atomically by SQLite triggers alongside persisted collection/query transitions. Registration requires confirmed status and a recorded confirmation transaction. Owner payouts require settled state and a recorded settlement transaction. Buyer failure/refundable events describe persisted states only. Event payloads contain safe identifiers, collection name, type and recorded exact wei. Private source content, questions, answers, signatures and session credentials are excluded.
+
+Events do not require a profile. For an existing account with in-app notifications disabled, the event insertion transaction records a permanently suppressed delivery. Enabling later does not replay those events. Otherwise the bounded consumer reads the current preference inside its inbox transaction. Delivered and suppressed states are terminal, including concurrent retries. Disabling notifications does not remove an already delivered inbox entry. Historical reconciliation cannot reconstruct historical preferences: it uses the preference observed when recovering a confirmed event. Recovered events describe real persisted confirmations, with their original timestamps.
+
+A persisted rowid watermark recovers at most 50 collections and 50 queries per reconciliation call. SQLite triggers cover later state changes even after the historical cursor has passed a row. Each account read processes at most 50 pending/retry deliveries; further reads drain a backlog. There is no Queue binding or scheduled consumer configured. Delivery is lazy until an account inbox read. Retry attempts, a fixed one-minute retry time and safe error text are persisted. A delivery becomes successful only in the atomic transaction inserting its inbox entry.
+
+`GET /api/account/notifications?limit=20&cursor=123` requires the existing deployment-bound account session. Limit is 1 to 50; cursor is the exclusive monotonically increasing event ID, returned as `nextCursor` from descending pages. New events do not move older pages. The exact unread count is scoped to the account using its indexed inbox rows. The count reflects materialized entries, not the undrained outbox backlog. `PATCH /api/account/notifications/:id` accepts only `{ "read": true }`, requires trusted origin, session and CSRF token, and idempotently updates an owned entry. Foreign IDs return 404. Account export includes only the requesting account's safe inbox metadata.
+
+`GET /api/health` probes operational D1 connectivity (`SELECT 1`) and R2 connectivity (HEAD of the fixed non-user key `__datavault_health_probe__`). A missing object is expected and still demonstrates successful R2 connectivity. The endpoint does not assess model readiness, chain RPC, settlement wallet or sponsor funds. Health and public status reads share the catalogue quota of 30 requests per minute per caller. Account writes retain their 20/minute quota.
+
+`GET /api/status` uses independent monitor observations. A rolling 24-hour window is aligned to UTC five-minute intervals, with 288 expected samples. A measured success percentage needs at least 30 samples, at least 80% coverage, a latest sample no older than ten minutes, and configured monitoring. Missing intervals reduce coverage; known down samples reduce measured success. Without sufficient or fresh observations the result is unknown. Model and payment availability are explicitly not monitored. There are no inferred uptime samples from ordinary successful user requests.
+
+Configure a separate secret with `wrangler secret put MONITOR_SECRET` (at least 32 characters). `POST /api/status/observations` authenticates `Authorization: Bearer ...` and accepts only `{samples:[{component:"worker_api",status:"up"|"down",timestamp:UTC_epoch_ms}]}`. Batches are 1 to 50. Timestamps must align to five-minute intervals, be within the current 24-hour window, and not be future dated. Duplicate intervals are rejected with 409. Storage outages return 503 and must remain queued for retry. Public responses do not contain internal exceptions or credentials.
+
+Run the independent monitor every five minutes from infrastructure separate from the application:
+
+```text
+DV_MONITOR_ORIGIN=https://your-fixed-deployed-origin
+DV_MONITOR_CHAIN_ID=10143
+DV_MONITOR_SECRET=<same separate monitor secret>
+DV_MONITOR_SPOOL=/persistent/private/path/datavault-monitor-spool.json
+node scripts/service-monitor.mjs
+```
+
+The script accepts one configured HTTPS origin, no credentials/path/query/hash and no redirects. HTTP is permitted only for localhost/127.0.0.1 on chain 31337. There is no arbitrary public URL probe API. Provision the spool directory before running and use a single scheduled process per spool. The spool is nonsecret, bound to the configured origin, atomically written before submission, and bounded to the current 24-hour observations plus the current interval. It preserves down observations while the target cannot accept ingestion, retries after recovery, and handles lost acknowledgement duplicates individually. Older observations expire rather than manufacture current coverage. Monitor secrets and network exception details are never logged.
+
+Migration `0013_notifications_status.sql` adds tables, indexes and atomic triggers. Existing data is retained. Public external monitoring configuration, independent scheduling, persistent spool provisioning and a full observed coverage window remain release gates. Synthetic local observations and deterministic consumer tests do not prove an external monitor is running.
