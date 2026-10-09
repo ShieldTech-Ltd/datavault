@@ -34,3 +34,4 @@ Feature full Worker suite: 253 passed, one opt-in live-provider test skipped, 28
 Hosted follow-up: PR #61 remains a draft, stacked on PR #60. All eight checks passed at exact head `87333d1ef2e319c25e6ee5894f2fb9a162d3ece8`. CI run `37966231769` Worker job `113941158329` passed 255 tests with one opt-in live test skipped across 28 files. Frontend job `113941158700` passed 41 tests and production build after clean Linux installation.
 
 Private connections, remaining adapters, final cross-feature acceptance and live deployment remain separate tasks. No PR was merged.
+Additional populated-D1 check during connector work: the durable job table still contained exactly one job, status cancelled, after the negative-path browser attempt. Validation did not admit a new job.
