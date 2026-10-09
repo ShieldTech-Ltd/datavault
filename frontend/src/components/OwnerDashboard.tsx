@@ -583,9 +583,9 @@ export default function OwnerDashboard({
             Price: <strong>{formatEther(policy.price)} MON</strong> per query
           </div>
 
-          <form onSubmit={event => void handlePriceUpdate(event)}>
+          <form className="dv-collection-edit-form dv-collection-price-form" onSubmit={event => void handlePriceUpdate(event)}>
             <label>New price per query (MON)<input aria-label="New price per query (MON)" inputMode="decimal" value={newPrice} onChange={event => setNewPrice(event.target.value)} required /></label>
-            <button type="submit" disabled={policyTxPending} style={styles.button}>Update price</button>
+            <button className="dv-button" type="submit" disabled={policyTxPending}>Update price</button>
             <p>Price and pause changes advance the policy version and can invalidate outstanding quotes and requests under the current policy rules.</p>
           </form>
           <CollectionEditor collectionId={policy.collectionId} onChanged={onChanged} />

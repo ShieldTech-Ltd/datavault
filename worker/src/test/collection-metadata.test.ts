@@ -222,3 +222,70 @@ it("applies metadata migration over populated legacy collection records", async 
     visibility: "public",
   });
 });
+it("preserves omitted fields during concurrent disjoint partial patches", async () => {
+  expect(
+    (
+      await call(`collections/${id}/metadata`, "PATCH", {
+        description: "Original",
+        category: "General",
+        visibility: "public",
+      })
+    ).status
+  ).toBe(200);
+  const realDb = env.DB;
+  let readers = 0;
+  let release!: () => void;
+  const barrier = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  env.DB = {
+    prepare(sql: string) {
+      const statement = realDb.prepare(sql);
+      if (!sql.startsWith("SELECT description, category, visibility"))
+        return statement;
+      const original = statement.first.bind(statement);
+      statement.first = (async () => {
+        const row = await original();
+        readers++;
+        if (readers === 2) release();
+        if (readers <= 2) await barrier;
+        return row;
+      }) as typeof statement.first;
+      return statement;
+    },
+  } as D1Database;
+  const responses = await Promise.all([
+    call(`collections/${id}/metadata`, "PATCH", { visibility: "unlisted" }),
+    call(`collections/${id}/metadata`, "PATCH", {
+      description: "Updated independently",
+    }),
+  ]);
+  expect(responses.map((response) => response.status)).toEqual([200, 200]);
+  env.DB = realDb;
+  expect(await (await call("collections/" + id)).json()).toMatchObject({
+    description: "Updated independently",
+    category: "General",
+    visibility: "unlisted",
+  });
+});
+it("enforces the account mutation quota through the worker before owner RPC", async () => {
+  for (let i = 0; i < 20; i++)
+    expect(
+      (
+        await call(`collections/${id}/metadata`, "PATCH", {
+          description: "Update " + i,
+        })
+      ).status
+    ).toBe(200);
+  const calls = vi.mocked(getOnChainCollection).mock.calls.length;
+  const rejected = await call(`collections/${id}/metadata`, "PATCH", {
+    visibility: "unlisted",
+  });
+  expect(rejected.status).toBe(429);
+  expect(rejected.headers.get("Retry-After")).toBe("60");
+  expect(vi.mocked(getOnChainCollection).mock.calls.length).toBe(calls);
+  expect(await (await call("collections/" + id)).json()).toMatchObject({
+    description: "Update 19",
+    visibility: "public",
+  });
+}, 30000);

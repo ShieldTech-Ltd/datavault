@@ -86,19 +86,26 @@ export async function handleCollectionMetadata(
   if (!chain) return json({ error: "Chain unavailable" }, 503);
   if (chain.owner.toLowerCase() !== session.account.address)
     return json({ error: "Owner required" }, 403);
-  const value = { ...(await collectionMetadata(id, env)), ...body };
-  await env.DB.prepare(
-    `INSERT INTO collection_metadata(chain_id,contract_address,collection_id,description,category,visibility,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(chain_id,contract_address,collection_id) DO UPDATE SET description=excluded.description,category=excluded.category,visibility=excluded.visibility,updated_at=excluded.updated_at`
+  const value = await env.DB.prepare(
+    `INSERT INTO collection_metadata(chain_id,contract_address,collection_id,description,category,visibility,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(chain_id,contract_address,collection_id) DO UPDATE SET
+      description=CASE WHEN ? THEN excluded.description ELSE collection_metadata.description END,
+      category=CASE WHEN ? THEN excluded.category ELSE collection_metadata.category END,
+      visibility=CASE WHEN ? THEN excluded.visibility ELSE collection_metadata.visibility END,
+      updated_at=excluded.updated_at
+      RETURNING description, category, visibility`
   )
     .bind(
       Number(env.CHAIN_ID),
       env.CONTRACT_ADDRESS.toLowerCase(),
       id,
-      value.description,
-      value.category,
-      value.visibility,
-      Date.now()
+      body.description ?? "",
+      body.category ?? "General",
+      body.visibility ?? "public",
+      Date.now(),
+      "description" in body ? 1 : 0,
+      "category" in body ? 1 : 0,
+      "visibility" in body ? 1 : 0
     )
-    .run();
+    .first();
   return json(value);
 }

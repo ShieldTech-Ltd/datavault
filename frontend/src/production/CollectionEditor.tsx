@@ -83,7 +83,7 @@ export default function CollectionEditor({
     }
   }
   return (
-    <section className="dv-panel">
+    <section className="dv-panel dv-collection-settings">
       <h3>Collection settings</h3>
       <p>Metadata changes require account sign-in and no query payment.</p>
       {!session ? (
@@ -98,7 +98,7 @@ export default function CollectionEditor({
       ) : !owner ? (
         <p>Sign in with the collection owner wallet to edit these settings.</p>
       ) : (
-        <form onSubmit={(event) => void save(event)}>
+        <form className="dv-collection-edit-form" onSubmit={(event) => void save(event)}>
           <label>
             Description
             <textarea
