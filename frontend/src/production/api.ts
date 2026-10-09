@@ -15,6 +15,8 @@ export interface Activity {
   amountWei: string | null; settledAt: number | null; settleTxHash: string | null;
 }
 export interface Analytics {
+  windowStart:string;windowEnd:string;aggregationLimit:number;failureTimeField:'created_at';failedQueries:number;refundedQueries:number;
+  daily:{date:string;settledQueries:number;failedQueries:number;refundedQueries:number;knownAmounts:number;recordedRevenueWei:string}[];
   periodDays: number; ownerAddress?: string; confirmedCollections: number; paidQueries: number;
   recordedRevenueWei: string | null; revenueCoverage: { knownAmounts: number; settledQueries: number };
   rankingAvailable: boolean;
@@ -44,6 +46,10 @@ function validatePayload(path: string, value: any): boolean {
   if (/^\/api\/collections\/0x[0-9a-fA-F]{64}\/revisions$/.test(route)) return value && (value.originalCollectionId===undefined || hash(value.originalCollectionId)) && (value.currentCollectionId===undefined || hash(value.currentCollectionId)) && (value.nextCursor===null || count(value.nextCursor)) && Array.isArray(value.versions) && value.versions.length<=50 && value.versions.every((v:any)=>hash(v.collectionId)&&typeof v.name==='string'&&count(v.ordinal)&&v.ordinal>0);
   if (/^\/api\/collections\/0x/.test(route)) return collection(value);
   if (route === '/api/marketplace/analytics' || route === '/api/owner/analytics') return value && count(value.periodDays)
+    && value.periodDays>0 && value.periodDays<=90 && typeof value.windowStart==='string' && typeof value.windowEnd==='string'
+    && Number.isFinite(Date.parse(value.windowStart)) && Date.parse(value.windowEnd)-Date.parse(value.windowStart)===value.periodDays*86400000
+    && count(value.failedQueries) && count(value.refundedQueries) && value.aggregationLimit===10000 && value.failureTimeField==='created_at'
+    && Array.isArray(value.daily) && value.daily.length===value.periodDays && value.daily.every((v:any,i:number)=>v.date===new Date(Date.parse(value.windowStart)+i*86400000).toISOString().slice(0,10)&&count(v.settledQueries)&&count(v.failedQueries)&&count(v.refundedQueries)&&count(v.knownAmounts)&&amount(v.recordedRevenueWei))
     && count(value.confirmedCollections) && count(value.paidQueries) && (value.recordedRevenueWei === null || amount(value.recordedRevenueWei))
     && value.revenueCoverage && count(value.revenueCoverage.knownAmounts) && count(value.revenueCoverage.settledQueries)
     && typeof value.rankingAvailable === 'boolean' && Array.isArray(value.topCollections) && value.topCollections.every((v: any) => v && hash(v.collectionId) && typeof v.name === 'string' && count(v.paidQueries) && amount(v.recordedRevenueWei))
@@ -53,12 +59,14 @@ function validatePayload(path: string, value: any): boolean {
   return true;
 }
 
-export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, { ...init, cache: 'no-store' });
+export async function apiJson<T>(path: string, init?: RequestInit, suppliedResponse?:Response): Promise<T> {
+  const response = suppliedResponse ?? await fetch(path, { ...init, cache: 'no-store' });
   if (!response.ok) {
     // Do not surface untrusted HTML, provider errors or private infrastructure details.
     const label = response.status === 429 ? 'Too many requests. Please wait a minute and retry.'
       : response.status === 401 || response.status === 403 ? 'Wallet authorization was rejected. Sign again with the correct account.'
+      : path.includes('/analytics') && response.status===400 ? 'Use valid UTC dates, an exclusive end, and a range of 1 to 90 days.'
+      : path.includes('/analytics') && response.status===503 ? 'Analytics exceeds the 10,000-record exact aggregation limit or this deployment is unavailable. Choose a smaller window and retry.'
       : 'This service is unavailable. Your data has not been replaced with sample activity.';
     throw new Error(label);
   }
@@ -74,6 +82,9 @@ export function mon(value: string | null): string {
   try { return `${formatEther(BigInt(value))} MON`; } catch { return 'Unavailable'; }
 }
 export function short(value: string): string { return `${value.slice(0, 6)}...${value.slice(-4)}`; }
+export function selectedWindowLabel(data: Pick<Analytics,'windowStart'|'windowEnd'>):string {
+  return `Selected window: ${data.windowStart.slice(0,10)} to ${data.windowEnd.slice(0,10)} UTC (exclusive end)`;
+}
 export function revenueLabel(data: Analytics): string {
   return `${data.revenueCoverage.knownAmounts < data.revenueCoverage.settledQueries && data.recordedRevenueWei !== null ? 'At least ' : ''}${mon(data.recordedRevenueWei)}`;
 }

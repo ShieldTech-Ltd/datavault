@@ -48,7 +48,7 @@ function environment(onPrepare?: (sql: string) => void): Env {
               results:
                 sql.includes("FROM queries") &&
                 (!sql.includes("c.owner_address") ||
-                  args[5] === owner.address.toLowerCase())
+                  args[8] === owner.address.toLowerCase())
                   ? rows
                   : [],
             }),
@@ -80,7 +80,7 @@ describe("recorded product analytics", () => {
       "q.chain_id = ? AND LOWER(q.contract_address) = ?"
     );
     expect(paymentsSql).toContain("c.chain_id = ? AND c.contract_address = ?");
-    expect(paymentsSql).not.toContain("q.created_at >= ?");
+    expect(paymentsSql).toContain("q.settled_at < ?");
   });
   it("sums exact wei and discloses missing historical amount coverage", async () => {
     const response = await handleMarketplaceAnalytics(environment());
