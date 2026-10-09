@@ -43,6 +43,42 @@ export class AccountClient {
       : response.status === 429 ? 'Too many requests. Please wait a minute and retry.' : 'Account service unavailable. Please retry.');
     try { return await response.json() as T; } catch { throw new Error('Invalid account service response.'); }
   }
+  private async workspaceJson<T>(path:string,init:RequestInit={}):Promise<T>{
+    const response=await this.response(path,init);
+    if(!response.ok){
+      let reason:unknown;try{reason=(await response.json() as {error?:unknown}).error;}catch{/* Never expose untrusted service text. */}
+      const known:Record<string,string>={
+        'Keep at least one Owner; maximum 5 owned workspaces per wallet':'Appoint another Owner before leaving, removing yourself or changing your Owner role. Each wallet can own at most 5 workspaces.',
+        'Maximum 5 owned workspaces':'This wallet has reached the limit of 5 owned workspaces. Appoint another Owner and transfer your Owner role before creating another.',
+        'Workspace membership limit':'This workspace has reached 50 members, or this wallet already owns 5 workspaces. Ask an Owner to review membership and the invitation role.',
+        'Already a member':'This wallet is already a workspace member. Change its role through Members instead of inviting it again.',
+        'Pending invitation exists or maximum 50 pending invitations':'A pending invitation already exists for this wallet, or the workspace has 50 pending invitations. Review and revoke unused invitations before retrying.',
+        'Invitation already consumed':'This invitation was already accepted and your membership has ended. Ask a current Owner for a new invitation.',
+        'Invitation expired or revoked':'This invitation expired or was revoked. Ask a current Owner for a new invitation.',
+        'Invitation not found':'This invitation is unavailable for this wallet. Check the invited wallet and ask an Owner to review the invitation.',
+        'Owner required':'A current workspace Owner must perform this action. Refresh your membership and ask an Owner for help.',
+        'Owner or Editor membership required':'Only a current workspace Owner or Editor can edit shared metadata. Refresh your membership and ask an Owner to review your role.',
+        'Wallet owner required':'Use the actual collection owner wallet to share this metadata. Team membership does not transfer on-chain ownership.',
+        'Confirmed wallet-owned collection required':'Select a confirmed collection currently owned by this wallet in this deployment.',
+        'Valid shared metadata grant required':'This metadata grant is no longer valid. Ask the collection owner to review ownership, their workspace Owner role and sharing.',
+        'Workspace authorization ended':'Your workspace role or metadata sharing changed. Refresh workspace access before editing again.',
+        'Workspace membership ended':'Your workspace membership ended. Ask a current Owner for a new invitation.',
+        'Workspace not found':'This workspace is unavailable to your wallet in this deployment. Refresh your workspace list.',
+        'Membership unavailable':'This membership changed or is no longer available. Refresh the member list before retrying.',
+        'Grant not found':'This metadata grant is unavailable or cannot be removed by your role. Refresh shared collections and ask an Owner to review it.',
+        'Name must be 1 to 80 characters':'Enter a workspace name of 1 to 80 characters.',
+        'Invalid workspace name':'Enter a workspace name of 1 to 80 characters.',
+        'Valid wallet and role required':'Enter a valid wallet address and choose Owner, Editor or Viewer.',
+        'Invalid membership update':'Choose Owner, Editor or Viewer, then refresh the member list before retrying.',
+        'Invalid collection ID':'Select a valid confirmed wallet-owned collection.',
+        'Invalid metadata':'Check the description length, category and visibility before saving metadata.'
+      };
+      const allowedStatuses=[400,403,404,409];
+      const message=typeof reason==='string'&&allowedStatuses.includes(response.status)&&Object.prototype.hasOwnProperty.call(known,reason)?known[reason]:undefined;
+      throw new Error(message??(response.status===401?'Account session expired. Sign in again.':response.status===403?'Your current workspace role or sharing permissions do not allow this action. Refresh workspace access and ask an Owner to review permissions.':response.status===404?'This workspace item is unavailable to your wallet. Refresh workspace access before retrying.':response.status===409?'Workspace state conflicts with this action. Refresh members and invitations, then review Owner responsibilities and workspace limits.':response.status===400?'Check the workspace name, wallet address, role and collection selection before retrying.':response.status===429?'Too many requests. Please wait a minute and retry.':response.status===503?'Live chain verification is unavailable. Wait for the deployment RPC to recover, then retry.':'Workspace service unavailable. Please retry.'));
+    }
+    try{return await response.json() as T;}catch{throw new Error('Invalid workspace service response.');}
+  }
   private revoke(csrfToken?: string): Promise<void> {
     this.revocationCsrf = csrfToken ?? this.revocationCsrf;
     const token = this.revocationCsrf;
@@ -141,10 +177,10 @@ export class AccountClient {
     });
   }
   async apiKeys(){return this.operation(async()=>this.json<{keys:ApiKey[]}>('/api/account/api-keys'));}
-  async teams(){return this.operation(async()=>({...(await this.json<{workspaces:TeamWorkspace[]}>('/api/account/workspaces')),...(await this.json<{invitations:TeamInvitation[]}>('/api/account/invitations'))}),false);}
-  async createWorkspace(name:string){return this.operation(async session=>this.json<{workspace:TeamWorkspace}>('/api/account/workspaces',{method:'POST',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify({name})}));}
-  async workspaceRequest<T>(path:string,method='GET',input?:unknown){return this.operation(async session=>this.json<T>('/api/workspaces/'+path,{method,...(method==='GET'?{}:{headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(input??{})})}),method!=='GET');}
-  async teamMetadata(workspaceId:string,collectionId:string,input:{description:string;category:string;visibility:string}){return this.operation(async session=>this.json('/api/collections/'+encodeURIComponent(collectionId)+'/metadata?workspaceId='+encodeURIComponent(workspaceId),{method:'PATCH',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(input)}));}
+  async teams(){return this.operation(async()=>({...(await this.workspaceJson<{workspaces:TeamWorkspace[]}>('/api/account/workspaces')),...(await this.workspaceJson<{invitations:TeamInvitation[]}>('/api/account/invitations'))}),false);}
+  async createWorkspace(name:string){return this.operation(async session=>this.workspaceJson<{workspace:TeamWorkspace}>('/api/account/workspaces',{method:'POST',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify({name})}));}
+  async workspaceRequest<T>(path:string,method='GET',input?:unknown){return this.operation(async session=>this.workspaceJson<T>('/api/workspaces/'+path,{method,...(method==='GET'?{}:{headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(input??{})})}),method!=='GET');}
+  async teamMetadata(workspaceId:string,collectionId:string,input:{description:string;category:string;visibility:string}){return this.operation(async session=>this.workspaceJson('/api/collections/'+encodeURIComponent(collectionId)+'/metadata?workspaceId='+encodeURIComponent(workspaceId),{method:'PATCH',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(input)}));}
   async apiKeyUsage(){return this.operation(async()=>this.json<KeyUsage>('/api/account/api-keys/usage'));}
   async revokeApiKey(id:string){return this.operation(async session=>this.json('/api/account/api-keys/'+encodeURIComponent(id),{method:'DELETE',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:'{}'}));}
   async createApiKey(input:ApiKeyInput){
