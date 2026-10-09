@@ -148,3 +148,8 @@
 .dv-notification-popover .dv-notification-time { color: #52617a; font-size: 12px; line-height: 1.6; }
 .dv-notification-popover li p { margin: 6px 0; line-height: 1.6; }
 .dv-notification-popover .dv-notification-action:focus-visible, .dv-notification-popover .dv-notification-link:focus-visible { outline: 2px solid #6345ff; outline-offset: 3px; }
+@media(max-width:700px) {
+  /* Anchor to the full header, whose height follows wrapped navigation. */
+  .dv-reference-topbar .dv-notifications { position: static; }
+  .dv-reference-topbar .dv-notification-popover { left: 14px; right: 14px; width: auto; }
+}
