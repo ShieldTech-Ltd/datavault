@@ -12,7 +12,7 @@ This checklist distinguishes implemented features from live service readiness. R
 - [x] Notifications correspond to real persisted events; duplicate delivery is idempotent.
 - [x] Analytics and exports match recorded settlement amounts and report incomplete coverage.
 - [x] Developer keys are scoped, hashed at rest, shown once and revocable.
-- [ ] Workspace membership is checked on every private operation, including API-key access.
+- [x] Workspace membership is checked on every private operation, including API-key access.
 - [ ] Importers bound content, reject internal targets and require review before owner publication.
 - [ ] Plan entitlements are server-enforced; provider webhook retries/reordering are handled.
 - [ ] Desktop and mobile browser journeys pass with two accounts.
@@ -24,6 +24,8 @@ Local evidence: [account acceptance](evidence/saas-account-local-acceptance.md),
 Analytics and saved-item evidence: [local acceptance](evidence/saas-analytics-local-acceptance.md). Dated activity and exact owner CSV were checked alongside cross-wallet isolation, opt-in, export and deletion. Current collection inventory is explicitly separate from dated activity.
 
 Developer keys: [local acceptance](evidence/saas-api-keys-local-acceptance.md) records metadata-only scope, actual usage, immediate revocation denial and wallet/mobile boundaries. Final cross-feature checks remain pending.
+
+Workspaces: [local acceptance](evidence/saas-workspaces-local-acceptance.md) records invitation acceptance, Editor/Viewer boundaries, last-Owner protection, immediate key revocation and restored grants without reviving old keys. Final cross-feature checks remain pending.
 
 ## Public deployment
 
