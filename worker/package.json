@@ -9,7 +9,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:migrate:local": "wrangler d1 migrations apply datavault-db --local",
-    "db:migrate:remote": "wrangler d1 migrations apply datavault-db"
+    "db:migrate:remote": "wrangler d1 migrations apply datavault-db --config wrangler.deploy.toml --remote"
   },
   "dependencies": {
     "viem": "^2.21.19"
