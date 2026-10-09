@@ -69,10 +69,37 @@ it('reports disabled connector and prevents authorization without complete confi
   expect(fetch).not.toHaveBeenCalled();
 });
 it('disconnect shares the real Worker account mutation quota', async () => {
-  for (let i = 0; i < 20; i++)
-    expect((await request('', 'DELETE', {})).status).toBe(200);
-  expect((await request('', 'DELETE', {})).status).toBe(429);
+  // Seed earlier admissions to avoid 20 serial rounds of SQLite subprocess I/O.
+  // The actual Worker must share the account bucket and enforce requests 20/21.
+  await env.DB.prepare(
+    'INSERT INTO rate_limits(key,window_start,count) VALUES(?,?,18)'
+  )
+    .bind('account:local', Math.floor(Date.now() / 1000))
+    .run();
+  const profile = await worker.fetch(
+    new Request('https://vault.example/api/account', {
+      method: 'PATCH',
+      headers: {
+        Origin: 'https://vault.example',
+        Cookie: 'dv_session=' + '1'.repeat(64),
+        'x-csrf-token': csrf,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ displayName: 'Quota fixture' }),
+    }),
+    env
+  );
+  expect(profile.status).toBe(200);
+  expect((await request('', 'DELETE', {})).status).toBe(200);
+  const rejected = await request('', 'DELETE', {});
+  expect(rejected.status).toBe(429);
+  expect(rejected.headers.get('Retry-After')).toBe('60');
+  expect(
+    store.sqlite.prepare('SELECT count FROM rate_limits WHERE key=?')
+      .all('account:local')
+  ).toEqual([{ count: 20 }]);
 });
+
 function configure() {
   Object.assign(env, {
     GITHUB_APP_ID: '123',
