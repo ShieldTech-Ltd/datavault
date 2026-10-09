@@ -154,20 +154,40 @@ export class AccountClient {
     } catch (cause) { if (this.current(generation, address)) this.publish({ error: cause instanceof Error ? cause.message : 'Sign-in failed.' }); }
     finally { this.pending = false; this.publish({ loading: false }); }
   }
+  private async githubResponse(path:string,init:RequestInit={}) {
+    let response:Response;
+    try { response=await this.response(path,init); }
+    catch { throw Error('GitHub import service is unavailable. Please retry later.'); }
+    if(response.ok)return response;
+    const message=[400,413,422].includes(response.status)
+      ? 'Check owner/repository, branch or commit, and 1 to 10 distinct relative Markdown or TXT paths. Avoid ../ and absolute paths.'
+      : [401,403].includes(response.status)
+      ? 'Import authorization expired or was rejected. Sign in with the publishing owner wallet again.'
+      : response.status===404
+      ? 'Import not found for this signed-in wallet. Select another import or start a new one.'
+      : [409,410].includes(response.status)
+      ? 'Private draft is not ready, expired or cancelled. Check job status, then resume it or start a new import.'
+      : response.status===429
+      ? 'Import limit reached. Let the current import finish or cancel it. Limits also apply per minute and to 20 new jobs per rolling 24 hours.'
+      : 'GitHub import service is unavailable. Please retry later.';
+    // Status-based messages never forward provider, credential or internal response text.
+    throw Error(message);
+  }
   async githubImport(path='',method='GET',body?:unknown) {
     if(path && !/^[a-f0-9]{64}(?:\/(?:cancel|run))?$/.test(path))return null;
     return this.operation(async session=>{
-      const result=await this.json<GithubImportJob & {jobs?:GithubImportJob[]}>('/api/account/imports/github'+(path?'/'+path:''),{method,
+      const response=await this.githubResponse('/api/account/imports/github'+(path?'/'+path:''),{method,
         ...(method==='GET'?{}:{headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(body??{})})});
-      if(!path&&method==='GET' ? !Array.isArray(result.jobs)||result.jobs.length>100||!result.jobs.every(validGithubJob) : !validGithubJob(result))throw Error('Invalid GitHub import metadata response.');
+      let result:GithubImportJob & {jobs?:GithubImportJob[]};
+      try { result=await response.json(); } catch { throw Error('Invalid GitHub import metadata response.'); }
+      if(!result || (!path&&method==='GET' ? !Array.isArray(result.jobs)||result.jobs.length>100||!result.jobs.every(validGithubJob) : !validGithubJob(result)))throw Error('Invalid GitHub import metadata response.');
       return result;
     },false);
   }
   async githubDraft(id:string,download=false) {
     if(!/^[a-f0-9]{64}$/.test(id))return null;
     return this.operation(async()=>{
-      const response=await this.response(`/api/account/imports/github/${id}/draft${download?'?download=1':''}`);
-      if(!response.ok)throw Error('Private draft unavailable, expired or cancelled. Import again or sign in with its owner.');
+      const response=await this.githubResponse(`/api/account/imports/github/${id}/draft${download?'?download=1':''}`);
       const text=await response.text();if(new TextEncoder().encode(text).byteLength>500000)throw Error('Private draft exceeds the import limit.');return text;
     },false);
   }
