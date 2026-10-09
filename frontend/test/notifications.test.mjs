@@ -12,6 +12,9 @@ test('inbox presents sign-in, safe exact-wei items and empty state',async()=>{
  assert.match(render({signedIn:true,items:[],loading:false,error:''}),/No notifications/);
  const html=render({signedIn:true,items:[{id:1,type:'payout_settled',sourceId:'0x'+'ab'.repeat(32),collectionId:'0x'+'cd'.repeat(32),collectionName:'Name',amountWei:'9007199254740993001',createdAt:1,readAt:null}],loading:false,error:'',onRead(){}});
  assert.match(html,/9007199254740993001 wei/);assert.match(html,/Mark read/);assert.match(html,/\/collections\/0x/);assert.match(html,/Payout settled/);
+ assert.match(html, /class="dv-button secondary dv-notification-action"[^>]*>Mark read/);
+ assert.match(html, /class="dv-notification-time"/);
+ assert.match(html, /class="dv-notification-link"/);
  assert.match(render({signedIn:true,items:[],loading:false,error:'Unavailable',onRetry(){}}),/Retry/);
  }finally{await vite.close();}
 });
@@ -30,6 +33,8 @@ test('opening inbox after a confirmed event refreshes an initially empty read wi
  await act(async()=>{component.root.findByProps({'aria-controls':'notification-inbox'}).props.onClick();});
  assert.match(JSON.stringify(component.toJSON()),/Confirmed collection/);
  assert.equal(reads,2);
- assert.ok(component.root.findAllByType('button').some(button=>button.children.includes('Refresh')));
+ const refreshButton=component.root.findAllByType('button').find(button=>button.children.includes('Refresh'));
+ assert.ok(refreshButton);
+ assert.equal(refreshButton.props.className,'dv-button secondary dv-notification-action');
  }finally{component?.unmount();globalThis.fetch=priorFetch;delete globalThis.__notificationAccount;await vite.close();}
 });

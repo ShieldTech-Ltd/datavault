@@ -143,3 +143,8 @@
 .dv-notification-popover ul { list-style: none; padding: 0; }
 .dv-notification-popover li { border-top: 1px solid #e5e7eb; padding: 12px 0; overflow-wrap: anywhere; }
 .dv-notification-popover h2 { margin-top: 0; font-size: 18px; }
+.dv-light-reference .dv-notification-popover .dv-notification-action { min-height: 44px; padding: 10px 14px; font-size: 12px; }
+.dv-notification-popover .dv-notification-link { display: inline-flex; align-items: center; min-height: 44px; color: #6345ff; font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.dv-notification-popover .dv-notification-time { color: #52617a; font-size: 12px; line-height: 1.6; }
+.dv-notification-popover li p { margin: 6px 0; line-height: 1.6; }
+.dv-notification-popover .dv-notification-action:focus-visible, .dv-notification-popover .dv-notification-link:focus-visible { outline: 2px solid #6345ff; outline-offset: 3px; }
