@@ -98,7 +98,7 @@ export default {
           res=await handleUnsubscribe(request,env);
         } else if ((method === "GET" && ["/api/status","/api/health"].includes(path)) || (method === "POST" && path === "/api/status/observations")) {
           res = await handleStatus(request, env);
-        } else if (path === "/api/account" || path.startsWith("/api/account/") || path.startsWith("/api/auth/")) {
+        } else if (path === "/api/account" || path.startsWith("/api/account/") || path.startsWith("/api/auth/") || path.startsWith('/api/workspaces/')) {
           res = await handleAccountRoute(request, env);
         } else if (method === "GET" && path === "/api/marketplace/analytics") {
           res = await handleMarketplaceAnalytics(env, request);

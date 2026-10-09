@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useWallet } from '../lib/wallet';
 import { useAccount } from './account';
 import type { EmailStatus } from './account-client';
+import TeamSettings from './TeamSettings';
 export default function AccountSettings() {
   const { primaryWallet, correctNetwork } = useWallet();
   const { client, state } = useAccount();
@@ -50,6 +51,7 @@ export default function AccountSettings() {
       <p>Deletion requests remain pending until retention and processing are defined. Submitting a request does not delete data. On-chain records are immutable.</p>
       {!confirmDelete ? <button className="dv-button secondary" disabled={state.loading} onClick={() => setConfirmDelete(true)}>Request account deletion</button> : <div><p>Confirm submission of a pending deletion request? Your profile, source content and paid answers remain retained.</p><button className="dv-button secondary" disabled={state.loading} onClick={() => void requestDeletion()}>Confirm deletion request</button><button className="dv-button secondary" disabled={state.loading} onClick={() => setConfirmDelete(false)}>Cancel</button></div>}
     </>}
-    <p>Team access and subscription plans are unavailable. This workspace uses the light dashboard theme.</p>
+    <TeamSettings/>
+    <p>Subscription plans are unavailable. This workspace uses the light dashboard theme.</p>
   </section>;
 }

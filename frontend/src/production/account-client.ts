@@ -5,8 +5,13 @@ export type AccountState = { session: AccountSessionResponse | null; loading: bo
 export type SavedItem={id:number;collectionId:string;collectionName:string;createdAt:number;question?:string;expiresAt?:number};
 export type SavedPage={items:SavedItem[];nextCursor:string|null};
 export type EmailStatus = { providerConfigured: boolean; verifiedEmail: string | null; verifiedAt: number | null; pendingEmail: string | null; status: string; resendAfter: number };
-export type ApiKey = {id:string;name:string;displayPrefix:string;scopes:string[];collectionIds:string[];collections?:{id:string;name:string}[];createdAt:number;expiresAt:number;revokedAt:number|null;status:'active'|'expired'|'revoked'};
-export type ApiKeyInput = {name:string;collectionIds:string[];expiresInDays:number;scopes:['collections:read']};
+export type ApiKey = {id:string;name:string;workspaceId?:string|null;displayPrefix:string;scopes:string[];collectionIds:string[];collections?:{id:string;name:string}[];createdAt:number;expiresAt:number;revokedAt:number|null;status:'active'|'expired'|'revoked'};
+export type ApiKeyInput = {name:string;collectionIds:string[];expiresInDays:number;scopes:['collections:read'];workspaceId?:string};
+export type TeamRole='Owner'|'Editor'|'Viewer';
+export type TeamWorkspace={id:string;name:string;role:TeamRole;createdAt:number};
+export type TeamInvitation={id:string;workspaceId?:string;name?:string;address?:string;role:TeamRole;expiresAt:number};
+export type TeamMember={address:string;role:TeamRole;joinedAt:number};
+export type TeamCollection={collectionId:string;name:string;description:string;category:string;visibility:string};
 export type KeyUsage = {asOf:number;retentionDays:number;daily:{keyId:string;timestamp:number;accepted:number;rejected:number;ownershipDenied:number;chainUnavailable:number}[];minute:{keyId:string;timestamp:number;claimed:number;accepted:number;rejected:number;ownershipDenied:number;chainUnavailable:number}[];limits:{daily:number;minute:number}};
 function validSession(value: unknown): value is AccountSessionResponse {
   const v = value as AccountSessionResponse | null;
@@ -110,13 +115,13 @@ export class AccountClient {
     try { await this.revoke(session?.csrfToken); } catch (cause) { this.publish({ error: (cause as Error).message }); }
     finally { this.publish({ loading: false }); }
   }
-  private async operation<T>(task: (session: AccountSessionResponse) => Promise<T>): Promise<T | null> {
+  private async operation<T>(task: (session: AccountSessionResponse) => Promise<T>, exclusive=true): Promise<T | null> {
     const session = this.state.session, address = this.wallet?.address.toLowerCase(), generation = this.generation;
-    if (!session || !address || this.pending || Date.parse(session.expiresAt) <= Date.now()) { if (session && Date.parse(session.expiresAt) <= Date.now()) this.publish({ session: null, error: 'Account session expired. Sign in again.' }); return null; }
-    this.pending = true; this.publish({ loading: true, error: '' });
+    if (!session || !address || (exclusive&&this.pending) || Date.parse(session.expiresAt) <= Date.now()) { if (session && Date.parse(session.expiresAt) <= Date.now()) this.publish({ session: null, error: 'Account session expired. Sign in again.' }); return null; }
+    if(exclusive){this.pending = true; this.publish({ loading: true, error: '' });}
     try { const result = await task(session); return this.current(generation, address) ? result : null; }
     catch (cause) { if (this.current(generation, address)) this.publish({ error: (cause as Error).message }); return null; }
-    finally { this.pending = false; if (this.current(generation, address)) this.publish({ loading: false }); }
+    finally { if(exclusive){this.pending = false; if (this.current(generation, address)) this.publish({ loading: false });} }
   }
   async save(settings: Pick<AccountProfile, 'displayName' | 'locale' | 'notificationPreferences'>) {
     const result = await this.operation(async session => this.json<{ account: AccountProfile }>('/api/account', { method: 'PATCH',
@@ -136,6 +141,10 @@ export class AccountClient {
     });
   }
   async apiKeys(){return this.operation(async()=>this.json<{keys:ApiKey[]}>('/api/account/api-keys'));}
+  async teams(){return this.operation(async()=>({...(await this.json<{workspaces:TeamWorkspace[]}>('/api/account/workspaces')),...(await this.json<{invitations:TeamInvitation[]}>('/api/account/invitations'))}),false);}
+  async createWorkspace(name:string){return this.operation(async session=>this.json<{workspace:TeamWorkspace}>('/api/account/workspaces',{method:'POST',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify({name})}));}
+  async workspaceRequest<T>(path:string,method='GET',input?:unknown){return this.operation(async session=>this.json<T>('/api/workspaces/'+path,{method,...(method==='GET'?{}:{headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(input??{})})}),method!=='GET');}
+  async teamMetadata(workspaceId:string,collectionId:string,input:{description:string;category:string;visibility:string}){return this.operation(async session=>this.json('/api/collections/'+encodeURIComponent(collectionId)+'/metadata?workspaceId='+encodeURIComponent(workspaceId),{method:'PATCH',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(input)}));}
   async apiKeyUsage(){return this.operation(async()=>this.json<KeyUsage>('/api/account/api-keys/usage'));}
   async revokeApiKey(id:string){return this.operation(async session=>this.json('/api/account/api-keys/'+encodeURIComponent(id),{method:'DELETE',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:'{}'}));}
   async createApiKey(input:ApiKeyInput){
