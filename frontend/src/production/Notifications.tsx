@@ -18,9 +18,11 @@ export default function Notifications(){
  return()=>abort.abort();
  },[address,cursor,refresh]);
  const current=page?.owner===address?page:null;
+ function reload(){setCursor(null);setRefresh(n=>n+1);}
+ function toggle(){if(!open)reload();setOpen(!open);}
  async function read(id:number){
  const started=csrf;
  try{const response=await fetch(`/api/account/notifications/${id}`,{method:'PATCH',credentials:'same-origin',headers:{'Content-Type':'application/json','x-csrf-token':csrf??''},body:JSON.stringify({read:true})});if(identity.current!==started)return;if(!response.ok)throw Error('Could not mark this notification read. Please retry.');setCursor(null);setRefresh(n=>n+1);}catch(cause){if(identity.current===started)setError((cause as Error).message);}
  }
- return <div className="dv-notifications"><button className="dv-button secondary" aria-expanded={open} aria-controls="notification-inbox" onClick={()=>setOpen(!open)}>Notifications{current&&current.unreadCount>0&&<span aria-label={`${current.unreadCount} unread notifications`}> ({current.unreadCount})</span>}</button>{open&&<section className="dv-notification-popover dv-card" id="notification-inbox" aria-label="Notifications"><h2>Notifications</h2><InboxView signedIn={!!address} items={current?.items??[]} loading={loading} error={error||state.error} onSignIn={()=>void client.signIn()} onRead={id=>void read(id)} onRetry={()=>setRefresh(n=>n+1)} onMore={current?.nextCursor?()=>setCursor(current.nextCursor):undefined}/></section>}</div>;
+ return <div className="dv-notifications"><button className="dv-button secondary" aria-expanded={open} aria-controls="notification-inbox" onClick={toggle}>Notifications{current&&current.unreadCount>0&&<span aria-label={`${current.unreadCount} unread notifications`}> ({current.unreadCount})</span>}</button>{open&&<section className="dv-notification-popover dv-card" id="notification-inbox" aria-label="Notifications"><h2>Notifications</h2>{address&&<button disabled={loading} onClick={reload}>Refresh</button>}<InboxView signedIn={!!address} items={current?.items??[]} loading={loading} error={error||state.error} onSignIn={()=>void client.signIn()} onRead={id=>void read(id)} onRetry={reload} onMore={current?.nextCursor?()=>setCursor(current.nextCursor):undefined}/></section>}</div>;
 }

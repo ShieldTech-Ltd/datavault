@@ -2,7 +2,7 @@ import {readFile,writeFile,rename} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 export function validateMonitorOrigin(value,chainId){
  const url=new URL(value);
- const local=chainId==='31337'&&['localhost','127.0.0.1'].includes(url.hostname);
+ const local=url.protocol==='http:'&&chainId==='31337'&&['localhost','127.0.0.1'].includes(url.hostname);
  if((url.protocol!=='https:'&&!local)||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw Error('Configure a fixed HTTPS origin (local loopback only for chain 31337)');
  return url.origin;
 }

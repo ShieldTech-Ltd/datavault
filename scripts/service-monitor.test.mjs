@@ -21,3 +21,6 @@ test('failed target observations persist and are submitted on recovery without s
  const submitted=calls.at(-1);assert.equal(JSON.parse(submitted.options.body).samples.length,2);assert.equal(submitted.options.redirect,'error');
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+test('local exception accepts only HTTP and rejects FTP and websocket schemes',()=>{
+ for(const host of ['localhost:8787','127.0.0.1:8787','example.com'])for(const protocol of ['ftp:','ws:','wss:'])assert.throws(()=>validateMonitorOrigin(`${protocol}//${host}`,'31337'));
+});
