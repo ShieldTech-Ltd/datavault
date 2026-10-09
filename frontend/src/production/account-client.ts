@@ -4,6 +4,8 @@ export type AccountWallet = { address: string; getWalletClient(): Promise<Wallet
 export type AccountState = { session: AccountSessionResponse | null; loading: boolean; error: string };
 export type GithubConnectionStatus={providerConfigured:boolean;id:string|null;status:'disconnected'|'pending'|'connected'|'needs_reconnect';login:string|null;repositories:{id:number;name:string;installationId:number}[];revocationPending:boolean;authorizeUrl?:string};
 export type GithubImportJob={id:string;repository:string;ref:string;paths:string[];commitSha:string|null;status:'queued'|'running'|'review_ready'|'failed'|'cancelled'|'expired';attempts:number;contentDigest:string|null;error:string|null;createdAt:number;expiresAt:number};
+export type NotionConnectionStatus=GithubConnectionStatus;
+export type NotionImportJob=GithubImportJob & {provider:'notion';pageIds:string[];provenance:{pageId:string;title:string;extractedAt:string;apiVersion:string;blocks:number;unsupported:Record<string,number>;coverage:'selected_text_only'}[]};
 export type WebsiteImportJob=GithubImportJob & {provider:'website';urls:string[];provenance:{url:string;fetchedAt:string;contentDigest:string}[]};
 const validGithubJob=(value:unknown):value is GithubImportJob=>validImportJob(value,240);
 function validImportJob(value:unknown,maxPath:number,website=false):value is GithubImportJob {
@@ -174,6 +176,7 @@ export class AccountClient {
       ? 'Import limit reached. Let the current import finish or cancel it. Limits also apply per minute and to 20 new jobs per rolling 24 hours.'
       : 'GitHub import service is unavailable. Please retry later.';
     // Status-based messages never forward provider, credential or internal response text.
+    if(path.includes('/imports/notion'))throw Error([400,413,422].includes(response.status)?'Select 1 to 5 distinct Notion page UUIDs shared with the connection.':message.replace('GitHub','Notion'));
     throw Error(path.includes('/imports/website')&&[400,413,422].includes(response.status)?'Select 1 to 5 distinct HTTPS pages on approved hosts, without queries. Confirm permission to import.':message.replace(path.includes('/imports/website')?'GitHub':'__unused__','Website'));
   }
   async githubConnector(path='' as ''|'/connect'|'/confirm',method='GET' as 'GET'|'POST'|'DELETE') {
@@ -209,6 +212,31 @@ export class AccountClient {
   async websiteDraft(id:string,download=false) {
     if(!/^[a-f0-9]{64}$/.test(id))return null;
     return this.operation(async()=>{const response=await this.githubResponse(`/api/account/imports/website/${id}/draft${download?'?download=1':''}`);const text=await response.text();if(new TextEncoder().encode(text).byteLength>500000)throw Error('Private draft exceeds the import limit.');return text;},false);
+  }
+  async notionConnector(path='' as ''|'/connect'|'/confirm'|'/refresh',method='GET' as 'GET'|'POST'|'DELETE') {
+    return this.operation(async session=>{
+      const value=await this.json<NotionConnectionStatus>('/api/account/connectors/notion'+path,{method,...(method==='GET'?{}:{headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:'{}'})});
+      if(path==='/connect') {
+        const url=new URL(value.authorizeUrl??'');
+        if(url.origin+url.pathname!=='https://api.notion.com/v1/oauth/authorize'||url.username||url.password||url.hash)throw Error('Invalid Notion authorization response.');
+      } else if(typeof value.providerConfigured!=='boolean'||!['disconnected','pending','connected','needs_reconnect'].includes(value.status)||!Array.isArray(value.repositories)||value.repositories.length!==0||(value.id!==null&&!/^[a-f0-9]{64}$/.test(value.id))||(value.login!==null&&(typeof value.login!=='string'||value.login.length>512))||typeof value.revocationPending!=='boolean')throw Error('Invalid Notion connection response.');
+      return value;
+    },false);
+  }
+  async notionImport(path='',method='GET',body?:unknown) {
+    if(path && !/^[a-f0-9]{64}(?:\/(?:cancel|run))?$/.test(path))return null;
+    return this.operation(async session=>{
+      const response=await this.githubResponse('/api/account/imports/notion'+(path?'/'+path:''),{method,...(method==='GET'?{}:{headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(body??{})})});
+      const result=await response.json() as NotionImportJob & {jobs?:NotionImportJob[];available?:boolean};
+      const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+      const valid=(j:NotionImportJob)=>validImportJob({...j,error:j.error==='Notion import failed. Check selected page access and content limits, then reconnect or retry.'?null:j.error},36)&&j.provider==='notion'&&Array.isArray(j.pageIds)&&j.pageIds.length>=1&&j.pageIds.length<=5&&j.pageIds.every(u=>typeof u==='string'&&uuid.test(u))&&Array.isArray(j.provenance)&&j.provenance.length<=5&&j.provenance.every(p=>j.pageIds.includes(p.pageId)&&typeof p.title==='string'&&p.title.length<=512&&Number.isFinite(Date.parse(p.extractedAt))&&p.apiVersion==='2026-03-11'&&p.coverage==='selected_text_only'&&Number.isSafeInteger(p.blocks)&&p.blocks>=0&&p.blocks<=500&&p.unsupported&&typeof p.unsupported==='object'&&!Array.isArray(p.unsupported)&&Object.values(p.unsupported).every(n=>Number.isSafeInteger(n)&&n>=0&&n<=500));
+      if(!result||(!path&&method==='GET'?!Array.isArray(result.jobs)||result.jobs.length>100||!result.jobs.every(valid)||typeof result.available!=='boolean':!valid(result)))throw Error('Invalid Notion import response.');
+      return result;
+    },false);
+  }
+  async notionDraft(id:string,download=false) {
+    if(!/^[a-f0-9]{64}$/.test(id))return null;
+    return this.operation(async()=>{const response=await this.githubResponse(`/api/account/imports/notion/${id}/draft${download?'?download=1':''}`);const text=await response.text();if(new TextEncoder().encode(text).byteLength>500000)throw Error('Private draft exceeds the import limit.');return text;},false);
   }
   async githubDraft(id:string,download=false) {
     if(!/^[a-f0-9]{64}$/.test(id))return null;

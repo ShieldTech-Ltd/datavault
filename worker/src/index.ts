@@ -1,3 +1,4 @@
+import {handleNotionCallback} from './lib/notion-connector';
 import {handleGithubCallback} from './lib/github-connector';
 import { handleDeveloperCollections } from './lib/developer-keys';
 import { queueNotifications, scheduledNotifications } from './lib/notification-adapters';
@@ -93,7 +94,9 @@ export default {
         }
         let res: Response;
 
-        if(method==='GET'&&path==='/api/connectors/github/callback'){
+        if(method==='GET'&&path==='/api/connectors/notion/callback'){
+          res=await handleNotionCallback(request,env);
+        } else if(method==='GET'&&path==='/api/connectors/github/callback'){
           res=await handleGithubCallback(request,env);
         } else if(method==='GET'&&path==='/api/developer/collections'){
           res=await handleDeveloperCollections(request,env);

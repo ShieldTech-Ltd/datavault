@@ -3,6 +3,29 @@ import worker from '../index';
 import { sqliteD1 } from './sqlite-d1';
 import { digest } from '../lib/account-session';
 import type { Env } from '../lib/types';
+import {githubCredentialHeader} from '../lib/github-connector';
+it('fences existing GitHub credentials when provider configuration is removed',async()=>{
+  const id=await connected();env.GITHUB_CLIENT_SECRET=undefined;
+  await expect(githubCredentialHeader(env,id,'a1',1)).rejects.toThrow();
+});
+it('revokes a newly issued GitHub access token when companion response validation fails', async()=>{
+  const s=await start();
+  vi.mocked(fetch).mockImplementation(async(url:any,init:any)=>{
+    if(init.method==='DELETE')return new Response(null,{status:204});
+    if(String(url).includes('/access_token'))return new Response(JSON.stringify({...tokenResponse,refresh_token_expires_in:-1}));
+    return provider(url,init);
+  });
+  expect((await callback(s.state,s.cookie)).status).toBe(400);
+  expect(vi.mocked(fetch).mock.calls.some(([,init])=>init?.method==='DELETE')).toBe(true);
+});
+it('preserves expired pending GitHub cleanup uncertainty through replacement', async()=>{
+  const s=await start();vi.mocked(fetch).mockImplementation(provider);
+  expect((await callback(s.state,s.cookie)).status).toBe(303);
+  await env.DB.prepare("UPDATE account_connectors SET pending_expires_at=1 WHERE provider='github'").run();
+  await request();
+  const next=await start();expect((await callback(next.state,next.cookie)).status).toBe(303);
+  expect(await (await request()).json()).toMatchObject({status:'pending',revocationPending:true});
+});
 let store: ReturnType<typeof sqliteD1>, env: Env;
 const csrf = 'c'.repeat(64);
 const request = (
