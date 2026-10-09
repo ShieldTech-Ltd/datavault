@@ -1,5 +1,6 @@
 export interface NotificationWork { chainId: number; contractAddress: string; recipient: string }
 export interface Env {
+  DEVELOPER_RATE_LIMIT?: string;
   EMAIL?: WorkerEmailBindings['EMAIL'];
   EMAIL_FROM?: string;
   PUBLIC_ORIGIN?: string;

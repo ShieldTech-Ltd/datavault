@@ -135,6 +135,15 @@
 .dv-collection-edit-form input,.dv-collection-edit-form textarea,.dv-collection-edit-form select { box-sizing:border-box; width:100%; min-width:0; padding:12px; border:1px solid #dce3f6; border-radius:9px; background:#fcfdff; color:var(--text); font:inherit; font-size:12px; }
 .dv-collection-edit-form textarea { min-height:110px; resize:vertical; }
 .dv-collection-edit-form input:focus-visible,.dv-collection-edit-form textarea:focus-visible,.dv-collection-edit-form select:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.dv-api-key-form { margin-top:18px; }
+.dv-api-key-form fieldset { min-width:0; margin:0; padding:12px; border:1px solid var(--border); border-radius:9px; }
+.dv-api-key-form .dv-api-key-choice { display:flex; align-items:flex-start; gap:8px; margin:10px 0; overflow-wrap:anywhere; }
+.dv-api-key-form .dv-api-key-choice input { width:16px; height:16px; padding:0; flex:none; }
+.dv-api-key-item { padding:16px 0; border-bottom:1px solid var(--border); overflow-wrap:anywhere; }
+.dv-api-key-reveal { margin-top:16px; padding:14px; border:1px solid var(--accent); border-radius:9px; min-width:0; }
+.dv-api-key-reveal code { display:block; overflow-wrap:anywhere; user-select:all; }
+.dv-api-key-reveal .dv-detail-actions,.dv-api-key-item .dv-detail-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+@media(max-width:600px){.dv-api-key-form .dv-button,.dv-api-key-reveal .dv-button,.dv-api-key-item .dv-button { box-sizing:border-box; max-width:100%; white-space:normal; }.dv-api-key-reveal { padding:10px; }}
 .dv-collection-edit-form .dv-button { justify-self:start; }
 .dv-collection-edit-form p { margin:0; color:var(--text-2); font-size:12px; line-height:1.6; }
 .dv-collection-price-form { margin-top:20px; }

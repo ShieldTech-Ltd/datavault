@@ -5,6 +5,9 @@ export type AccountState = { session: AccountSessionResponse | null; loading: bo
 export type SavedItem={id:number;collectionId:string;collectionName:string;createdAt:number;question?:string;expiresAt?:number};
 export type SavedPage={items:SavedItem[];nextCursor:string|null};
 export type EmailStatus = { providerConfigured: boolean; verifiedEmail: string | null; verifiedAt: number | null; pendingEmail: string | null; status: string; resendAfter: number };
+export type ApiKey = {id:string;name:string;displayPrefix:string;scopes:string[];collectionIds:string[];collections?:{id:string;name:string}[];createdAt:number;expiresAt:number;revokedAt:number|null;status:'active'|'expired'|'revoked'};
+export type ApiKeyInput = {name:string;collectionIds:string[];expiresInDays:number;scopes:['collections:read']};
+export type KeyUsage = {asOf:number;retentionDays:number;daily:{keyId:string;timestamp:number;accepted:number;rejected:number;ownershipDenied:number;chainUnavailable:number}[];minute:{keyId:string;timestamp:number;claimed:number;accepted:number;rejected:number;ownershipDenied:number;chainUnavailable:number}[];limits:{daily:number;minute:number}};
 function validSession(value: unknown): value is AccountSessionResponse {
   const v = value as AccountSessionResponse | null;
   return Boolean(v && /^0x[a-f0-9]{40}$/.test(v.account?.address) && typeof v.account.displayName === 'string' &&
@@ -130,6 +133,25 @@ export class AccountClient {
       const response = await this.response('/api/account/export');
       if (!response.ok || !response.headers.get('Content-Type')?.includes('application/json')) throw new Error('Account export unavailable.');
       return response.blob();
+    });
+  }
+  async apiKeys(){return this.operation(async()=>this.json<{keys:ApiKey[]}>('/api/account/api-keys'));}
+  async apiKeyUsage(){return this.operation(async()=>this.json<KeyUsage>('/api/account/api-keys/usage'));}
+  async revokeApiKey(id:string){return this.operation(async session=>this.json('/api/account/api-keys/'+encodeURIComponent(id),{method:'DELETE',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:'{}'}));}
+  async createApiKey(input:ApiKeyInput){
+    return this.operation(async session=>{
+      const generation=this.generation,address=session.account.address;
+      const response=await this.response('/api/account/api-keys',{method:'POST',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(input)});
+      if(!response.ok)throw new Error(response.status===409?'Maximum 5 active keys. Revoke a key or wait for expiry.':response.status===400?'Check the name, collection selection, scope and expiry.':response.status===503?'Chain verification is unavailable. Retry when the deployment is reachable.':response.status===401||response.status===403?'Account or current collection ownership authorization was rejected. Sign in and reload your owned collections.':'Key creation failed. Retry.');
+      const result=await response.json() as {key:ApiKey;secret:string};
+      if(!this.current(generation,address)){
+        // A wallet switch may have already logged out. Still attempt revocation with
+        // the original CSRF credential; never reveal the delayed secret.
+        if(/^[a-f0-9]{64}$/.test(result.key?.id))try{await this.response('/api/account/api-keys/'+result.key.id,{method:'DELETE',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:'{}'});}catch{/* Revocation is best effort after the original session ends. */}
+        return null;
+      }
+      if(!/^dv_[a-f0-9]{64}$/.test(result.secret)||!/^[a-f0-9]{64}$/.test(result.key?.id))throw new Error('Invalid API key response.');
+      return result;
     });
   }
   async savedItems(kind:'bookmarks'|'saved-questions',cursor?:string):Promise<SavedPage|null> {
