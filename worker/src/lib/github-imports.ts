@@ -14,13 +14,20 @@ function selection(v:any):v is Selection {
 const metadata=(j:Job)=>({id:j.id,repository:j.repository,ref:j.ref,paths:JSON.parse(j.paths),commitSha:j.commit_sha,status:j.status,attempts:j.attempts,contentDigest:j.content_digest,error:j.error,createdAt:j.created_at,expiresAt:j.expires_at});
 async function owned(env:Env,account:AccountRow,id:string){return env.DB.prepare('SELECT * FROM github_import_jobs WHERE id=? AND account_id=?').bind(id,account.account_id).first<Job>();}
 export async function githubImportMetadata(env:Env,account:AccountRow){return (await env.DB.prepare('SELECT * FROM github_import_jobs WHERE account_id=? ORDER BY created_at DESC LIMIT 100').bind(account.account_id).all<Job>()).results.map(metadata);}
+async function recoverExhaustedLeases(env:Env,id:string|null=null){
+ const now=Date.now();
+ // Fence crashed final attempts and release the inflight slot. Keep tracked objects for expiry.
+ await env.DB.prepare("UPDATE github_import_jobs SET status='failed',lease_token=NULL,lease_expires_at=NULL,error='GitHub import failed. Check public repository, ref and selected text paths, then retry.' WHERE id IN (SELECT id FROM github_import_jobs WHERE status='running' AND attempts>=3 AND lease_expires_at<=? AND expires_at>? AND (? IS NULL OR id=?) ORDER BY lease_expires_at LIMIT 20)").bind(now,now,id,id).run();
+}
 export async function cleanupGithubImports(env:Env){
+ await recoverExhaustedLeases(env);
  const rows=(await env.DB.prepare("SELECT * FROM github_import_jobs WHERE expires_at<=? AND (status!='expired' OR draft_key IS NOT NULL) ORDER BY expires_at LIMIT 20").bind(Date.now()).all<Job>()).results;
  for(const j of rows){await env.DB.prepare("UPDATE github_import_jobs SET status='expired',lease_token=NULL,lease_expires_at=NULL WHERE id=? AND expires_at<=?").bind(j.id,Date.now()).run();if(j.draft_key)await env.COLLECTION_STORE.delete(j.draft_key);await env.DB.prepare('UPDATE github_import_jobs SET draft_key=NULL WHERE id=?').bind(j.id).run();}
 }
+// workerd supports manual, not error. Every redirect is rejected before body reads.
 // Fixed origin only, no credentials and no recursive tree or download URL traversal.
 async function githubJson(path:string,budget:{bytes:number},signal:AbortSignal):Promise<any>{
- const response=await fetch('https://api.github.com'+path,{redirect:'error',signal,headers:{Accept:'application/vnd.github+json','X-GitHub-Api-Version':GITHUB_API_VERSION,'User-Agent':'DataVault-public-import'}});
+ const response=await fetch('https://api.github.com'+path,{redirect:'manual',signal,headers:{Accept:'application/vnd.github+json','X-GitHub-Api-Version':GITHUB_API_VERSION,'User-Agent':'DataVault-public-import'}});
  if(!response.ok || response.status>=300 || !response.body)throw Error('provider');
  const length=response.headers.get('Content-Length');if(length && (!/^\d+$/.test(length)||Number(length)>MAX_RESPONSE-budget.bytes))throw Error('size');
  const reader=response.body.getReader(),chunks:Uint8Array[]=[];let size=0;
@@ -29,6 +36,7 @@ async function githubJson(path:string,budget:{bytes:number},signal:AbortSignal):
 }
 async function active(env:Env,id:string,token:string){return env.DB.prepare("SELECT id FROM github_import_jobs WHERE id=? AND status='running' AND lease_token=? AND lease_expires_at>? AND expires_at>?").bind(id,token,Date.now(),Date.now()).first();}
 export async function runGithubImport(env:Env,id:string):Promise<void>{
+ await recoverExhaustedLeases(env,id);
  const token=randomToken(),now=Date.now();
  const claim=await env.DB.prepare("UPDATE github_import_jobs SET status='running',lease_token=?,lease_expires_at=?,attempts=attempts+1,error=NULL WHERE id=? AND expires_at>? AND attempts<3 AND (status IN ('queued','failed') OR (status='running' AND lease_expires_at<=?)) AND NOT EXISTS(SELECT 1 FROM github_import_jobs x WHERE x.account_id=github_import_jobs.account_id AND x.id!=github_import_jobs.id AND (x.status IN ('queued','running') OR (x.status='review_ready' AND x.idempotency_key=github_import_jobs.idempotency_key)))").bind(token,now+LEASE,id,now,now).run();
  if(claim.meta.changes!==1)return;
