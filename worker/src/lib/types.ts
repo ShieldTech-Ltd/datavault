@@ -1,5 +1,9 @@
 export interface NotificationWork { chainId: number; contractAddress: string; recipient: string }
 export interface Env {
+  EMAIL?: WorkerEmailBindings['EMAIL'];
+  EMAIL_FROM?: string;
+  PUBLIC_ORIGIN?: string;
+  EMAIL_LINK_SECRET?: string;
   NOTIFICATIONS_QUEUE?: Queue<NotificationWork>;
   NOTIFICATION_SCHEDULE_ENABLED?: string;
   MONITOR_SECRET?: string;

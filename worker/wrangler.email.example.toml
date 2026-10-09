@@ -1,0 +1,33 @@
+# Optional, unconfigured example only. This file is not the active local or
+# deployment configuration. Privately supply an onboarded sender, PUBLIC_ORIGIN
+# and EMAIL_LINK_SECRET before enabling delivery in a reviewed deployment.
+name = "datavault-email-example"
+main = "src/index.ts"
+compatibility_date = "2024-10-01"
+
+[[send_email]]
+name = "EMAIL"
+
+[assets]
+directory = "../frontend/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[r2_buckets]]
+binding = "COLLECTION_STORE"
+bucket_name = "datavault-collections"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "datavault-db"
+database_id = "PLACEHOLDER_REPLACE_AFTER_D1_CREATE"
+
+[vars]
+CONTRACT_ADDRESS = ""
+MONAD_RPC_URL = "https://testnet-rpc.monad.xyz"
+MODEL_PROVIDER = "openai"
+CHAIN_ID = "10143"
+EMAIL_FROM = ""
+PUBLIC_ORIGIN = ""
+# EMAIL_LINK_SECRET is a secret, never a committed var.
+# Delivery scheduling and queues stay disabled until separately configured.
