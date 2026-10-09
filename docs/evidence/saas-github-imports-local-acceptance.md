@@ -1,6 +1,6 @@
 ﻿# Selected public GitHub imports local acceptance
 
-Accepted locally on 9 October 2026 at feature `0ebc779`, after independent review and two scoped fixes. Hosted CI is pending. Private GitHub authorization and public deployment readiness remain separate gates.
+Accepted locally on 9 October 2026 at feature `0ebc779`, after independent review and two scoped fixes. Hosted CI passed at `87333d1`. Private GitHub authorization and public deployment readiness remain separate gates.
 
 ## Verified implementation
 

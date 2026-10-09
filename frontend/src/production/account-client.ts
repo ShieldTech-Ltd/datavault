@@ -4,13 +4,15 @@ export type AccountWallet = { address: string; getWalletClient(): Promise<Wallet
 export type AccountState = { session: AccountSessionResponse | null; loading: boolean; error: string };
 export type GithubConnectionStatus={providerConfigured:boolean;id:string|null;status:'disconnected'|'pending'|'connected'|'needs_reconnect';login:string|null;repositories:{id:number;name:string;installationId:number}[];revocationPending:boolean;authorizeUrl?:string};
 export type GithubImportJob={id:string;repository:string;ref:string;paths:string[];commitSha:string|null;status:'queued'|'running'|'review_ready'|'failed'|'cancelled'|'expired';attempts:number;contentDigest:string|null;error:string|null;createdAt:number;expiresAt:number};
-function validGithubJob(value:unknown):value is GithubImportJob {
+export type WebsiteImportJob=GithubImportJob & {provider:'website';urls:string[];provenance:{url:string;fetchedAt:string;contentDigest:string}[]};
+const validGithubJob=(value:unknown):value is GithubImportJob=>validImportJob(value,240);
+function validImportJob(value:unknown,maxPath:number,website=false):value is GithubImportJob {
   const v=value as GithubImportJob|null;
   return Boolean(v && /^[a-f0-9]{64}$/.test(v.id) && typeof v.repository==='string' && v.repository.length<=140 && typeof v.ref==='string' && v.ref.length<=100 &&
-    Array.isArray(v.paths) && v.paths.length>=1 && v.paths.length<=10 && v.paths.every(p=>typeof p==='string'&&p.length<=240) &&
+    Array.isArray(v.paths) && v.paths.length>=1 && v.paths.length<=10 && v.paths.every(p=>typeof p==='string'&&p.length<=maxPath) &&
     (v.commitSha===null||/^[a-f0-9]{40}$/.test(v.commitSha)) && ['queued','running','review_ready','failed','cancelled','expired'].includes(v.status) &&
     Number.isSafeInteger(v.attempts) && v.attempts>=0 && v.attempts<=3 && (v.contentDigest===null||/^[a-f0-9]{64}$/.test(v.contentDigest)) &&
-    (v.error===null||v.error==='GitHub import failed. Check public repository, ref and selected text paths, then retry.') && Number.isSafeInteger(v.createdAt) && Number.isSafeInteger(v.expiresAt));
+    (v.error===null||['GitHub import failed. Check public repository, ref and selected text paths, then retry.','GitHub import failed. Check repository access, ref and selected text paths, then retry.','Import failed after the final attempt. Start a new import.',...(website?['Website import failed. Check approved hosts, public DNS, page size and content type. Use the final URL when a page redirects.']:[])].includes(v.error)) && Number.isSafeInteger(v.createdAt) && Number.isSafeInteger(v.expiresAt));
 }
 export type SavedItem={id:number;collectionId:string;collectionName:string;createdAt:number;question?:string;expiresAt?:number};
 export type SavedPage={items:SavedItem[];nextCursor:string|null};
@@ -172,7 +174,7 @@ export class AccountClient {
       ? 'Import limit reached. Let the current import finish or cancel it. Limits also apply per minute and to 20 new jobs per rolling 24 hours.'
       : 'GitHub import service is unavailable. Please retry later.';
     // Status-based messages never forward provider, credential or internal response text.
-    throw Error(message);
+    throw Error(path.includes('/imports/website')&&[400,413,422].includes(response.status)?'Select 1 to 5 distinct HTTPS pages on approved hosts, without queries. Confirm permission to import.':message.replace(path.includes('/imports/website')?'GitHub':'__unused__','Website'));
   }
   async githubConnector(path='' as ''|'/connect'|'/confirm',method='GET' as 'GET'|'POST'|'DELETE') {
     return this.operation(async session=>{
@@ -193,6 +195,20 @@ export class AccountClient {
       if(!result || (!path&&method==='GET' ? !Array.isArray(result.jobs)||result.jobs.length>100||!result.jobs.every(validGithubJob) : !validGithubJob(result)))throw Error('Invalid GitHub import metadata response.');
       return result;
     },false);
+  }
+  async websiteImport(path='',method='GET',body?:unknown) {
+    if(path && !/^[a-f0-9]{64}(?:\/(?:cancel|run))?$/.test(path))return null;
+    return this.operation(async session=>{
+      const response=await this.githubResponse('/api/account/imports/website'+(path?'/'+path:''),{method,...(method==='GET'?{}:{headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(body??{})})});
+      const result=await response.json() as WebsiteImportJob & {jobs?:WebsiteImportJob[];available?:boolean;approvedHosts?:string[]};
+      const valid=(j:WebsiteImportJob)=>validImportJob(j,2048,true)&&j.provider==='website'&&Array.isArray(j.urls)&&j.urls.length<=5&&j.urls.every(u=>typeof u==='string'&&u.length<=2048)&&Array.isArray(j.provenance)&&j.provenance.length<=5&&j.provenance.every(p=>typeof p.url==='string'&&j.urls.includes(p.url)&&typeof p.fetchedAt==='string'&&Number.isFinite(Date.parse(p.fetchedAt))&&/^[a-f0-9]{64}$/.test(p.contentDigest));
+      if(!result||(!path&&method==='GET'? !Array.isArray(result.jobs)||result.jobs.length>100||!result.jobs.every(valid)||typeof result.available!=='boolean'||!Array.isArray(result.approvedHosts)||result.approvedHosts.length>100||!result.approvedHosts.every(h=>typeof h==='string'&&h.length<=253):!valid(result)))throw Error('Invalid website import response.');
+      return result;
+    },false);
+  }
+  async websiteDraft(id:string,download=false) {
+    if(!/^[a-f0-9]{64}$/.test(id))return null;
+    return this.operation(async()=>{const response=await this.githubResponse(`/api/account/imports/website/${id}/draft${download?'?download=1':''}`);const text=await response.text();if(new TextEncoder().encode(text).byteLength>500000)throw Error('Private draft exceeds the import limit.');return text;},false);
   }
   async githubDraft(id:string,download=false) {
     if(!/^[a-f0-9]{64}$/.test(id))return null;

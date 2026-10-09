@@ -259,7 +259,7 @@ it.each(['wrong-app', 'write', 'all-repos', 'redirect'])(
     );
   }
 );
-import { openConnector, sealConnector } from '../lib/connector-security';
+import { openConnector, sealConnector, connectorDeployment } from '../lib/connector-security';
 it('authenticates encryption version, owner, provider and deployment', async () => {
   configure();
   const value = await sealConnector(env, 'a1', 'github', { token: 'secret' });
@@ -335,6 +335,16 @@ function importProvider() {
     return provider(url, init);
   });
 }
+it('creates a fresh same-selection draft after refresh while preserving the old credential fence',async()=>{
+ configure();bucket();const connectionId='ab'.repeat(32),oldId='cd'.repeat(32),oldKey='private-import-drafts/a1/'+oldId+'/old.md';
+ const credential=await sealConnector(env,'a1','github',{access:'ghu_old',refresh:'ghr_old',expires:1,refreshExpires:Date.now()+86400000});
+ await env.DB.prepare("INSERT INTO account_connectors(id,account_id,provider,deployment,status,credential,repositories,created_at,updated_at) VALUES(?,'a1','github',?,'connected',?,'[{\"id\":7,\"name\":\"owner/private\",\"installationId\":9}]',1,1)").bind(connectionId,connectorDeployment(env),credential).run();
+ const key=await digest(JSON.stringify({connectionId,credentialVersion:1,repository:'owner/private',ref:'main',paths:['README.md']}));
+ await env.DB.prepare("INSERT INTO github_import_jobs(id,account_id,repository,ref,paths,status,idempotency_key,created_at,expires_at,connection_id,credential_version,draft_key) VALUES(?,'a1','owner/private','main','[\"README.md\"]','review_ready',?,?,?,?,1,?)").bind(oldId,key,Date.now(),Date.now()+86400000,connectionId,oldKey).run();objects.set(oldKey,'older private source');
+ importProvider();const response=await importRequest(connectionId),job=await response.json() as any;expect(response.status).toBe(201);expect(job.id).not.toBe(oldId);expect(job.status).toBe('review_ready');
+ const draft=(id:string)=>worker.fetch(new Request('https://vault.example/api/account/imports/github/'+id+'/draft',{headers:{Cookie:'dv_session='+'1'.repeat(64)}}),env);
+ expect((await draft(oldId)).status).toBe(409);expect(await (await draft(job.id)).text()).toBe('private text');expect(objects.get(oldKey)).toBe('older private source');expect(store.sqlite.prepare('SELECT credential_version FROM github_import_jobs ORDER BY credential_version').all()).toEqual([{credential_version:1},{credential_version:2}]);
+});
 it('private imports require own confirmed selected connection and are fenced by disconnect', async () => {
   bucket();
   const id = await connected();
