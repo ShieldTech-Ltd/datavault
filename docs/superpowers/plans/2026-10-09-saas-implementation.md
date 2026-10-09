@@ -1,6 +1,6 @@
 # DataVault SaaS Implementation Plan
 
-> For agentic workers: use executing-plans to implement one approved phase at a time. Track steps with checkboxes. This is a proposed roadmap, not an instruction to enable all commercial features at once.
+> For agentic workers: use executing-plans to implement one approved phase at a time. Track steps with checkboxes. The user authorized implementation of all phases on 9 October 2026. Provider activation and public acceptance remain separate gates.
 
 **Goal:** Make the existing paid-query product a persistent SaaS while preserving the user's selected light dashboard design.
 
@@ -87,12 +87,12 @@ POST /api/account/deletion-request -> { requestId, status }
 
 Use a standard SIWE message bound to origin, chain and deployment resource. Consume a random five-minute nonce atomically once. Use a random opaque session token, store its hash and expire sessions after 24 hours. Public cookies are HttpOnly, Secure and SameSite=Lax, with an explicit loopback development exception. Mutating cookie routes check origin and CSRF token. Wallet changes clear local session/private state and sign out. Start with the externally owned wallets already supported; explicitly reject unsupported contract-wallet verification.
 
-- [ ] Add failing replay, concurrent consumption, expiry, wrong-domain/chain/deployment, CSRF and cross-account tests.
-- [ ] Implement challenge/verify/logout; run the focused Worker session tests.
-- [ ] Add profile reads/updates: display name at most 80 characters, supported locales only, reject unexpected fields and wallet-address edits.
-- [ ] Add Settings loading/saving/error states; verify persistence across reload and sign-out isolation using two disposable local wallets.
-- [ ] Add export/deletion request tracking. Explain immutable on-chain records and define private-content/answer retention before destructive processing. A submitted request is not completed deletion.
-- [ ] Run affected tests, both typechecks and frontend build; commit and open the account PR.
+- [x] Add failing replay, concurrent consumption, expiry, wrong-domain/chain/deployment, CSRF and cross-account tests.
+- [x] Implement challenge/verify/logout; run the focused Worker session tests.
+- [x] Add profile reads/updates: display name at most 80 characters, supported locales only, reject unexpected fields and wallet-address edits.
+- [x] Add Settings loading/saving/error states; verify persistence across reload and sign-out isolation using two disposable local wallets.
+- [x] Add export/deletion request tracking. Explain immutable on-chain records and define private-content/answer retention before destructive processing. A submitted request is not completed deletion.
+- [x] Run affected tests, both typechecks and frontend build; commit and open the account PR.
 
 **Gate:** wallet A cannot read or modify B's profile; replay cannot mint a new session; existing payment and recovery protocols remain intact.
 
@@ -102,11 +102,11 @@ Use a standard SIWE message bound to origin, chain and deployment resource. Cons
 **Create:** `worker/src/routes/collection-metadata.ts`, its Worker tests, `frontend/src/production/CollectionEditor.tsx`, metadata migration.
 **Modify:** marketplace/detail responses, owner UI, contract bindings, shared API and documentation.
 
-- [ ] Test unauthorized edits, oversized descriptions, invalid categories and hidden metadata leaking through search/analytics.
-- [ ] Add owner-authorized `PATCH /api/collections/:id/metadata`, description limit 2,000 characters and explicit category allowlist.
-- [ ] Support public/unlisted catalogue visibility. Unlisted remains queryable by ID; do not call it private access control.
-- [ ] Expose the existing `updatePolicy` price transaction. Display a saved price only after confirmation and chain readback.
-- [ ] Test cancellation/RPC failure, original escrow amounts and existing policy-change behavior; verify in the browser and open the focused PR.
+- [x] Test unauthorized edits, oversized descriptions, invalid categories and hidden metadata leaking through search/analytics.
+- [x] Add owner-authorized `PATCH /api/collections/:id/metadata`, description limit 2,000 characters and explicit category allowlist.
+- [x] Support public/unlisted catalogue visibility. Unlisted remains queryable by ID; do not call it private access control.
+- [x] Expose the existing `updatePolicy` price transaction. Display a saved price only after confirmation and chain readback.
+- [x] Test cancellation/RPC failure, original escrow amounts and existing policy-change behavior; verify in the browser and open the focused PR.
 
 ## Phase 2B: Immutable revisions
 
@@ -116,11 +116,11 @@ Use a standard SIWE message bound to origin, chain and deployment resource. Cons
 
 Recommended design: changed content receives a new hash-derived collection ID through the existing registration flow. D1 links old/new IDs as a family. Do not overwrite the old R2 object or pretend the current contract binds new content to an old ID.
 
-- [ ] Test staged/failed revisions and unauthorized family links.
-- [ ] Register and confirm the new collection before marking it current. Check both revisions have the same on-chain owner.
-- [ ] Show history and current-version links; keep old collection URLs and receipts valid.
-- [ ] Let the owner explicitly decide whether to pause the old revision, explaining the effect on outstanding requests under current policy rules.
-- [ ] Verify an old settled answer still recovers against its original content and receipt.
+- [x] Test staged/failed revisions and unauthorized family links.
+- [x] Register and confirm the new collection before marking it current. Check both revisions have the same on-chain owner.
+- [x] Show history and current-version links; keep old collection URLs and receipts valid.
+- [x] Let the owner explicitly decide whether to pause the old revision, explaining the effect on outstanding requests under current policy rules.
+- [x] Verify an old settled answer still recovers against its original content and receipt.
 
 **Gate:** historical content remains immutable. Stable on-chain IDs with in-place content replacement require a separate contract version and migration project.
 

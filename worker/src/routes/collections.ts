@@ -3,7 +3,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import type { Env } from "../lib/types";
 import { storeCollection } from "../lib/r2";
 import { insertCollection, getCollectionRow, confirmCollection } from "../lib/d1";
-import { buildRegisterCalldata, verifyUploadSignature, getOnChainCollection } from "../lib/policy";
+import { buildRegisterCalldata, getOnChainCollection } from "../lib/policy";
 import {
   isValidAddress, isValidBytes32, isValidPriceWei, isValidSignature,
   isValidTimestamp, checkContentLength, LIMITS,
@@ -170,70 +170,4 @@ export async function handleConfirmCollection(
     JSON.stringify({ ok: true, collectionId, status: "confirmed" }),
     { headers: { "Content-Type": "application/json" } },
   );
-}
-
-// ── POST /api/collections/:id/upload ─────────────────────────────
-
-// The client must sign: `datavault-upload:<collectionId>:<sha256(body)>:<timestamp>`
-// and send x-signature and x-timestamp headers alongside the body.
-// This prevents any party other than the registered owner from overwriting the collection.
-export async function handleUploadCollection(
-  req: Request,
-  env: Env,
-  collectionId: string,
-): Promise<Response> {
-  if (!isValidBytes32(collectionId)) return error400("Invalid collectionId path segment");
-
-  const sizeErr = checkContentLength(req);
-  if (sizeErr) return sizeErr;
-
-  const col = await getCollectionRow(collectionId, env);
-  if (!col) return new Response("Collection not found", { status: 404 });
-  if (col.status !== "confirmed") return error403("Collection is not yet confirmed on-chain");
-
-  const signature = req.headers.get("x-signature") ?? "";
-  const timestampStr = req.headers.get("x-timestamp") ?? "";
-  const timestamp = parseInt(timestampStr, 10);
-
-  if (!isValidSignature(signature)) return error401("x-signature header is missing or malformed");
-  if (!isValidTimestamp(timestamp)) return error401("x-timestamp header is missing, invalid, or expired");
-
-  const body = await req.text();
-  if (!body.trim()) return error400("Request body is empty");
-  if (new TextEncoder().encode(body).length > LIMITS.MAX_UPLOAD_BYTES) return error413();
-
-  const contentHash = await sha256Hex(body);
-
-  const valid = await verifyUploadSignature(
-    col.owner_address,
-    collectionId,
-    contentHash,
-    timestamp,
-    signature,
-  );
-
-  if (!valid) return error403("Invalid or expired signature");
-
-  // For re-uploads, also verify the signer is still the on-chain owner.
-  // This catches a case where the owner transferred the collection off-chain somehow.
-  if (env.CONTRACT_ADDRESS) {
-    const onChain = await getOnChainCollection(collectionId as `0x${string}`, env);
-    if (!onChain || onChain.owner.toLowerCase() !== col.owner_address) {
-      return error403("On-chain owner mismatch. Re-upload not authorized.");
-    }
-  }
-
-  const newContentHash = keccak256(toBytes(body));
-  await storeCollection(collectionId, body, newContentHash, env);
-
-  return new Response(JSON.stringify({ ok: true, contentHash: newContentHash }), {
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-async function sha256Hex(text: string): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }

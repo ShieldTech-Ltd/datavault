@@ -1,12 +1,21 @@
 # DataVault build status
 
-Updated 9 October 2026. This is source and local verification evidence, not a deployment claim. PR #51 is merged. The dashboard candidate in PR #52 is open at `f9966d2bef2cb7c0cc3b2e57322d9eba9bcde2c3`; its eight CI/Security checks passed. New SaaS implementation is isolated on `codex/saas-accounts` based on that candidate, without merging or changing PR #52.
+Updated 9 October 2026. This is source and local verification evidence, not a deployment claim. PR #51 is merged. The dashboard candidate in PR #52 is open at `f9966d2bef2cb7c0cc3b2e57322d9eba9bcde2c3`; its eight CI/Security checks passed. SaaS changes use separate stacked feature branches based on that candidate, without merging or changing PR #52.
 
 ## Current production dashboard and SaaS work
 
 The candidate follows the selected DataVault Light Dashboard Interface. All production routes use real backend responses or explicit disconnected, empty, error and unavailable states. Signed owner collections, owner earnings, buyer history, public analytics, collection details and request recovery have been checked locally in the browser. See [local acceptance](evidence/production-dashboard-local-acceptance.md) for exact transaction evidence and limitations.
 
-The SaaS roadmap is in [the implementation plan](superpowers/plans/2026-10-09-saas-implementation.md). Account sessions, profiles and persistent settings are the first feature phase. Subsequent phases cover collection metadata and immutable revisions, notifications/status, richer analytics, developer keys, teams, imports and billing. A planned feature is not an implemented feature.
+The SaaS roadmap is in [the implementation plan](superpowers/plans/2026-10-09-saas-implementation.md). The user authorized all implementation phases on 9 October. A planned feature is not an implemented feature.
+
+| Phase | Verified candidate and state |
+| --- | --- |
+| Account sessions, profiles, preferences, export and pending deletion requests | PR #53, `30a28e2`, locally accepted and independently reviewed; all eight remote CI/Security checks passed |
+| Collection description, category, visibility and confirmed price editing | PR #54, `be1de8a`, locally accepted after review fixes; all eight remote CI/Security checks passed |
+| Immutable collection revisions | Implementation `30a6481`, locally accepted after recovery fix and scoped independent review; draft PR and CI recorded below |
+| Inbox/email/status, analytics/saved items, keys, teams, imports and billing | Subsequent implementation phases; not available yet |
+
+See [account acceptance](evidence/saas-account-local-acceptance.md) and [collection acceptance](evidence/saas-collection-local-acceptance.md). The feature PRs are drafts stacked on the unmerged dashboard baseline. See [revision acceptance](evidence/saas-revisions-local-acceptance.md) for immutable history, original answer recovery and interruption tests. A pending deletion request does not delete data. Local payment rehearsal passed all 19 checks after the account phase using the model stub.
 
 The earlier dated checks below remain historical evidence. They do not replace verification of the current feature branch or real public acceptance.
 
