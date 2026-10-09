@@ -4,6 +4,7 @@ import { CONTRACT_ADDRESS } from '../lib/contract';
 import { monadTestnet } from '../lib/network';
 import { AccountClient, type AccountState } from './account-client';
 const Account = createContext<{ client: AccountClient; state: AccountState } | null>(null);
+export function useOptionalAccount() { return useContext(Account); }
 export function AccountProvider({ children }: { children: ReactNode }) {
   const { primaryWallet, correctNetwork } = useWallet();
   const controller = useRef<AccountClient>();

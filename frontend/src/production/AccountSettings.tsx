@@ -46,7 +46,7 @@ export default function AccountSettings() {
         {(emailStatus.verifiedEmail||emailStatus.pendingEmail)&&<button className="dv-button secondary" disabled={state.loading} onClick={()=>void removeEmail()}>Remove email</button>}
       </>}
       <button className="dv-button secondary" disabled={state.loading} onClick={() => void client.signOut()}>Sign out</button>
-      <h3>Your account data</h3><p>Export includes your profile, notification preferences, inbox metadata and pending deletion requests. Source content, paid answers and on-chain records are outside this account export.</p>
+      <h3>Your account data</h3><p>Export includes your profile, notification preferences, inbox metadata, bookmarks, active saved questions, pending deletion requests, workspace memberships, invitations and private import job metadata. Source content, paid answers and on-chain records are outside this account export.</p>
       <button className="dv-button secondary" disabled={state.loading} onClick={() => void download()}>Download account export</button>
       <p>Deletion requests remain pending until retention and processing are defined. Submitting a request does not delete data. On-chain records are immutable.</p>
       {!confirmDelete ? <button className="dv-button secondary" disabled={state.loading} onClick={() => setConfirmDelete(true)}>Request account deletion</button> : <div><p>Confirm submission of a pending deletion request? Your profile, source content and paid answers remain retained.</p><button className="dv-button secondary" disabled={state.loading} onClick={() => void requestDeletion()}>Confirm deletion request</button><button className="dv-button secondary" disabled={state.loading} onClick={() => setConfirmDelete(false)}>Cancel</button></div>}

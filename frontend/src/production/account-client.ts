@@ -2,6 +2,15 @@ import type { AccountProfile, AccountSessionResponse } from '../../../shared/api
 type WalletClient = { getChainId(): Promise<number>; signMessage(input: { message: string }): Promise<string> };
 export type AccountWallet = { address: string; getWalletClient(): Promise<WalletClient> };
 export type AccountState = { session: AccountSessionResponse | null; loading: boolean; error: string };
+export type GithubImportJob={id:string;repository:string;ref:string;paths:string[];commitSha:string|null;status:'queued'|'running'|'review_ready'|'failed'|'cancelled'|'expired';attempts:number;contentDigest:string|null;error:string|null;createdAt:number;expiresAt:number};
+function validGithubJob(value:unknown):value is GithubImportJob {
+  const v=value as GithubImportJob|null;
+  return Boolean(v && /^[a-f0-9]{64}$/.test(v.id) && typeof v.repository==='string' && v.repository.length<=140 && typeof v.ref==='string' && v.ref.length<=100 &&
+    Array.isArray(v.paths) && v.paths.length>=1 && v.paths.length<=10 && v.paths.every(p=>typeof p==='string'&&p.length<=240) &&
+    (v.commitSha===null||/^[a-f0-9]{40}$/.test(v.commitSha)) && ['queued','running','review_ready','failed','cancelled','expired'].includes(v.status) &&
+    Number.isSafeInteger(v.attempts) && v.attempts>=0 && v.attempts<=3 && (v.contentDigest===null||/^[a-f0-9]{64}$/.test(v.contentDigest)) &&
+    (v.error===null||v.error==='GitHub import failed. Check public repository, ref and selected text paths, then retry.') && Number.isSafeInteger(v.createdAt) && Number.isSafeInteger(v.expiresAt));
+}
 export type SavedItem={id:number;collectionId:string;collectionName:string;createdAt:number;question?:string;expiresAt?:number};
 export type SavedPage={items:SavedItem[];nextCursor:string|null};
 export type EmailStatus = { providerConfigured: boolean; verifiedEmail: string | null; verifiedAt: number | null; pendingEmail: string | null; status: string; resendAfter: number };
@@ -144,6 +153,23 @@ export class AccountClient {
       this.publish({ session: result });
     } catch (cause) { if (this.current(generation, address)) this.publish({ error: cause instanceof Error ? cause.message : 'Sign-in failed.' }); }
     finally { this.pending = false; this.publish({ loading: false }); }
+  }
+  async githubImport(path='',method='GET',body?:unknown) {
+    if(path && !/^[a-f0-9]{64}(?:\/(?:cancel|run))?$/.test(path))return null;
+    return this.operation(async session=>{
+      const result=await this.json<GithubImportJob & {jobs?:GithubImportJob[]}>('/api/account/imports/github'+(path?'/'+path:''),{method,
+        ...(method==='GET'?{}:{headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(body??{})})});
+      if(!path&&method==='GET' ? !Array.isArray(result.jobs)||result.jobs.length>100||!result.jobs.every(validGithubJob) : !validGithubJob(result))throw Error('Invalid GitHub import metadata response.');
+      return result;
+    },false);
+  }
+  async githubDraft(id:string,download=false) {
+    if(!/^[a-f0-9]{64}$/.test(id))return null;
+    return this.operation(async()=>{
+      const response=await this.response(`/api/account/imports/github/${id}/draft${download?'?download=1':''}`);
+      if(!response.ok)throw Error('Private draft unavailable, expired or cancelled. Import again or sign in with its owner.');
+      const text=await response.text();if(new TextEncoder().encode(text).byteLength>500000)throw Error('Private draft exceeds the import limit.');return text;
+    },false);
   }
   async signOut() {
     const session = this.state.session;
