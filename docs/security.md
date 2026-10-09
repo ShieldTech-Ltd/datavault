@@ -29,4 +29,4 @@ CI runs contract tests, frontend typecheck/build, and Worker typecheck and tests
 
 The frontend uses the existing viem dependency with an injected EVM wallet. The production dependency audit currently reports zero known advisories locally. Keep the audit gate active and repeat it before deployment; registry data can change. Wallet connection and transaction flows still require a live browser regression check.
 
-Before deployment, require the CI and Security checks on the protected branch, review the combined result, verify no keys in assets or logs, and run the live paid, recovery, pause, and refund checks in [deployment.md](deployment.md). Keep the PR in draft while any release gate fails.
+Before merging, require the CI and Security checks and review the combined source result. Before deployment, verify no keys in assets or logs. After deployment, run the live paid, recovery, pause, and refund checks in [deployment.md](deployment.md). A source merge does not satisfy the live release gate.

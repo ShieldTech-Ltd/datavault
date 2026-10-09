@@ -6,8 +6,8 @@ Record the final values in a private release ledger, and publish only public add
 ## Before deployment
 
 1. Confirm current Metropolis portal requirements and that Monad testnet remains accepted.
-2. Confirm merged PRs #48, #49, and #50. Review draft PR #51 and its source readiness checks, then configure the full frontend, Worker, D1/R2, and security controls as a production candidate. Perform the live end-to-end gate after the candidate is ready and before declaring the PR ready to merge. Record the approved merge commit.
-3. Run clean installs, contract tests, Worker tests, both typechecks, and the frontend build on the candidate commit.
+2. Confirm merged PRs #48, #49, and #50. Review PR #51 for source, backend, database migration, security, and frontend integration readiness. Require passing CI and Security checks, then merge it as source integration. Record the merge commit. Merging does not declare the public product or demo ready.
+3. Run clean installs, contract tests, Worker tests, both typechecks, and the frontend build on the merge commit before deployment. Perform the live end-to-end gate below on the deployed candidate before recording a demo or submitting the project.
 4. Confirm a Cloudflare account with a private R2 bucket, a D1 database, and permission to deploy Workers.
 5. Confirm the public HTTPS origin and Monad testnet RPC are configured.
 6. Confirm model access and set a spending cap. Fund only authorized test wallets and the settlement operator.

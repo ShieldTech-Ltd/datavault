@@ -38,7 +38,7 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 
 ## Gates before public deployment
 
-- Review draft PR #51 after CI and source readiness checks. Keep it in draft until the frontend, Worker, database, and security controls form a production candidate. Run the full live end-to-end gate after that candidate is configured; do not treat local rehearsal as live proof.
+- Review PR #51 after CI and source readiness checks, then merge it as source integration when its backend, database migrations, security controls, and frontend integration are ready. Configure the deployed candidate from the merge commit and run the full live end-to-end gate before calling the product or demo ready. Local rehearsal is not live proof.
 - Confirm the three production dependency audits remain clear in CI. The injected wallet replacement removed the vulnerable Dynamic dependency tree. The wallet now offers a Monad network switch, but still needs a live browser regression check.
 - Verify a real injected-wallet connection, signed registration, signed payment, private R2 and D1 access, actual model response, and owner payout on the configured Monad network.
 - Add real Cloudflare D1 and R2 resource identifiers, a deployed contract, Worker secrets, public site origin, and a confirmed sample collection. The tracked Wrangler configuration still contains a placeholder database ID.
