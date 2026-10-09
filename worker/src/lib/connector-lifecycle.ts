@@ -125,10 +125,10 @@ export function connectorLifecycle(adapter: ConnectorAdapter) {
     const now = Date.now();
     await env.DB.batch([
       env.DB.prepare(
-        "INSERT INTO connector_cleanup_obligations(id,account_id,provider,deployment,created_at) SELECT lower(hex(randomblob(32))),account_id,provider,deployment,? FROM account_connectors WHERE status='pending' AND pending_expires_at<=? AND credential IS NOT NULL",
+        "INSERT INTO connector_cleanup_obligations(id,account_id,provider,deployment,created_at) SELECT lower(hex(randomblob(32))),account_id,provider,deployment,? FROM account_connectors WHERE status='pending' AND pending_expires_at<=? AND (credential IS NOT NULL OR revocation_pending=1)",
       ).bind(now, now),
       env.DB.prepare(
-        "UPDATE account_connectors SET status='disconnected',credential=NULL,repositories='[]',credential_version=credential_version+1,revocation_pending=1 WHERE status='pending' AND pending_expires_at<=?",
+        "UPDATE account_connectors SET status='disconnected',credential=NULL,repositories='[]',credential_version=credential_version+1,revocation_pending=0 WHERE status='pending' AND pending_expires_at<=?",
       ).bind(now),
     ]);
   }
@@ -138,13 +138,15 @@ export function connectorLifecycle(adapter: ConnectorAdapter) {
     env: Env,
     accountId: string,
     token: string,
+    obligationId?: string,
   ): Promise<boolean> {
-    const id = randomToken();
-    await env.DB.prepare(
-      `INSERT INTO connector_cleanup_obligations(id,account_id,provider,deployment,created_at) VALUES(?,?,'${adapter.provider}',?,?)`,
-    )
-      .bind(id, accountId, connectorDeployment(env), Date.now())
-      .run();
+    const id = obligationId ?? randomToken();
+    if (!obligationId)
+      await env.DB.prepare(
+        `INSERT INTO connector_cleanup_obligations(id,account_id,provider,deployment,created_at) VALUES(?,?,'${adapter.provider}',?,?)`,
+      )
+        .bind(id, accountId, connectorDeployment(env), Date.now())
+        .run();
     try {
       await adapter.revoke(env, token);
       await env.DB.prepare(
@@ -221,27 +223,34 @@ export function connectorLifecycle(adapter: ConnectorAdapter) {
       const current = await readSession(request, env);
       if (!current || current.tokenHash !== session.tokenHash)
         throw Error("Session changed");
-      const inserted = await env.DB.prepare(
-        `INSERT INTO account_connectors(id,account_id,provider,deployment,status,credential,repositories,login,session_hash,browser_hash,pending_expires_at,created_at,updated_at) SELECT ?,?,'${adapter.provider}',?,'pending',?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM account_sessions WHERE token_hash=? AND expires_at>?) AND EXISTS(SELECT 1 FROM connector_oauth_states WHERE state_hash=? AND consumed_at IS NOT NULL AND expires_at>?) ON CONFLICT(account_id,provider,deployment) DO UPDATE SET status='pending',credential=excluded.credential,repositories=excluded.repositories,login=excluded.login,session_hash=excluded.session_hash,browser_hash=excluded.browser_hash,pending_expires_at=excluded.pending_expires_at,credential_version=account_connectors.credential_version+1,refresh_lease=NULL,refresh_expires_at=NULL,revocation_pending=0,updated_at=excluded.updated_at WHERE account_connectors.status IN ('disconnected','needs_reconnect')`,
-      )
-        .bind(
-          randomToken(),
-          session.account.account_id,
-          dep,
-          encrypted,
-          JSON.stringify(access.repositories),
-          access.login,
-          session.tokenHash,
-          browserHash,
-          Date.now() + TTL,
-          now,
-          now,
-          session.tokenHash,
-          Date.now(),
-          hash,
-          Date.now(),
-        )
-        .run();
+      // Old deployments could retain only this bit after losing ciphertext.
+      // Adopt it before replacement; new removal paths use obligations directly.
+      const inserted = (
+        await env.DB.batch([
+          env.DB.prepare(
+            `INSERT INTO connector_cleanup_obligations(id,account_id,provider,deployment,created_at) SELECT ?,account_id,provider,deployment,? FROM account_connectors WHERE account_id=? AND provider='${adapter.provider}' AND deployment=? AND status IN ('disconnected','needs_reconnect') AND revocation_pending=1`,
+          ).bind(randomToken(), now, session.account.account_id, dep),
+          env.DB.prepare(
+            `INSERT INTO account_connectors(id,account_id,provider,deployment,status,credential,repositories,login,session_hash,browser_hash,pending_expires_at,created_at,updated_at) SELECT ?,?,'${adapter.provider}',?,'pending',?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM account_sessions WHERE token_hash=? AND expires_at>?) AND EXISTS(SELECT 1 FROM connector_oauth_states WHERE state_hash=? AND consumed_at IS NOT NULL AND expires_at>?) ON CONFLICT(account_id,provider,deployment) DO UPDATE SET status='pending',credential=excluded.credential,repositories=excluded.repositories,login=excluded.login,session_hash=excluded.session_hash,browser_hash=excluded.browser_hash,pending_expires_at=excluded.pending_expires_at,credential_version=account_connectors.credential_version+1,refresh_lease=NULL,refresh_expires_at=NULL,revocation_pending=0,updated_at=excluded.updated_at WHERE account_connectors.status IN ('disconnected','needs_reconnect')`,
+          ).bind(
+            randomToken(),
+            session.account.account_id,
+            dep,
+            encrypted,
+            JSON.stringify(access.repositories),
+            access.login,
+            session.tokenHash,
+            browserHash,
+            Date.now() + TTL,
+            now,
+            now,
+            session.tokenHash,
+            Date.now(),
+            hash,
+            Date.now(),
+          ),
+        ])
+      )[1];
       if (inserted.meta.changes !== 1) throw Error("Connection already exists");
       return new Response(null, {
         status: 303,
@@ -289,28 +298,46 @@ export function connectorLifecycle(adapter: ConnectorAdapter) {
     if (path === base && request.method === "DELETE") {
       const row = await own(env, session.account);
       if (row) {
-        await env.DB.batch([
+        const cleanupId = randomToken();
+        const removed = await env.DB.batch([
           env.DB.prepare(
-            "UPDATE account_connectors SET status='disconnected',credential=NULL,repositories='[]',credential_version=credential_version+1,refresh_lease=NULL,refresh_expires_at=NULL,revocation_pending=CASE WHEN credential IS NULL THEN revocation_pending ELSE 1 END WHERE id=?",
-          ).bind(row.id),
+            "INSERT INTO connector_cleanup_obligations(id,account_id,provider,deployment,created_at) SELECT ?,account_id,provider,deployment,? FROM account_connectors WHERE id=? AND credential_version=? AND revocation_pending=1",
+          ).bind(randomToken(), Date.now(), row.id, row.credential_version),
           env.DB.prepare(
-            "UPDATE github_import_jobs SET status='cancelled',lease_token=NULL,lease_expires_at=NULL WHERE connection_id=? AND status!='expired'",
-          ).bind(row.id),
+            "INSERT INTO connector_cleanup_obligations(id,account_id,provider,deployment,created_at) SELECT ?,account_id,provider,deployment,? FROM account_connectors WHERE id=? AND credential_version=? AND credential IS NOT NULL",
+          ).bind(cleanupId, Date.now(), row.id, row.credential_version),
           env.DB.prepare(
-            `DELETE FROM connector_oauth_states WHERE account_id=? AND provider='${adapter.provider}'`,
-          ).bind(session.account.account_id),
+            "UPDATE account_connectors SET status='disconnected',credential=NULL,repositories='[]',credential_version=credential_version+1,refresh_lease=NULL,refresh_expires_at=NULL,revocation_pending=0 WHERE id=? AND credential_version=?",
+          ).bind(row.id, row.credential_version),
+          env.DB.prepare(
+            "UPDATE github_import_jobs SET status='cancelled',lease_token=NULL,lease_expires_at=NULL WHERE connection_id=? AND credential_version<=? AND status!='expired' AND EXISTS(SELECT 1 FROM account_connectors WHERE id=? AND credential_version=? AND status='disconnected')",
+          ).bind(
+            row.id,
+            row.credential_version,
+            row.id,
+            row.credential_version + 1,
+          ),
+          env.DB.prepare(
+            `DELETE FROM connector_oauth_states WHERE account_id=? AND provider='${adapter.provider}' AND EXISTS(SELECT 1 FROM account_connectors WHERE id=? AND credential_version=? AND status='disconnected')`,
+          ).bind(
+            session.account.account_id,
+            row.id,
+            row.credential_version + 1,
+          ),
         ]);
+        if (removed[2].meta.changes !== 1)
+          return json({ error: "Connection changed. Retry disconnect." }, 409);
         const jobs = await env.DB.prepare(
-          "SELECT draft_key FROM github_import_jobs WHERE connection_id=? AND draft_key IS NOT NULL",
+          "SELECT draft_key FROM github_import_jobs WHERE connection_id=? AND credential_version<=? AND draft_key IS NOT NULL",
         )
-          .bind(row.id)
+          .bind(row.id, row.credential_version)
           .all<{ draft_key: string }>();
         for (const j of jobs.results)
           await env.COLLECTION_STORE.delete(j.draft_key);
         await env.DB.prepare(
-          "UPDATE github_import_jobs SET draft_key=NULL WHERE connection_id=?",
+          "UPDATE github_import_jobs SET draft_key=NULL WHERE connection_id=? AND credential_version<=?",
         )
-          .bind(row.id)
+          .bind(row.id, row.credential_version)
           .run();
         if (row.credential && adapter.configured(env))
           try {
@@ -320,15 +347,17 @@ export function connectorLifecycle(adapter: ConnectorAdapter) {
               adapter.provider,
               row.credential,
             );
-            if (!(await trackedRevoke(env, row.account_id, token.access)))
-              throw Error("Cleanup unconfirmed");
-            await env.DB.prepare(
-              "UPDATE account_connectors SET revocation_pending=0 WHERE id=? AND credential_version=?",
+            if (
+              !(await trackedRevoke(
+                env,
+                row.account_id,
+                token.access,
+                cleanupId,
+              ))
             )
-              .bind(row.id, row.credential_version + 1)
-              .run();
+              throw Error("Cleanup unconfirmed");
           } catch {
-            /* Local revocation succeeds even if GitHub is unavailable. */
+            /* The pre-created obligation survives unavailable remote cleanup. */
           }
       } else
         await env.DB.prepare(
@@ -417,11 +446,14 @@ export function connectorLifecycle(adapter: ConnectorAdapter) {
     }
   }
   async function reconnect(env: Env, row: Connector) {
-    await env.DB.prepare(
-      "UPDATE account_connectors SET status='needs_reconnect',credential=NULL,credential_version=credential_version+1,refresh_lease=NULL,refresh_expires_at=NULL,revocation_pending=1 WHERE id=? AND credential_version=? AND status='connected'",
-    )
-      .bind(row.id, row.credential_version)
-      .run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO connector_cleanup_obligations(id,account_id,provider,deployment,created_at) SELECT ?,account_id,provider,deployment,? FROM account_connectors WHERE id=? AND credential_version=? AND status='connected' AND (credential IS NOT NULL OR revocation_pending=1)",
+      ).bind(randomToken(), Date.now(), row.id, row.credential_version),
+      env.DB.prepare(
+        "UPDATE account_connectors SET status='needs_reconnect',credential=NULL,credential_version=credential_version+1,refresh_lease=NULL,refresh_expires_at=NULL,revocation_pending=0 WHERE id=? AND credential_version=? AND status='connected'",
+      ).bind(row.id, row.credential_version),
+    ]);
   }
   async function importConnection(
     env: Env,

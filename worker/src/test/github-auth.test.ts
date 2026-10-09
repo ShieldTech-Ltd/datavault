@@ -4,6 +4,24 @@ import { sqliteD1 } from './sqlite-d1';
 import { digest } from '../lib/account-session';
 import type { Env } from '../lib/types';
 import {githubCredentialHeader} from '../lib/github-connector';
+import {githubCredentialRejected} from '../lib/github-connector';
+it.each(['reconnect','missing-config','decrypt','r2','legacy'])('retains GitHub cleanup after %s and replacement',async(mode)=>{
+  const id=await connected();
+  if(mode==='reconnect')await githubCredentialRejected(env,id,1);
+  else if(mode==='legacy')await env.DB.prepare("UPDATE account_connectors SET status='needs_reconnect',credential=NULL,revocation_pending=1").run();
+  else{
+    if(mode==='missing-config')env.GITHUB_CLIENT_SECRET=undefined;
+    if(mode==='decrypt')await env.DB.prepare("UPDATE account_connectors SET credential='unreadable'").run();
+    if(mode==='r2'){
+      await env.DB.prepare("INSERT INTO github_import_jobs(id,account_id,repository,ref,paths,status,idempotency_key,created_at,expires_at,connection_id,credential_version,draft_key) VALUES('job','a1','owner/repo','main','[]','review_ready','key',1,9999999999999,?,1,'private-draft')").bind(id).run();
+      env.COLLECTION_STORE={delete:async()=>{throw Error('Storage unavailable');}} as any;
+    }
+    expect((await request('','DELETE',{})).status).toBe(mode==='r2'?500:200);
+  }
+  configure();const replacement=await start();expect((await callback(replacement.state,replacement.cookie)).status).toBe(303);
+  expect(await (await request()).json()).toMatchObject({status:'pending',revocationPending:true});
+  expect(store.sqlite.prepare('SELECT * FROM connector_cleanup_obligations').all()).toHaveLength(1);
+});
 it('fences existing GitHub credentials when provider configuration is removed',async()=>{
   const id=await connected();env.GITHUB_CLIENT_SECRET=undefined;
   await expect(githubCredentialHeader(env,id,'a1',1)).rejects.toThrow();
@@ -507,8 +525,10 @@ it('rejects pending, expired confirmation and callback parameter tampering witho
       )
       .all()
   ).toEqual([
-    { credential: null, status: 'disconnected', revocation_pending: 1 },
+    { credential: null, status: 'disconnected', revocation_pending: 0 },
   ]);
+  expect(store.sqlite.prepare('SELECT * FROM connector_cleanup_obligations').all()).toHaveLength(1);
+  expect(await (await request()).json()).toMatchObject({revocationPending:true});
 });
 it('refuses changed write permissions before a new private import', async () => {
   bucket();

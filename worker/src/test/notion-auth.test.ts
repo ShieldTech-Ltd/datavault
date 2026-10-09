@@ -378,4 +378,122 @@ it("requires reconnect when the documented nullable refresh token is absent", as
   expect(await (await request()).json()).toMatchObject({
     status: "needs_reconnect",
   });
+  const replacement = await begin();
+  expect((await callback(replacement.state, replacement.cookie)).status).toBe(
+    303,
+  );
+  expect(await (await request()).json()).toMatchObject({
+    status: "pending",
+    revocationPending: true,
+  });
+  expect(
+    store.sqlite.prepare("SELECT * FROM connector_cleanup_obligations").all(),
+  ).toHaveLength(1);
+});
+it.each(["missing-config", "decrypt", "r2"])(
+  "retains Notion cleanup after %s disconnect and replacement",
+  async (mode) => {
+    await connected();
+    if (mode === "missing-config") env.NOTION_CLIENT_SECRET = undefined;
+    if (mode === "decrypt")
+      await env.DB.prepare(
+        "UPDATE account_connectors SET credential='unreadable'",
+      ).run();
+    if (mode === "r2") {
+      const row = store.sqlite
+        .prepare("SELECT id FROM account_connectors")
+        .all()[0];
+      await env.DB.prepare(
+        "INSERT INTO github_import_jobs(id,account_id,repository,ref,paths,status,idempotency_key,created_at,expires_at,connection_id,credential_version,draft_key,provider) VALUES('job','a1','notion','selected','[]','review_ready','key',1,9999999999999,?,1,'private-draft','notion')",
+      )
+        .bind(row.id)
+        .run();
+      env.COLLECTION_STORE = {
+        delete: async () => {
+          throw Error("Storage unavailable");
+        },
+      } as any;
+    }
+    const response = await request("", "DELETE", {});
+    expect(response.status).toBe(mode === "r2" ? 500 : 200);
+    expect(
+      store.sqlite.prepare("SELECT credential FROM account_connectors").all()[0]
+        .credential,
+    ).toBeNull();
+    configure();
+    vi.mocked(fetch).mockImplementation(provider);
+    const replacement = await begin();
+    expect((await callback(replacement.state, replacement.cookie)).status).toBe(
+      303,
+    );
+    expect(await (await request()).json()).toMatchObject({
+      status: "pending",
+      revocationPending: true,
+    });
+    expect(
+      store.sqlite.prepare("SELECT * FROM connector_cleanup_obligations").all(),
+    ).toHaveLength(1);
+  },
+);
+it("adopts legacy bit-only Notion cleanup before replacement", async () => {
+  await connected();
+  await env.DB.prepare(
+    "UPDATE account_connectors SET status='needs_reconnect',credential=NULL,revocation_pending=1",
+  ).run();
+  expect(
+    store.sqlite.prepare("SELECT * FROM connector_cleanup_obligations").all(),
+  ).toHaveLength(0);
+  const replacement = await begin();
+  expect((await callback(replacement.state, replacement.cookie)).status).toBe(
+    303,
+  );
+  expect(await (await request()).json()).toMatchObject({
+    status: "pending",
+    revocationPending: true,
+  });
+  expect(
+    store.sqlite.prepare("SELECT * FROM connector_cleanup_obligations").all(),
+  ).toHaveLength(1);
+});
+it("does not lose a Notion credential when its cleanup obligation cannot be persisted", async () => {
+  await connected();
+  store.migrate(
+    "CREATE TRIGGER deny_cleanup BEFORE INSERT ON connector_cleanup_obligations BEGIN SELECT RAISE(ABORT,'fixture cleanup failure'); END;",
+  );
+  expect((await request("", "DELETE", {})).status).toBe(500);
+  const row = store.sqlite.prepare("SELECT * FROM account_connectors").all()[0];
+  expect(row.status).toBe("connected");
+  expect(row.credential).toBeTruthy();
+  expect(
+    store.sqlite.prepare("SELECT * FROM connector_cleanup_obligations").all(),
+  ).toHaveLength(0);
+});
+it("clears only successful old-token cleanup without creating a phantom legacy obligation", async () => {
+  await connected();
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    if (String(url).endsWith("/revoke")) {
+      const replacement = await begin();
+      expect(
+        (await callback(replacement.state, replacement.cookie)).status,
+      ).toBe(303);
+      return new Response(JSON.stringify({ request_id: "fixture" }));
+    }
+    if (String(url).endsWith("/token"))
+      return new Response(
+        JSON.stringify({
+          ...token,
+          access_token: "ntn_replacement",
+          refresh_token: "ntn_replacement_refresh",
+        }),
+      );
+    return provider(url, init);
+  });
+  expect((await request("", "DELETE", {})).status).toBe(200);
+  expect(await (await request()).json()).toMatchObject({
+    status: "pending",
+    revocationPending: false,
+  });
+  expect(
+    store.sqlite.prepare("SELECT * FROM connector_cleanup_obligations").all(),
+  ).toHaveLength(0);
 });
