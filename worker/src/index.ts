@@ -98,8 +98,8 @@ export default {
         } else if (path === "/api/account" || path.startsWith("/api/account/") || path.startsWith("/api/auth/")) {
           res = await handleAccountRoute(request, env);
         } else if (method === "GET" && path === "/api/marketplace/analytics") {
-          res = await handleMarketplaceAnalytics(env);
-        } else if (method === "GET" && path === "/api/owner/analytics") {
+          res = await handleMarketplaceAnalytics(env, request);
+        } else if (method === "GET" && ["/api/owner/analytics", "/api/owner/analytics/export"].includes(path)) {
           res = await handleOwnerAnalytics(request, env);
         } else if (method === "GET" && path === "/api/owner/collections") {
           res = await handleOwnerCollections(request, env);

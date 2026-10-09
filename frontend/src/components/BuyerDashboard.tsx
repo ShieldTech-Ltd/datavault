@@ -7,6 +7,7 @@ import { verifyAnswerAnchor } from "@/lib/provenance";
 import type { Collection } from '../production/api';
 import { ArrowRight, ChatCircleText, ShieldCheck, Copy, ShareNetwork, CheckCircle } from '../production/icons';
 import PaymentProgress from '../production/PaymentProgress';
+import { SaveQuestion, savedQuestionMayFill } from '../production/SavedItems';
 import {
   buyerHistoryMessage,
   executionMessage,
@@ -145,12 +146,14 @@ async function sha256Hex(value: string): Promise<string> {
 }
 
 export default function BuyerDashboard({
+  selectedQuestion,
   selectedCollection,
   selectedRequest,
   dashboard = false,
   collections,
   onSettled,
 }: {
+  selectedQuestion?: {id:number;collectionId:string;question:string;version:number}|null;
   selectedCollection?: string | null;
   selectedRequest?: string | null;
   dashboard?: boolean;
@@ -202,6 +205,7 @@ export default function BuyerDashboard({
   useEffect(() => {
     if (selectedCollection) changeCollection(selectedCollection);
   }, [selectedCollection]);
+  useEffect(()=>{if(selectedQuestion){if(!savedQuestionMayFill(step)){setMessage('Finish or recover the current paid request before using another saved question.');return;}changeCollection(selectedQuestion.collectionId);setQuestion(selectedQuestion.question);setAnswer(null);setCurrent(null);setRefundAt(null);setMessage('Saved question filled. Review the live quote before paying.');}},[selectedQuestion?.id,selectedQuestion?.question,selectedQuestion?.version]);
   useEffect(() => {
     if (dashboard && !collectionId && collections?.length) changeCollection(collections.find(item => item.queryAvailable)?.collectionId ?? collections[0].collectionId);
   }, [dashboard, collections, collectionId]);
@@ -741,6 +745,7 @@ export default function BuyerDashboard({
             <span>Up to 500 characters</span>
             <span>Selected passages are sent to the model provider</span>
           </div>
+          <SaveQuestion collectionId={collectionId} question={question}/>
           <button
             type="submit"
             disabled={busy || !CONTRACT_ADDRESS}
