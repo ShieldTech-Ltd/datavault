@@ -280,7 +280,8 @@ export async function fetchWebsitePages(
   let totalBytes = 0;
   for (const url of urls) {
     if (!(await active())) throw Error("inactive");
-    const controller = new AbortController(),
+    const deadline = Date.now() + 10000,
+      controller = new AbortController(),
       timer = setTimeout(() => controller.abort(), 10000);
     try {
       const host = new URL(url).hostname,
@@ -326,10 +327,15 @@ export async function fetchWebsitePages(
       parts.push(urls.length > 1 ? "## " + url + "\n\n" + text : text);
       if (encoder.encode(parts.join("\n\n")).byteLength > 500000)
         throw Error("size");
+      const fetchedAt = new Date().toISOString(),
+        contentDigest = await digest(source);
+      // Hashing is asynchronous and parsing can delay the abort timer.
+      if (controller.signal.aborted || Date.now() >= deadline)
+        throw Error("timeout");
       provenance.push({
         url,
-        fetchedAt: new Date().toISOString(),
-        contentDigest: await digest(source),
+        fetchedAt,
+        contentDigest,
       });
     } finally {
       clearTimeout(timer);
