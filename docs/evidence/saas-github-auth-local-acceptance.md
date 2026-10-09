@@ -1,6 +1,6 @@
 ﻿# Private GitHub connections local acceptance
 
-Accepted locally on 9 October 2026 at feature `012ebb0` after independent task review and one scoped fix. Hosted CI is pending. The provider remains unconfigured; this is implementation and disabled-provider acceptance, not live OAuth or private-repository proof.
+Accepted locally on 9 October 2026 at feature `012ebb0` after independent task review and a scoped lifecycle fix. Hosted CI passed at test-fix head `6d73f60`. The provider remains unconfigured; this is implementation and disabled-provider acceptance, not live OAuth or private-repository proof.
 
 ## Implementation and covering evidence
 
@@ -27,3 +27,11 @@ Actual final 390px viewport had client/scroll width 386. Connector panel bounds 
 Apply both migrations before enabling this feature. Follow [provider setup](../github-authorization.md) for actual HTTPS origin, read-only selected-repository app configuration and private secrets. Actual installation, consent, private fixture import, live refresh and remote revocation remain separate authorized acceptance gates.
 
 Deferred minor guidance: normal refresh invalidates older private drafts under the required version fence; users need an explicit fresh-import explanation. API publicOnly metadata/source copy and the pending confirmation deadline need consistency work. Existing large frontend bundle remains a final release optimization item. Final cross-feature and public-network acceptance are still pending.
+
+## Exact-head hosted follow-up
+
+PR #62 remains a draft stacked on PR #61. Initial head `7a607c1` had one five-second quota integration timeout in CI, with 282 other Worker tests passing. Test-only fix `6d73f60` seeds real SQLite near the boundary and verifies actual Worker PATCH admission 19, DELETE admission 20, next DELETE denial and persisted count 20. Independent scoped review approved it without production or timeout changes. The clock is not frozen; Retry-After is the limiter's constant 60 seconds.
+
+Focused default-timeout reproduction failed before the fix and passed afterward. A full default Windows run on the 16-CPU Node25.6 host passed the revised test but had 19 other SQLite subprocess-contention timeouts, with 264 passing and one skipped. This does not establish default Windows suite success.
+
+All eight hosted checks passed at exact head `6d73f60dd5cfd5106f3e916eee0925cf88f04804`. CI run `37971282833`, Worker job `113958257762`, passed 283 tests with one opt-in public-provider skip across 29 files. Frontend job `113958257690` passed 44 tests and production build after clean Linux installation. No PR was merged or provider enabled.
