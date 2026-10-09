@@ -7,7 +7,7 @@
 | Smart contracts | Hardhat unit tests | `npm run test:contracts` | None |
 | Worker lib | Vitest unit tests | `cd worker && npm test` | None |
 | Worker routes | Vitest mock route tests | `cd worker && npm test` | None |
-| Frontend | TypeScript typecheck + Vite build | `cd frontend && npm run typecheck && npm run build` | None |
+| Frontend | TypeScript, route tests, and Vite build | `cd frontend && npm run typecheck && npm test && npm run build` | None |
 | Live integration | Manual / browser | Not in PR CI | Monad testnet gas, model API |
 
 Live chain and model calls are never made in PR CI. The PR test suite uses in-memory mocks; the separate local rehearsal below exercises running services.
@@ -29,25 +29,26 @@ Remove the temporary `.dev.vars`, optional `.env.local`, and certificate directo
 ## Running tests locally
 
 ```bash
-# Smart contract tests (Hardhat, 21 tests)
+# Smart contract tests (Hardhat)
 npm run test:contracts
 
 # Worker unit + route tests (Vitest)
 cd worker
 npm test
 
-# Frontend typecheck and build
+# Frontend typecheck, route tests, and build
 cd frontend
 npm run typecheck
+npm test
 npm run build
 ```
 
 ## CI checks (required on every PR)
 
-All three jobs must pass before merge to `master`:
+All required CI and Security jobs must pass before merge to `master`:
 
-- **Contract tests**: compiles and runs all 20 Hardhat tests
-- **Frontend typecheck and build**: `tsc --noEmit` then `vite build`
+- **Contract tests**: compiles and runs the Hardhat tests
+- **Frontend typecheck and build**: `tsc --noEmit`, production route tests, then `vite build`
 - **Worker typecheck and tests**: `tsc --noEmit` then `vitest run`
 
 ## What the Worker tests cover

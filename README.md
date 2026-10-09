@@ -2,7 +2,7 @@
 
 Paid, controlled AI access to private knowledge collections.
 
-An owner uploads a private Markdown document, sets a per-query price, and registers policy on Monad testnet. A buyer signs a Monad transaction placing payment in escrow. The Cloudflare Worker verifies payment and current policy, retrieves relevant passages from private R2 storage, calls a real AI model, returns a cited answer, and settles escrow to the owner. The owner can pause access at any time.
+An owner uploads a private Markdown document, sets a per-query price, and registers policy on Monad testnet. A buyer signs a Monad transaction placing payment in escrow. The Cloudflare Worker verifies payment and current policy, retrieves relevant passages from private R2 storage, calls a real AI model, records a cited answer, settles escrow to the owner, and returns the answer after settlement confirmation. The owner can pause access at any time.
 
 **Hackathon:** Monad Metropolis  
 **Track:** Trust, Identity and AI Infrastructure  

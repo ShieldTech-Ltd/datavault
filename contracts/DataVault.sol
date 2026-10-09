@@ -22,7 +22,7 @@ pragma solidity ^0.8.24;
  * settlement (Worker's key) without sharing private keys.
  *
  * State machine per request:
- *   Open -> Settled  (answer delivered, payment released to owner)
+ *   Open -> Settled  (answer digest recorded, payment released to owner)
  *   Open -> Refunded (timeout elapsed, payment returned to buyer)
  */
 contract DataVault {
@@ -182,11 +182,13 @@ contract DataVault {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Operator: settle after successful answer delivery
+    // Operator: settle before releasing a recorded answer
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Called by the Worker (operator) after delivering a cited answer.
+     * Called by the Worker (operator) after recording a cited answer and
+     * before returning it to the buyer. The buyer can recover the answer
+     * after settlement if the Worker exits before delivery.
      * Only the registered operator may call this.
      * Payment is always released to the collection owner, never to the operator.
      */

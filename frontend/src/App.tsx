@@ -8,6 +8,9 @@ import OwnerInsights from "./components/OwnerInsights";
 import "./app.css";
 
 type View = "marketplace" | "collection";
+function viewForPath(path: string): View {
+  return path === "/manage" ? "collection" : "marketplace";
+}
 const NETWORK_LABEL =
   Number(import.meta.env.VITE_CHAIN_ID) === 31337
     ? "Local test chain"
@@ -15,7 +18,7 @@ const NETWORK_LABEL =
 
 export default function App() {
   const { primaryWallet } = useWallet();
-  const [view, setView] = useState<View>("marketplace");
+  const [view, setView] = useState<View>(() => viewForPath(window.location.pathname));
   const [selectedCollection, setSelectedCollection] = useState<string | null>(
     null
   );
@@ -29,8 +32,25 @@ export default function App() {
     setManagedCollection(null);
   }, [primaryWallet?.address]);
 
+  useEffect(() => {
+    function onPopState() {
+      setView(viewForPath(window.location.pathname));
+      if (window.location.pathname === "/query") {
+        window.setTimeout(() => document.getElementById("workspace")?.scrollIntoView(), 0);
+      }
+    }
+    window.addEventListener("popstate", onPopState);
+    onPopState();
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  function navigate(path: "/" | "/query" | "/manage") {
+    if (window.location.pathname !== path) window.history.pushState(null, "", path);
+    setView(viewForPath(path));
+  }
+
   function showCollection() {
-    setView("collection");
+    navigate("/manage");
     window.setTimeout(
       () =>
         document
@@ -41,7 +61,7 @@ export default function App() {
   }
 
   function showMarketplaceSection(id: string) {
-    setView("marketplace");
+    navigate(id === "workspace" ? "/query" : "/");
     window.setTimeout(
       () => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" }),
       0
@@ -60,7 +80,7 @@ export default function App() {
             <button
               type="button"
               className={view === "marketplace" ? "active" : ""}
-              onClick={() => setView("marketplace")}
+              onClick={() => navigate("/")}
             >
               Marketplace
             </button>
@@ -96,7 +116,7 @@ export default function App() {
             onSubmit={(event) => {
               event.preventDefault();
               setCollectionSearch(searchInput.trim());
-              setView("marketplace");
+              navigate("/");
               window.setTimeout(
                 () =>
                   document
@@ -151,7 +171,7 @@ export default function App() {
                     passages.
                   </p>
                   <div className="app-hero-actions">
-                    <a className="app-primary-link" href="#workspace">
+                    <a className="app-primary-link" href="#workspace" onClick={() => showMarketplaceSection("workspace")}>
                       Ask a paid query <span aria-hidden="true">&#8594;</span>
                     </a>
                     <button
@@ -209,6 +229,7 @@ export default function App() {
               search={collectionSearch}
               onSelect={(id) => {
                 setSelectedCollection(id);
+                navigate("/query");
                 document
                   .getElementById("workspace")
                   ?.scrollIntoView({ behavior: "smooth" });
