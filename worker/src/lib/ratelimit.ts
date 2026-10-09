@@ -21,7 +21,7 @@ export function routeRateBucket(method: string, path: string): string | null {
   if (method === "POST" && /^\/api\/collections\/[^/]+\/revisions$/.test(path)) return "account";
   if (method === "PATCH" && /^\/api\/collections\/[^/]+\/metadata$/.test(path)) return "account";
   if (method === "POST" && path.startsWith("/api/auth/")) return "auth";
-  if ((method === "POST" || method === "PATCH") && (path === "/api/account" || path.startsWith("/api/account/"))) return "account";
+  if (['POST','PATCH','DELETE'].includes(method) && (path === "/api/account" || path.startsWith("/api/account/"))) return "account";
   if (method === "GET" && (
     path === "/api/status" || path === "/api/health" || path === "/api/account/notifications" ||
     path === "/api/demo" ||

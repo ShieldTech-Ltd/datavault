@@ -1,5 +1,10 @@
 export interface NotificationWork { chainId: number; contractAddress: string; recipient: string }
 export interface Env {
+  GITHUB_APP_ID?: string;
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  CONNECTOR_ORIGIN?: string;
+  CONNECTOR_TOKEN_KEY?: string;
   DEVELOPER_RATE_LIMIT?: string;
   EMAIL?: WorkerEmailBindings['EMAIL'];
   EMAIL_FROM?: string;

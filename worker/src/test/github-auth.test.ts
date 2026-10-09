@@ -1,0 +1,571 @@
+import { beforeEach, afterEach, it, expect, vi } from 'vitest';
+import worker from '../index';
+import { sqliteD1 } from './sqlite-d1';
+import { digest } from '../lib/account-session';
+import type { Env } from '../lib/types';
+let store: ReturnType<typeof sqliteD1>, env: Env;
+const csrf = 'c'.repeat(64);
+const request = (
+  suffix = '',
+  method = 'GET',
+  body?: unknown,
+  owner = 1,
+  extraCookie = ''
+) =>
+  worker.fetch(
+    new Request(
+      'https://vault.example/api/account/connectors/github' + suffix,
+      {
+        method,
+        headers: {
+          Origin: 'https://vault.example',
+          Cookie: 'dv_session=' + String(owner).repeat(64) + '; ' + extraCookie,
+          'x-csrf-token': csrf,
+          'Content-Type': 'application/json',
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }
+    ),
+    env
+  );
+beforeEach(async () => {
+  store = sqliteD1();
+  env = {
+    DB: store.db,
+    CHAIN_ID: '10143',
+    CONTRACT_ADDRESS: '0x' + 'ab'.repeat(20),
+  } as Env;
+  for (let n = 1; n <= 2; n++) {
+    await env.DB.prepare(
+      'INSERT INTO accounts(account_id,address,chain_id,contract_address,created_at,updated_at) VALUES(?,?,?,?,1,1)'
+    )
+      .bind('a' + n, '0x' + String(n).repeat(40), 10143, env.CONTRACT_ADDRESS)
+      .run();
+    await env.DB.prepare(
+      'INSERT INTO account_sessions(token_hash,account_id,csrf_token,expires_at,created_at) VALUES(?,?,?,?,1)'
+    )
+      .bind(
+        await digest(String(n).repeat(64)),
+        'a' + n,
+        csrf,
+        Date.now() + 1000000
+      )
+      .run();
+  }
+  vi.stubGlobal('fetch', vi.fn());
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  store.close();
+});
+it('reports disabled connector and prevents authorization without complete configuration', async () => {
+  const r = await request();
+  expect(r.status).toBe(200);
+  expect(await r.json()).toMatchObject({
+    providerConfigured: false,
+    status: 'disconnected',
+  });
+  expect((await request('/connect', 'POST', {})).status).toBe(503);
+  expect(fetch).not.toHaveBeenCalled();
+});
+it('disconnect shares the real Worker account mutation quota', async () => {
+  for (let i = 0; i < 20; i++)
+    expect((await request('', 'DELETE', {})).status).toBe(200);
+  expect((await request('', 'DELETE', {})).status).toBe(429);
+});
+function configure() {
+  Object.assign(env, {
+    GITHUB_APP_ID: '123',
+    GITHUB_CLIENT_ID: 'Iv1.fixture',
+    GITHUB_CLIENT_SECRET: 'client-secret',
+    CONNECTOR_TOKEN_KEY: 'ab'.repeat(32),
+    CONNECTOR_ORIGIN: 'https://vault.example',
+  });
+}
+const tokenResponse = {
+  access_token: 'ghu_private-token',
+  token_type: 'bearer',
+  scope: '',
+  expires_in: 28800,
+  refresh_token: 'ghr_refresh-secret',
+  refresh_token_expires_in: 15897600,
+};
+const provider = async (url: any, init: any) => {
+  expect(init.redirect).toBe('manual');
+  const p = String(url);
+  return new Response(
+    JSON.stringify(
+      p.includes('/access_token')
+        ? tokenResponse
+        : p.includes('/token')
+        ? {
+            app: {
+              client_id: 'Iv1.fixture',
+              name: 'Vault Read',
+              url: 'https://example.test',
+            },
+          }
+        : p.includes('/apps/vault-read')
+        ? {
+            id: 123,
+            client_id: 'Iv1.fixture',
+            permissions: { contents: 'read', metadata: 'read' },
+          }
+        : p.includes('/repositories')
+        ? {
+            total_count: 1,
+            repositories: [{ id: 7, full_name: 'owner/private' }],
+          }
+        : p.includes('/user/installations')
+        ? {
+            total_count: 1,
+            installations: [
+              {
+                id: 9,
+                app_id: 123,
+                app_slug: 'vault-read',
+                repository_selection: 'selected',
+                permissions: { contents: 'read', metadata: 'read' },
+              },
+            ],
+          }
+        : { login: 'octocat', id: 42 }
+    )
+  );
+};
+async function start() {
+  configure();
+  vi.mocked(fetch).mockImplementation(provider);
+  const r = await request('/connect', 'POST', {});
+  expect(r.status).toBe(200);
+  const data = (await r.json()) as any;
+  const url = new URL(data.authorizeUrl);
+  expect(url.origin + url.pathname).toBe(
+    'https://github.com/login/oauth/authorize'
+  );
+  expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+  expect(url.searchParams.get('code_challenge')).toMatch(/^[\w-]{43}$/);
+  expect(url.searchParams.has('scope')).toBe(false);
+  return {
+    state: url.searchParams.get('state')!,
+    cookie: r.headers.get('set-cookie')!.split(';')[0],
+  };
+}
+const callback = (state: string, browser: string, owner = 1) =>
+  worker.fetch(
+    new Request(
+      'https://vault.example/api/connectors/github/callback?code=provider-code&state=' +
+        state,
+      {
+        headers: {
+          Cookie: 'dv_session=' + String(owner).repeat(64) + '; ' + browser,
+        },
+      }
+    ),
+    env
+  );
+it('binds PKCE authorization to browser and session, consumes once, encrypts credentials and requires explicit confirmation', async () => {
+  const s = await start();
+  expect((await callback(s.state, s.cookie, 2)).status).toBe(400);
+  expect(
+    (await callback(s.state, 'dv_connector_browser=' + 'f'.repeat(64))).status
+  ).toBe(400);
+  expect((await callback(s.state, s.cookie)).status).toBe(303);
+  expect((await callback(s.state, s.cookie)).status).toBe(400);
+  const pending = (await (await request()).json()) as any;
+  expect(pending.status).toBe('pending');
+  expect(pending.repositories).toEqual([]);
+  const raw = JSON.stringify(
+    store.sqlite.prepare('SELECT * FROM account_connectors').all()
+  );
+  expect(raw).not.toContain('ghu_private-token');
+  expect(raw).not.toContain('ghr_refresh-secret');
+  expect(raw).not.toContain('provider-code');
+  expect((await request('/confirm', 'POST', {}, 2, s.cookie)).status).toBe(409);
+  expect((await request('/confirm', 'POST', {}, 1, s.cookie)).status).toBe(200);
+  const current = (await (await request()).json()) as any;
+  expect(current.status).toBe('connected');
+  expect(current.repositories).toEqual([
+    { id: 7, name: 'owner/private', installationId: 9 },
+  ]);
+  expect(JSON.stringify(current)).not.toContain('ghu_');
+});
+it.each(['expired', 'deployment', 'session'])(
+  'rejects %s authorization state without contacting provider',
+  async (kind) => {
+    const s = await start();
+    vi.mocked(fetch).mockClear();
+    if (kind === 'expired')
+      await env.DB.prepare(
+        'UPDATE connector_oauth_states SET expires_at=1'
+      ).run();
+    if (kind === 'deployment') env.CONTRACT_ADDRESS = '0x' + 'cd'.repeat(20);
+    if (kind === 'session')
+      await env.DB.prepare(
+        "DELETE FROM account_sessions WHERE account_id='a1'"
+      ).run();
+    expect((await callback(s.state, s.cookie)).status).toBe(400);
+    expect(fetch).not.toHaveBeenCalled();
+  }
+);
+it.each(['wrong-app', 'write', 'all-repos', 'redirect'])(
+  'fails closed for %s provider authorization',
+  async (kind) => {
+    const s = await start();
+    vi.mocked(fetch).mockImplementation(async (url: any, init: any) => {
+      const r = await provider(url, init),
+        v = (await r.json()) as any;
+      if (kind === 'redirect')
+        return new Response(null, {
+          status: 302,
+          headers: { Location: 'https://evil.test' },
+        });
+      if (kind === 'wrong-app' && v.app) v.app.client_id = 'wrong-client';
+      if (kind === 'write' && v.permissions) v.permissions.contents = 'write';
+      if (kind === 'all-repos' && v.installations)
+        v.installations[0].repository_selection = 'all';
+      return new Response(JSON.stringify(v));
+    });
+    expect((await callback(s.state, s.cookie)).status).toBe(400);
+    expect(((await (await request()).json()) as any).status).toBe(
+      'disconnected'
+    );
+  }
+);
+import { openConnector, sealConnector } from '../lib/connector-security';
+it('authenticates encryption version, owner, provider and deployment', async () => {
+  configure();
+  const value = await sealConnector(env, 'a1', 'github', { token: 'secret' });
+  expect(await openConnector(env, 'a1', 'github', value)).toEqual({
+    token: 'secret',
+  });
+  for (const [account, provider] of [
+    ['a2', 'github'],
+    ['a1', 'notion'],
+  ])
+    await expect(
+      openConnector(env, account, provider, value)
+    ).rejects.toThrow();
+  await expect(
+    openConnector(env, 'a1', 'github', value.replace('v1.', 'v2.'))
+  ).rejects.toThrow();
+  env.CONTRACT_ADDRESS = '0x' + 'cd'.repeat(20);
+  await expect(openConnector(env, 'a1', 'github', value)).rejects.toThrow();
+});
+async function connected() {
+  const s = await start();
+  expect((await callback(s.state, s.cookie)).status).toBe(303);
+  expect((await request('/confirm', 'POST', {}, 1, s.cookie)).status).toBe(200);
+  return ((await (await request()).json()) as any).id as string;
+}
+const objects = new Map<string, string>();
+function bucket() {
+  objects.clear();
+  env.COLLECTION_STORE = {
+    put: async (k: string, v: string) => objects.set(k, v),
+    get: async (k: string) =>
+      objects.has(k) ? { text: async () => objects.get(k) } : null,
+    delete: async (k: string) => objects.delete(k),
+  } as any;
+}
+const importRequest = (connectionId: string, owner = 1) =>
+  worker.fetch(
+    new Request('https://vault.example/api/account/imports/github', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://vault.example',
+        Cookie: 'dv_session=' + String(owner).repeat(64),
+        'x-csrf-token': csrf,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        connectionId,
+        repository: 'owner/private',
+        ref: 'main',
+        paths: ['README.md'],
+      }),
+    }),
+    env
+  );
+function importProvider() {
+  vi.mocked(fetch).mockImplementation(async (url: any, init: any) => {
+    if (String(url).includes('/repos/')) {
+      expect(init.headers.Authorization).toMatch(/^Bearer ghu_/);
+      return new Response(
+        JSON.stringify(
+          String(url).includes('/commits/')
+            ? { sha: 'a'.repeat(40) }
+            : {
+                type: 'file',
+                path: 'README.md',
+                encoding: 'base64',
+                content: btoa('private text'),
+                size: 12,
+              }
+        )
+      );
+    }
+    return provider(url, init);
+  });
+}
+it('private imports require own confirmed selected connection and are fenced by disconnect', async () => {
+  bucket();
+  const id = await connected();
+  importProvider();
+  expect((await importRequest(id, 2)).status).toBe(403);
+  const r = await importRequest(id);
+  expect(r.status).toBe(201);
+  const job = (await r.json()) as any;
+  expect(job.status).toBe('review_ready');
+  expect(JSON.stringify(job)).not.toContain('private text');
+  expect(objects.size).toBe(1);
+  expect((await request('', 'DELETE', {})).status).toBe(200);
+  expect(objects.size).toBe(0);
+  expect(
+    store.sqlite.prepare('SELECT status FROM github_import_jobs').all()
+  ).toEqual([{ status: 'cancelled' }]);
+  expect((await importRequest(id)).status).toBe(403);
+});
+it('rotates expired credentials under an exclusive lease and preserves fenced imports', async () => {
+  bucket();
+  const id = await connected();
+  const row = store.sqlite
+    .prepare('SELECT * FROM account_connectors')
+    .all()[0] as any;
+  const token = await openConnector<any>(env, 'a1', 'github', row.credential);
+  token.expires = 1;
+  await env.DB.prepare('UPDATE account_connectors SET credential=?')
+    .bind(await sealConnector(env, 'a1', 'github', token))
+    .run();
+  let release!: (r: Response) => void;
+  importProvider();
+  const prior = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation((url: any, init: any) =>
+    String(url).includes('/access_token')
+      ? new Promise((r) => {
+          release = r;
+        })
+      : prior(url, init)
+  );
+  const pending = importRequest(id);
+  await vi.waitFor(
+    () =>
+      expect(
+        release,
+        'refresh request reached the controlled response barrier'
+      ).toBeTypeOf('function'),
+    { timeout: 5000, interval: 10 }
+  );
+  expect((await importRequest(id)).status).toBe(409);
+  release(
+    new Response(
+      JSON.stringify({
+        ...tokenResponse,
+        access_token: 'ghu_rotated',
+        refresh_token: 'ghr_rotated',
+      })
+    )
+  );
+  const r = await pending;
+  expect(r.status).toBe(201);
+  expect(((await r.json()) as any).status).toBe('review_ready');
+  const refreshed = store.sqlite
+    .prepare('SELECT * FROM account_connectors')
+    .all()[0] as any;
+  expect(refreshed.credential_version).toBe(2);
+  expect(
+    (await openConnector<any>(env, 'a1', 'github', refreshed.credential))
+      .refresh
+  ).toBe('ghr_rotated');
+});
+it('does not restore capability when disconnect wins the provider exchange race', async () => {
+  bucket();
+  const s = await start();
+  let release!: (r: Response) => void;
+  vi.mocked(fetch).mockImplementation((url: any, init: any) =>
+    String(url).includes('/access_token')
+      ? new Promise((r) => {
+          release = r;
+        })
+      : provider(url, init)
+  );
+  const pending = callback(s.state, s.cookie);
+  await vi.waitFor(
+    () =>
+      expect(
+        release,
+        'provider request reached the controlled response barrier'
+      ).toBeTypeOf('function'),
+    { timeout: 5000, interval: 10 }
+  );
+  await request('', 'DELETE', {});
+  release(new Response(JSON.stringify(tokenResponse)));
+  expect((await pending).status).toBe(400);
+  expect(((await (await request()).json()) as any).status).toBe('disconnected');
+});
+it('accepts the documented token-check shape without invented app id or slug fields', async () => {
+  const s = await start();
+  vi.mocked(fetch).mockImplementation(async (url: any, init: any) => {
+    const r = await provider(url, init),
+      v = (await r.json()) as any;
+    if (v.app)
+      v.app = {
+        client_id: 'Iv1.fixture',
+        name: 'Vault Read',
+        url: 'https://example.test',
+      };
+    if (v.installations) v.installations[0].app_slug = 'vault-read';
+    return new Response(JSON.stringify(v));
+  });
+  expect((await callback(s.state, s.cookie)).status).toBe(303);
+});
+it('rejects pending, expired confirmation and callback parameter tampering without secret exports', async () => {
+  const s = await start();
+  const tampered = await worker.fetch(
+    new Request(
+      'https://vault.example/api/connectors/github/callback?code=provider-code&state=' +
+        s.state +
+        '&redirect_uri=https://evil.test',
+      { headers: { Cookie: 'dv_session=' + '1'.repeat(64) + '; ' + s.cookie } }
+    ),
+    env
+  );
+  expect(tampered.status).toBe(400);
+  expect((await callback(s.state, s.cookie)).status).toBe(303);
+  const row = store.sqlite
+    .prepare('SELECT * FROM account_connectors')
+    .all()[0] as any;
+  expect((await importRequest(row.id)).status).toBe(403);
+  await env.DB.prepare(
+    'UPDATE account_connectors SET pending_expires_at=1'
+  ).run();
+  expect((await request('/confirm', 'POST', {}, 1, s.cookie)).status).toBe(409);
+  expect(
+    store.sqlite
+      .prepare(
+        'SELECT credential,status,revocation_pending FROM account_connectors'
+      )
+      .all()
+  ).toEqual([
+    { credential: null, status: 'disconnected', revocation_pending: 1 },
+  ]);
+});
+it('refuses changed write permissions before a new private import', async () => {
+  bucket();
+  const id = await connected();
+  importProvider();
+  const previous = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (url: any, init: any) => {
+    const response = await previous(url, init);
+    if (String(url).includes('/apps/vault-read')) {
+      const v = (await response.json()) as any;
+      v.permissions.contents = 'write';
+      return new Response(JSON.stringify(v));
+    }
+    return response;
+  });
+  expect((await importRequest(id)).status).toBe(403);
+  expect(objects.size).toBe(0);
+});
+it('revoked token fails safely without falling back to operator credentials', async () => {
+  bucket();
+  const id = await connected();
+  (env as any).GITHUB_TOKEN = 'operator-private-pat';
+  vi.mocked(fetch).mockImplementation(async (_url: any, init: any) => {
+    expect(JSON.stringify(init)).not.toContain('operator-private-pat');
+    return new Response('private error ghu_secret', { status: 401 });
+  });
+  const r = await importRequest(id);
+  expect(r.status).toBe(403);
+  expect(await r.text()).not.toContain('ghu_secret');
+  expect(((await (await request()).json()) as any).status).toBe(
+    'needs_reconnect'
+  );
+  expect(objects.size).toBe(0);
+});
+it('disconnect fences an inflight private content request and reports remote revocation failure', async () => {
+  bucket();
+  const id = await connected();
+  importProvider();
+  const previous = vi.mocked(fetch).getMockImplementation()!;
+  let release!: (r: Response) => void;
+  vi.mocked(fetch).mockImplementation((url: any, init: any) =>
+    String(url).includes('/contents/')
+      ? new Promise((r) => {
+          release = r;
+        })
+      : init.method === 'DELETE'
+      ? Promise.resolve(new Response('secret', { status: 503 }))
+      : previous(url, init)
+  );
+  const pending = importRequest(id);
+  await vi.waitFor(
+    () =>
+      expect(
+        release,
+        'provider request reached the controlled response barrier'
+      ).toBeTypeOf('function'),
+    { timeout: 5000, interval: 10 }
+  );
+  const r = await request('', 'DELETE', {});
+  expect(await r.json()).toMatchObject({
+    status: 'disconnected',
+    revocationPending: true,
+  });
+  release(
+    new Response(
+      JSON.stringify({
+        type: 'file',
+        path: 'README.md',
+        encoding: 'base64',
+        content: btoa('private text'),
+        size: 12,
+      })
+    )
+  );
+  await pending;
+  expect(objects.size).toBe(0);
+  expect(
+    store.sqlite.prepare('SELECT status FROM github_import_jobs').all()
+  ).toEqual([{ status: 'cancelled' }]);
+});
+it('keeps existing public idempotency keys compatible after migration', async () => {
+  bucket();
+  const key = await digest(
+    JSON.stringify({
+      repository: 'owner/private',
+      ref: 'main',
+      paths: ['README.md'],
+    })
+  );
+  await env.DB.prepare(
+    "INSERT INTO github_import_jobs(id,account_id,repository,ref,paths,status,idempotency_key,created_at,expires_at) VALUES(?,'a1','owner/private','main','[\"README.md\"]','review_ready',?,?,?)"
+  )
+    .bind('a'.repeat(64), key, Date.now(), Date.now() + 60000)
+    .run();
+  const r = await worker.fetch(
+    new Request('https://vault.example/api/account/imports/github', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://vault.example',
+        Cookie: 'dv_session=' + '1'.repeat(64),
+        'x-csrf-token': csrf,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        repository: 'owner/private',
+        ref: 'main',
+        paths: ['README.md'],
+      }),
+    }),
+    env
+  );
+  expect(r.status).toBe(200);
+  expect(((await r.json()) as any).id).toBe('a'.repeat(64));
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it('bounds disconnect bodies in the actual Worker before parsing JSON',async()=>{
+ const r=await worker.fetch(new Request('https://vault.example/api/account/connectors/github',{method:'DELETE',headers:{Origin:'https://vault.example',Cookie:'dv_session='+'1'.repeat(64),'x-csrf-token':csrf,'Content-Type':'application/json'},body:JSON.stringify({padding:'x'.repeat(9000)})}),env);
+ expect(r.status).toBe(413);
+});
