@@ -8,6 +8,7 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 - Worker stages a signed owner upload, confirms registration against the on-chain owner and matching transaction receipt, and stores content privately in R2 with D1 metadata.
 - Paid query execution checks runtime configuration, current on-chain policy and operator, escrow, buyer signature, opening transaction receipt, and request ID claim before R2 retrieval or model use.
 - Model calls use selected passages and validate versioned citation IDs. Answer text is stored in D1, but returned only after settlement confirmation. Public receipts exclude answer and source text.
+- When model context is trimmed, citation validation uses only passages actually sent to the model. An answer cannot cite a passage excluded by the context bound.
 - Expired no-answer claims can be retried against the same escrow. Signed reconciliation can settle an already stored answer after a Worker exit. D1 lease tokens fence competing Workers.
 - Buyer UI has a guided sample entry when a real confirmed sample ID is configured, wallet payment, settlement status, signed recovery, and on-chain refund action. Owner UI supports registration and pause or resume.
 - Owner registration now records a pending transaction for resuming Worker confirmation after a browser interruption. A manual ID and transaction fallback covers lost browser storage. Confirmation retries must match the recorded owner and transaction and cannot overwrite a confirmed D1 row.
@@ -26,7 +27,7 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 - `npm run test:contracts`: 21 passing on 8 October.
 - `npm run typecheck` in Worker: passed.
 - `npm run typecheck` in frontend: passed.
-- `npm test --prefix worker`: 138 passing on 9 October, including sample-guide passage retrieval, registration confirmation retry checks, bounded public quote handling, and rejection of a recovery signature for another contract.
+- `npm test --prefix worker`: 139 passing on 9 October, including sample-guide passage retrieval, registration confirmation retry checks, bounded public quote handling, rejection of a recovery signature for another contract, and rejection of citations to trimmed passages.
 - `python3 scripts/verify-sql-invariants.py`: passed on 9 October, including deployment-scoped query lookup, after explicitly closing SQLite connections for Windows cleanup compatibility. Windows rerun remains pending.
 - `npm run rehearse:local`: passed again on 9 October at `9418c4d` after deployment-bound recovery signatures, using a local Hardhat chain, Wrangler D1 and R2, and HTTPS model stub. It covered registration, escrow, cited answer, owner payout, two Worker-failure recovery paths, wrong-buyer denial, buyer and owner reads, pause, and timeout refund. The throwaway local credentials and certificate were removed afterward.
 - `python3 scripts/check-secrets.py`: passed on the current tracked tree.

@@ -69,12 +69,14 @@ export async function callModel(
   const model   = env.MODEL_NAME   ?? "gpt-4o-mini";
 
   // Build context, truncating total if needed
-  let contextBlocks = passages.map((p, i) => buildPassageBlock(passageIds[i], p));
+  const includedPassages = passages.map((text, i) => ({ id: passageIds[i], text }));
+  let contextBlocks = includedPassages.map((passage) => buildPassageBlock(passage.id, passage.text));
   let contextText   = contextBlocks.join("\n\n");
   if (contextText.length > MAX_CONTEXT_TOKENS_APPROX * 4) {
     // Trim passages from the end until we fit
     while (contextBlocks.length > 1 && contextText.length > MAX_CONTEXT_TOKENS_APPROX * 4) {
       contextBlocks.pop();
+      includedPassages.pop();
       contextText = contextBlocks.join("\n\n");
     }
   }
@@ -123,11 +125,11 @@ export async function callModel(
 
   // Resolve numeric references to IDs
   const resolvedFromNumeric: string[] = numericRefs
-    .filter((i) => i >= 0 && i < passageIds.length)
-    .map((i) => passageIds[i]);
+    .filter((i) => i >= 0 && i < includedPassages.length)
+    .map((i) => includedPassages[i].id);
 
   // Any citation that is out of range is an invalid reference
-  const outOfRange = numericRefs.filter((i) => i < 0 || i >= passageIds.length);
+  const outOfRange = numericRefs.filter((i) => i < 0 || i >= includedPassages.length);
   if (outOfRange.length > 0) {
     throw new Error(
       `Model cited out-of-range passage indices: ${outOfRange.map((i) => i + 1).join(", ")}. Response cannot be settled.`,
@@ -138,7 +140,7 @@ export async function callModel(
   const allCitedIds = [...new Set([...idCitations, ...resolvedFromNumeric])];
 
   // Validate all ID-based citations resolve to a known passage
-  const unknownIds = allCitedIds.filter((id) => !passageIds.includes(id));
+  const unknownIds = allCitedIds.filter((id) => !includedPassages.some((passage) => passage.id === id));
   if (unknownIds.length > 0) {
     throw new Error(
       `Model cited unknown passage IDs: ${unknownIds.join(", ")}. Response cannot be settled.`,
@@ -156,8 +158,8 @@ export async function callModel(
   }
 
   const citedPassages: CitedPassage[] = allCitedIds.map((id) => {
-    const idx = passageIds.indexOf(id);
-    return { id, text: passages[idx], version: id.split(":")[0] ?? "" };
+    const passage = includedPassages.find((item) => item.id === id)!;
+    return { id, text: passage.text, version: id.split(":")[0] ?? "" };
   });
 
   const responseDigest = "sha256:" + await sha256(answer);
