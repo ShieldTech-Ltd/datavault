@@ -565,7 +565,230 @@ it('keeps existing public idempotency keys compatible after migration', async ()
   expect(fetch).not.toHaveBeenCalled();
 });
 
-it('bounds disconnect bodies in the actual Worker before parsing JSON',async()=>{
- const r=await worker.fetch(new Request('https://vault.example/api/account/connectors/github',{method:'DELETE',headers:{Origin:'https://vault.example',Cookie:'dv_session='+'1'.repeat(64),'x-csrf-token':csrf,'Content-Type':'application/json'},body:JSON.stringify({padding:'x'.repeat(9000)})}),env);
- expect(r.status).toBe(413);
+it('bounds disconnect bodies in the actual Worker before parsing JSON', async () => {
+  const r = await worker.fetch(
+    new Request('https://vault.example/api/account/connectors/github', {
+      method: 'DELETE',
+      headers: {
+        Origin: 'https://vault.example',
+        Cookie: 'dv_session=' + '1'.repeat(64),
+        'x-csrf-token': csrf,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ padding: 'x'.repeat(9000) }),
+    }),
+    env
+  );
+  expect(r.status).toBe(413);
+});
+it.each([204, 503])(
+  'records callback cleanup uncertainty only when remote cleanup is unconfirmed (%s)',
+  async (status) => {
+    const s = await start();
+    vi.mocked(fetch).mockImplementation(async (url: any, init: any) => {
+      if (init.method === 'DELETE') return new Response(null, { status });
+      const response = await provider(url, init),
+        value = (await response.json()) as any;
+      if (String(url).includes('/apps/vault-read'))
+        value.permissions.contents = 'write';
+      return new Response(JSON.stringify(value));
+    });
+    const response = await callback(s.state, s.cookie);
+    expect(response.status).toBe(400);
+    if (status === 503)
+      expect(await response.text()).toContain(
+        'https://github.com/settings/apps/authorizations'
+      );
+    const metadata = (await (await request()).json()) as any;
+    expect(metadata).toMatchObject({
+      status: 'disconnected',
+      revocationPending: status === 503,
+    });
+    expect(
+      ((await (await request('', 'GET', undefined, 2)).json()) as any)
+        .revocationPending
+    ).toBe(false);
+    const exported = await worker.fetch(
+      new Request('https://vault.example/api/account/export', {
+        headers: { Cookie: 'dv_session=' + '1'.repeat(64) },
+      }),
+      env
+    );
+    expect(exported.status).toBe(200);
+    const data = (await exported.json()) as any;
+    expect(data.githubConnection.revocationPending).toBe(status === 503);
+    expect(JSON.stringify(data)).not.toMatch(
+      /ghu_|ghr_|client-secret|provider-code/
+    );
+  }
+);
+it('records callback cleanup failure when disconnect wins the exchange race', async () => {
+  const s = await start();
+  let exchange!: (response: Response) => void;
+  vi.mocked(fetch).mockImplementation((url: any, init: any) =>
+    String(url).includes('/access_token')
+      ? new Promise((resolve) => {
+          exchange = resolve;
+        })
+      : init.method === 'DELETE'
+      ? Promise.resolve(new Response(null, { status: 503 }))
+      : provider(url, init)
+  );
+  const pending = callback(s.state, s.cookie);
+  await vi.waitFor(
+    () => expect(exchange, 'callback exchange arrived').toBeTypeOf('function'),
+    { timeout: 5000, interval: 10 }
+  );
+  await request('', 'DELETE', {});
+  exchange(new Response(JSON.stringify(tokenResponse)));
+  expect((await pending).status).toBe(400);
+  expect(await (await request()).json()).toMatchObject({
+    status: 'disconnected',
+    revocationPending: true,
+  });
+});
+it.each([204, 503])(
+  'tracks rotated-token cleanup independently after disconnect (%s)',
+  async (status) => {
+    bucket();
+    const id = await connected(),
+      row = store.sqlite
+        .prepare('SELECT * FROM account_connectors')
+        .all()[0] as any;
+    const value = await openConnector<any>(env, 'a1', 'github', row.credential);
+    value.expires = 1;
+    await env.DB.prepare('UPDATE account_connectors SET credential=?')
+      .bind(await sealConnector(env, 'a1', 'github', value))
+      .run();
+    let exchange!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementation((url: any, init: any) => {
+      if (String(url).includes('/access_token'))
+        return new Promise((resolve) => {
+          exchange = resolve;
+        });
+      if (init.method === 'DELETE')
+        return Promise.resolve(
+          new Response(null, {
+            status:
+              JSON.parse(init.body).access_token === 'ghu_rotated'
+                ? status
+                : 204,
+          })
+        );
+      return provider(url, init);
+    });
+    const pending = importRequest(id);
+    await vi.waitFor(
+      () => expect(exchange, 'refresh exchange arrived').toBeTypeOf('function'),
+      { timeout: 5000, interval: 10 }
+    );
+    expect(await (await request('', 'DELETE', {})).json()).toMatchObject({
+      status: 'disconnected',
+      revocationPending: false,
+    });
+    exchange(
+      new Response(
+        JSON.stringify({
+          ...tokenResponse,
+          access_token: 'ghu_rotated',
+          refresh_token: 'ghr_rotated',
+        })
+      )
+    );
+    expect((await pending).status).toBe(403);
+    expect(await (await request()).json()).toMatchObject({
+      status: 'disconnected',
+      revocationPending: status === 503,
+    });
+    expect(
+      store.sqlite.prepare('SELECT credential FROM account_connectors').all()
+    ).toEqual([{ credential: null }]);
+  }
+);
+it('late successful old-token revocation cannot clear a newer rotated-token cleanup failure', async () => {
+  bucket();
+  const id = await connected(),
+    row = store.sqlite
+      .prepare('SELECT * FROM account_connectors')
+      .all()[0] as any;
+  const value = await openConnector<any>(env, 'a1', 'github', row.credential);
+  value.expires = 1;
+  await env.DB.prepare('UPDATE account_connectors SET credential=?')
+    .bind(await sealConnector(env, 'a1', 'github', value))
+    .run();
+  let exchange!: (response: Response) => void,
+    oldRevoke!: (response: Response) => void;
+  vi.mocked(fetch).mockImplementation((url: any, init: any) => {
+    if (String(url).includes('/access_token'))
+      return new Promise((resolve) => {
+        exchange = resolve;
+      });
+    if (init.method === 'DELETE')
+      return JSON.parse(init.body).access_token === 'ghu_rotated'
+        ? Promise.resolve(new Response(null, { status: 503 }))
+        : new Promise((resolve) => {
+            oldRevoke = resolve;
+          });
+    return provider(url, init);
+  });
+  const pending = importRequest(id);
+  await vi.waitFor(
+    () => expect(exchange, 'refresh exchange arrived').toBeTypeOf('function'),
+    { timeout: 5000, interval: 10 }
+  );
+  const disconnect = request('', 'DELETE', {});
+  await vi.waitFor(
+    () =>
+      expect(oldRevoke, 'old token revocation arrived').toBeTypeOf('function'),
+    { timeout: 5000, interval: 10 }
+  );
+  exchange(
+    new Response(
+      JSON.stringify({
+        ...tokenResponse,
+        access_token: 'ghu_rotated',
+        refresh_token: 'ghr_rotated',
+      })
+    )
+  );
+  expect((await pending).status).toBe(403);
+  oldRevoke(new Response(null, { status: 204 }));
+  expect(await (await disconnect).json()).toMatchObject({
+    status: 'disconnected',
+    revocationPending: true,
+  });
+  expect(await (await request()).json()).toMatchObject({
+    status: 'disconnected',
+    revocationPending: true,
+  });
+});
+it('retains old cleanup uncertainty through a newer connection without exposing secrets', async () => {
+  const s = await start();
+  vi.mocked(fetch).mockImplementation(async (url: any, init: any) => {
+    if (init.method === 'DELETE') return new Response(null, { status: 503 });
+    const r = await provider(url, init),
+      v = (await r.json()) as any;
+    if (String(url).includes('/apps/vault-read'))
+      v.permissions.contents = 'write';
+    return new Response(JSON.stringify(v));
+  });
+  expect((await callback(s.state, s.cookie)).status).toBe(400);
+  await env.DB.prepare(
+    'UPDATE connector_cleanup_obligations SET created_at=1'
+  ).run();
+  const id = await connected();
+  expect(await (await request()).json()).toMatchObject({
+    id,
+    status: 'connected',
+    revocationPending: true,
+  });
+  const raw = JSON.stringify(
+    store.sqlite.prepare('SELECT * FROM connector_cleanup_obligations').all()
+  );
+  expect(raw).not.toMatch(/ghu_|ghr_|provider-code|client-secret/);
+  expect(
+    store.sqlite
+      .prepare('SELECT created_at FROM connector_cleanup_obligations')
+      .all()
+  ).toEqual([{ created_at: 1 }]);
 });

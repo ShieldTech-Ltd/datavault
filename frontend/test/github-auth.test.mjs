@@ -125,3 +125,63 @@ test('disabled private GitHub UI shows scope and does not request consent', asyn
     await vite.close();
   }
 });
+test('outstanding cleanup guidance does not mislabel a newer connected authorization', async () => {
+  globalThis.__githubFixture = {
+    state: {
+      session: { account: { address: '0x' + '11'.repeat(20) } },
+      loading: false,
+    },
+    client: {
+      githubConnector: async () => ({
+        providerConfigured: true,
+        id: 'a'.repeat(64),
+        status: 'connected',
+        login: 'octocat',
+        repositories: [],
+        revocationPending: true,
+      }),
+    },
+  };
+  const vite = await createServer({
+    configFile: false,
+    optimizeDeps: { noDiscovery: true },
+    plugins: [
+      {
+        name: 'cleanup-fixture',
+        enforce: 'pre',
+        transform(code, id) {
+          if (id.replaceAll('\\', '/').endsWith('/production/account.tsx'))
+            return 'export const useAccount=()=>globalThis.__githubFixture;';
+        },
+      },
+    ],
+    server: { middlewareMode: true },
+    appType: 'custom',
+    logLevel: 'silent',
+  });
+  let renderer;
+  try {
+    const { default: GithubConnection } = await vite.ssrLoadModule(
+      '/src/production/GithubConnection.tsx'
+    );
+    await act(async () => {
+      renderer = create(React.createElement(GithubConnection));
+    });
+    const text = JSON.stringify(renderer.toJSON());
+    assert.match(text, /GitHub revocation could not be confirmed/);
+    assert.doesNotMatch(text, /Local access is disabled|requires reconnecting/);
+    assert.equal(
+      renderer.root
+        .findAllByType('a')
+        .some(
+          (a) =>
+            a.props.href === 'https://github.com/settings/apps/authorizations'
+        ),
+      true
+    );
+  } finally {
+    if (renderer) await act(async () => renderer.unmount());
+    delete globalThis.__githubFixture;
+    await vite.close();
+  }
+});

@@ -120,9 +120,8 @@ export default function GithubConnection() {
               )}
               {connection.revocationPending && (
                 <p>
-                  Local access is disabled or requires reconnecting. GitHub
-                  revocation could not be confirmed. Review and revoke the app
-                  in{' '}
+                  GitHub revocation could not be confirmed for an earlier
+                  authorization. Review and revoke the app in{' '}
                   <a
                     href="https://github.com/settings/apps/authorizations"
                     target="_blank"

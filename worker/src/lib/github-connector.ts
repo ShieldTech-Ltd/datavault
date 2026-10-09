@@ -87,6 +87,11 @@ async function own(env: Env, account: AccountRow) {
 export async function githubConnectionMetadata(env: Env, account: AccountRow) {
   await expirePending(env);
   const row = await own(env, account);
+  const cleanupPending = await env.DB.prepare(
+    "SELECT id FROM connector_cleanup_obligations WHERE account_id=? AND provider='github' AND deployment=? LIMIT 1"
+  )
+    .bind(account.account_id, connectorDeployment(env))
+    .first();
   return {
     providerConfigured: githubConfigured(env),
     id: row?.id ?? null,
@@ -94,7 +99,7 @@ export async function githubConnectionMetadata(env: Env, account: AccountRow) {
     login: row?.status === 'connected' ? row.login : null,
     repositories:
       row?.status === 'connected' ? JSON.parse(row.repositories) : [],
-    revocationPending: Boolean(row?.revocation_pending),
+    revocationPending: Boolean(row?.revocation_pending || cleanupPending),
   };
 }
 async function expirePending(env: Env) {
@@ -261,15 +266,43 @@ async function revoke(env: Env, token: string) {
     }
   );
 }
+// Every remote cleanup owns an independent durable obligation. Successful cleanup
+// can remove only its own record, including when a newer connection already exists.
+async function trackedRevoke(
+  env: Env,
+  accountId: string,
+  token: string
+): Promise<boolean> {
+  const id = randomToken();
+  await env.DB.prepare(
+    "INSERT INTO connector_cleanup_obligations(id,account_id,provider,deployment,created_at) VALUES(?,?,'github',?,?)"
+  )
+    .bind(id, accountId, connectorDeployment(env), Date.now())
+    .run();
+  try {
+    await revoke(env, token);
+    await env.DB.prepare(
+      'DELETE FROM connector_cleanup_obligations WHERE id=? AND account_id=? AND deployment=?'
+    )
+      .bind(id, accountId, connectorDeployment(env))
+      .run();
+    return true;
+  } catch {
+    return false;
+  }
+}
 export async function handleGithubCallback(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const deny = () =>
+  const deny = (cleanupPending = false) =>
     json(
       {
         error:
-          'GitHub authorization rejected. Return to Settings and reconnect.',
+          'GitHub authorization rejected. Return to Settings and reconnect.' +
+          (cleanupPending
+            ? ' GitHub revocation could not be confirmed. Review and revoke the app at https://github.com/settings/apps/authorizations.'
+            : ''),
       },
       400
     );
@@ -367,13 +400,10 @@ export async function handleGithubCallback(
       },
     });
   } catch {
-    if (token)
-      try {
-        await revoke(env, token.access);
-      } catch {
-        /* No local capability exists; the user can revoke in GitHub settings. */
-      }
-    return deny();
+    const cleanupPending = token
+      ? !(await trackedRevoke(env, session.account.account_id, token.access))
+      : false;
+    return deny(cleanupPending);
   }
 }
 export async function handleGithubConnector(
@@ -435,7 +465,8 @@ export async function handleGithubConnector(
             'github',
             row.credential
           );
-          await revoke(env, token.access);
+          if (!(await trackedRevoke(env, row.account_id, token.access)))
+            throw Error('Cleanup unconfirmed');
           await env.DB.prepare(
             'UPDATE account_connectors SET revocation_pending=0 WHERE id=? AND credential_version=?'
           )
@@ -609,12 +640,7 @@ export async function githubImportConnection(
       row = (await own(env, account))!;
     } catch {
       await reconnect(env, row);
-      if (rotated)
-        try {
-          await revoke(env, rotated.access);
-        } catch {
-          /* Manual revocation remains available. */
-        }
+      if (rotated) await trackedRevoke(env, row.account_id, rotated.access);
       throw new GithubConnectionError(403);
     }
   }

@@ -4,7 +4,7 @@ Private imports use the signed-in account's GitHub App user access token. They n
 
 ## Deployment setup
 
-Apply migration `0019_account_connectors.sql` after all existing migrations. It adds nullable connection fields to existing import jobs, preserving populated public jobs and their idempotency keys.
+Apply migration `0019_account_connectors.sql` after all existing migrations, then `0020_connector_cleanup_obligations.sql`. Migration `0019` adds nullable connection fields to existing import jobs, preserving populated public jobs and their idempotency keys.
 
 Register a GitHub App with repository Contents: Read-only and the mandatory Metadata: Read-only permission. Do not request other repository, organization or account permissions. Install it on selected repositories only. The connector rejects all-repository installations, write permissions, unknown permissions and unknown app identities. Its bounded first version supports at most 100 installations and 100 repositories in total; larger grants fail closed. A user needs both installation access and GitHub user consent.
 
@@ -33,6 +33,8 @@ Credentials use AES-GCM with random IVs and an authenticated version/account/dep
 Refresh uses an exclusive database lease, credential version compare-and-swap, and encrypted access/refresh token rotation. Other imports return a retry conflict while refresh is in progress. An expired ambiguous refresh lease requires reconnection instead of reusing a potentially consumed refresh token. Revocation, invalid credentials and permission validation failure require reconnection. Before a new import, the connector revalidates current app and installation permissions. Each content request decrypts the current own credential and checks its version. Draft access and completion also require the matching current connected version.
 
 Disconnect atomically removes local credentials and cancels private jobs, including current review drafts, then deletes tracked draft objects. It joins the account mutation quota of 20 per minute. The provider token is revoked through GitHub's official DELETE token endpoint using the configured client credentials. If remote revocation is unconfirmed, local access remains disabled and the UI directs the user to GitHub's authorized-app settings. Expired pending grants discard their local encrypted credentials and similarly expose manual revocation guidance. Confirmed collections and existing paid recovery records remain intact.
+
+Remote cleanup attempts have independent durable obligations scoped to the account, provider and deployment. They contain random identifiers and timestamps, never tokens or provider errors. A successful revoke removes only its own obligation. A failed callback or rotated-token cleanup remains visible in Settings and account export even after disconnect or a newer successful connection. The callback rejection also provides the manual GitHub revocation URL when cleanup is unconfirmed. Outstanding uncertainty has no TTL and is never cleared by a different token's successful revoke. The existing account admission quota of 20 mutations per minute bounds initiation; retained obligations require operator review before processing or release tooling treats cleanup as complete. Tokens are not retained for these obligations, so automatic retry is unavailable. Manual provider revocation must be verified separately; following the guidance does not automatically mark cleanup confirmed.
 
 ## Verification and remaining gate
 
