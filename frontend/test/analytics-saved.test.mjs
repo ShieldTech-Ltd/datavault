@@ -45,20 +45,64 @@ test('dated signed loads fence delayed wallet/window changes and CSV',async()=>{
  } finally{await vite.close();}
 });
 test('workspace rejects delayed old-owner analytics and window changes during signing',async()=>{
- const vite=await createServer({cacheDir,optimizeDeps:{noDiscovery:true},server:{middlewareMode:true},appType:'custom',logLevel:'silent'});const originalFetch=globalThis.fetch;
+ const contract='0x'+'ab'.repeat(20);
+ // A clean hosted checkout has no ignored .env.local. This fixture must configure
+ // its own deployment rather than accidentally exercising the no-contract gate.
+ const vite=await createServer({cacheDir,envDir:tmpdir(),define:{
+   'import.meta.env.VITE_CONTRACT_ADDRESS':JSON.stringify(contract),
+   'import.meta.env.VITE_CHAIN_ID':JSON.stringify('31337'),
+ },optimizeDeps:{noDiscovery:true},server:{middlewareMode:true},appType:'custom',logLevel:'silent'});
+ const originalFetch=globalThis.fetch;
+ let view;
  try {
- const {WalletProvider}=await vite.ssrLoadModule('/src/lib/wallet.tsx'),{WorkspaceProvider,useWorkspace}=await vite.ssrLoadModule('/src/production/data.tsx'),{monadTestnet}=await vite.ssrLoadModule('/src/lib/network.ts');
- const a='0x'+'11'.repeat(20),b='0x'+'22'.repeat(20),events={};let address=a,release,releaseSign,workspace,requests=0,delaySign=false;
- globalThis.window={ethereum:{on:(name,callback)=>events[name]=callback,removeListener:()=>{},request:async({method})=>method==='eth_accounts'?[address]:method==='eth_chainId'?'0x'+monadTestnet.chainId.toString(16):method==='personal_sign'?(delaySign?await new Promise(resolve=>{releaseSign=()=>resolve('0x'+'ab'.repeat(65));}):'0x'+'ab'.repeat(65)):null}};
- globalThis.fetch=async()=>{requests++;return await new Promise(resolve=>{release=()=>resolve(new Response(JSON.stringify({ownerAddress:a,periodDays:1,windowStart:'2026-10-08T00:00:00.000Z',windowEnd:'2026-10-09T00:00:00.000Z',aggregationLimit:10000,failureTimeField:'created_at',failedQueries:0,refundedQueries:0,daily:[{date:'2026-10-08',settledQueries:0,failedQueries:0,refundedQueries:0,knownAmounts:0,recordedRevenueWei:'0'}],confirmedCollections:0,paidQueries:0,recordedRevenueWei:'0',revenueCoverage:{knownAmounts:0,settledQueries:0},rankingAvailable:true,topCollections:[],recentActivity:[]})));});};
- function Probe(){workspace=useWorkspace();return React.createElement('span',null,workspace.analytics.data?.ownerAddress??'empty');}
- let view;await Renderer.act(async()=>{view=Renderer.create(React.createElement(WalletProvider,null,React.createElement(WorkspaceProvider,null,React.createElement(Probe))));});
- await Renderer.act(async()=>workspace.setWindow({start:'2026-10-08',end:'2026-10-09'}));
- let pending;await Renderer.act(async()=>{pending=workspace.load('analytics');await new Promise(resolve=>setImmediate(resolve));});assert.equal(requests,1);
- await Renderer.act(async()=>{address=b;events.accountsChanged([b]);});release();await Renderer.act(async()=>pending);assert.equal(workspace.analytics.data,null);
- delaySign=true;await Renderer.act(async()=>{pending=workspace.load('analytics');await new Promise(resolve=>setImmediate(resolve));});
- await Renderer.act(async()=>workspace.setWindow({start:'2026-10-07',end:'2026-10-09'}));releaseSign();await Renderer.act(async()=>pending);assert.equal(requests,1,'Window change while signing prevents request dispatch');assert.equal(workspace.analytics.data,null);view.unmount();
- }finally{globalThis.fetch=originalFetch;delete globalThis.window;await vite.close();}
+   const {WalletProvider}=await vite.ssrLoadModule('/src/lib/wallet.tsx');
+   const {WorkspaceProvider,useWorkspace}=await vite.ssrLoadModule('/src/production/data.tsx');
+   const {CONTRACT_ADDRESS}=await vite.ssrLoadModule('/src/lib/contract.ts');
+   const {monadTestnet}=await vite.ssrLoadModule('/src/lib/network.ts');
+   assert.equal(CONTRACT_ADDRESS,contract,'Fixture must not depend on local deployment configuration');
+   assert.equal(monadTestnet.chainId,31337);
+   function barrier(){let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};}
+   const requestEntered=barrier(),signingEntered=barrier();
+   const a='0x'+'11'.repeat(20),b='0x'+'22'.repeat(20),events={};
+   let address=a,release,releaseSign,workspace,requests=0,delaySign=false;
+   globalThis.window={ethereum:{
+     on:(name,callback)=>events[name]=callback,removeListener:()=>{},
+     request:async({method})=>{
+       if(method==='eth_accounts')return [address];
+       if(method==='eth_chainId')return '0x'+monadTestnet.chainId.toString(16);
+       if(method==='personal_sign'){
+         if(!delaySign)return '0x'+'ab'.repeat(65);
+         return await new Promise(resolve=>{releaseSign=()=>resolve('0x'+'ab'.repeat(65));signingEntered.resolve();});
+       }
+       return null;
+     },
+   }};
+   globalThis.fetch=async()=>{
+     requests++;
+     return await new Promise(resolve=>{
+       release=()=>resolve(new Response(JSON.stringify({ownerAddress:a,periodDays:1,windowStart:'2026-10-08T00:00:00.000Z',windowEnd:'2026-10-09T00:00:00.000Z',aggregationLimit:10000,failureTimeField:'created_at',failedQueries:0,refundedQueries:0,daily:[{date:'2026-10-08',settledQueries:0,failedQueries:0,refundedQueries:0,knownAmounts:0,recordedRevenueWei:'0'}],confirmedCollections:0,paidQueries:0,recordedRevenueWei:'0',revenueCoverage:{knownAmounts:0,settledQueries:0},rankingAvailable:true,topCollections:[],recentActivity:[]})));
+       requestEntered.resolve();
+     });
+   };
+   function Probe(){workspace=useWorkspace();return React.createElement('span',null,workspace.analytics.data?.ownerAddress??'empty');}
+   await Renderer.act(async()=>{view=Renderer.create(React.createElement(WalletProvider,null,React.createElement(WorkspaceProvider,null,React.createElement(Probe))));});
+   await Renderer.act(async()=>workspace.setWindow({start:'2026-10-08',end:'2026-10-09'}));
+   let pending;
+   await Renderer.act(async()=>{pending=workspace.load('analytics');await requestEntered.promise;});
+   assert.equal(requests,1);
+   await Renderer.act(async()=>{address=b;events.accountsChanged([b]);});
+   release();await Renderer.act(async()=>pending);
+   assert.equal(workspace.analytics.data,null,'Delayed old-owner response must remain hidden');
+   delaySign=true;
+   await Renderer.act(async()=>{pending=workspace.load('analytics');await signingEntered.promise;});
+   await Renderer.act(async()=>workspace.setWindow({start:'2026-10-07',end:'2026-10-09'}));
+   releaseSign();await Renderer.act(async()=>pending);
+   assert.equal(requests,1,'Window change while signing prevents request dispatch');
+   assert.equal(workspace.analytics.data,null);
+ }finally{
+   if(view)await Renderer.act(async()=>view.unmount());
+   globalThis.fetch=originalFetch;delete globalThis.window;await vite.close();
+ }
 });
 test('saved questions require explicit opt-in and fence delayed private list after wallet change',async()=>{
  const vite=await createServer({cacheDir,optimizeDeps:{noDiscovery:true},server:{middlewareMode:true},appType:'custom',logLevel:'silent'});
