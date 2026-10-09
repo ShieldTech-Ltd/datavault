@@ -185,7 +185,9 @@ Current confirmed collection counts remain current inventory. Settlement, failur
 
 Ship one importer per PR: selected GitHub files, selected website pages, selected Notion pages, then PDF/DOCX selectable-text extraction.
 
-Progress: selected public GitHub imports are locally accepted at `0ebc779`, including preview, signed publication, cancellation and wallet isolation. See [evidence](../../evidence/saas-github-imports-local-acceptance.md). Private authorization and remaining adapters are pending, so phase-wide checkboxes remain open. Import admission is one in-flight job and 20 jobs per rolling day per account across enabled providers.
+Progress: selected public GitHub imports are locally accepted at `0ebc779`, including preview, signed publication, cancellation and wallet isolation. See [evidence](../../evidence/saas-github-imports-local-acceptance.md). Remaining adapters keep phase-wide checkboxes open. Import admission is one in-flight job and 20 jobs per rolling day per account across enabled providers.
+
+Private GitHub implementation is locally accepted at `012ebb0`, including encrypted credentials, pending wallet confirmation, refresh/disconnect fences and truthful cleanup uncertainty. [Evidence](../../evidence/saas-github-auth-local-acceptance.md) separates mocked-provider and disabled-browser checks from pending live App setup and consent. Remaining adapters keep the phase-wide gates open.
 **Create:** provider adapters under `worker/src/imports/`, import-job routes/queue consumer/tests, source/job migrations and import wizard.
 **Modify:** upload tabs, private R2 ingestion and Worker bindings.
 

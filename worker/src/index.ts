@@ -1,3 +1,4 @@
+import {handleGithubCallback} from './lib/github-connector';
 import { handleDeveloperCollections } from './lib/developer-keys';
 import { queueNotifications, scheduledNotifications } from './lib/notification-adapters';
 import { handleUnsubscribe } from './lib/email-unsubscribe';
@@ -92,7 +93,9 @@ export default {
         }
         let res: Response;
 
-        if(method==='GET'&&path==='/api/developer/collections'){
+        if(method==='GET'&&path==='/api/connectors/github/callback'){
+          res=await handleGithubCallback(request,env);
+        } else if(method==='GET'&&path==='/api/developer/collections'){
           res=await handleDeveloperCollections(request,env);
         } else if(path==='/api/email/unsubscribe'){
           res=await handleUnsubscribe(request,env);
