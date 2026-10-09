@@ -1,4 +1,17 @@
 import {
+  notionConfigured,
+  notionConnectionMetadata,
+  notionImportConnection,
+  notionCredentialHeader,
+  notionCredentialRejected,
+  NotionConnectionError,
+} from "./notion-connector";
+import {
+  fetchNotionPages,
+  notionSelection,
+  NOTION_FAILURE,
+} from "./notion-source";
+import {
   fetchWebsitePages,
   websiteHosts,
   websiteSelection,
@@ -32,7 +45,7 @@ type Selection = {
   ref: string;
   paths: string[];
 };
-type Provider = "github" | "website";
+type Provider = "github" | "website" | "notion";
 type Job = {
   provider: Provider;
   provenance: string;
@@ -94,6 +107,13 @@ function selection(v: any): v is Selection {
   );
 }
 const metadata = (j: Job) => ({
+  ...(j.provider === "notion"
+    ? {
+        provider: j.provider,
+        pageIds: JSON.parse(j.paths),
+        provenance: JSON.parse(j.provenance),
+      }
+    : {}),
   ...(j.provider === "website"
     ? {
         provider: j.provider,
@@ -269,7 +289,29 @@ export async function runImport(env: Env, id: string): Promise<void> {
     let text: string,
       provenance = j.provenance;
     let sha = j.commit_sha;
-    if (j.provider === "website") {
+    if (j.provider === "notion") {
+      if (!j.connection_id || j.credential_version === null)
+        throw Error("Connection required");
+      const result = await fetchNotionPages(
+        JSON.parse(j.paths),
+        () =>
+          notionCredentialHeader(
+            env,
+            j.connection_id!,
+            j.account_id,
+            j.credential_version!,
+          ),
+        () => active(env, id, token),
+        () =>
+          notionCredentialRejected(
+            env,
+            j.connection_id!,
+            j.credential_version!,
+          ),
+      );
+      text = result.text;
+      provenance = JSON.stringify(result.provenance);
+    } else if (j.provider === "website") {
       const result = await fetchWebsitePages(env, JSON.parse(j.paths), () =>
         active(env, id, token),
       );
@@ -361,7 +403,7 @@ export async function runImport(env: Env, id: string): Promise<void> {
     await env.COLLECTION_STORE.put(key, text, {
       httpMetadata: { contentType: "text/markdown; charset=utf-8" },
       customMetadata:
-        j.provider === "website"
+        j.provider !== "github"
           ? {
               provider: j.provider,
               contentDigest: hash,
@@ -388,9 +430,11 @@ export async function runImport(env: Env, id: string): Promise<void> {
       "UPDATE github_import_jobs SET status='failed',error=?,lease_token=NULL,lease_expires_at=NULL WHERE id=? AND status='running' AND lease_token=?",
     )
       .bind(
-        j.provider === "website"
-          ? WEBSITE_FAILURE
-          : "GitHub import failed. Check repository access, ref and selected text paths, then retry.",
+        j.provider === "notion"
+          ? NOTION_FAILURE
+          : j.provider === "website"
+            ? WEBSITE_FAILURE
+            : "GitHub import failed. Check repository access, ref and selected text paths, then retry.",
         id,
         token,
       )
@@ -406,7 +450,7 @@ export async function handleImports(
 ): Promise<Response | null> {
   const url = new URL(request.url),
     match =
-      /^\/api\/account\/imports\/(github|website)(?:\/([a-f0-9]{64})(?:\/(draft|cancel|run))?)?$/.exec(
+      /^\/api\/account\/imports\/(github|website|notion)(?:\/([a-f0-9]{64})(?:\/(draft|cancel|run))?)?$/.exec(
         url.pathname,
       );
   if (!match) return null;
@@ -418,17 +462,24 @@ export async function handleImports(
     return json({
       jobs: await importMetadata(env, account, provider),
       dispatch: "bounded_inline",
-      ...(provider === "website"
+      ...(provider === "notion"
         ? {
-            available: websiteHosts(env).length > 0,
-            approvedHosts: websiteHosts(env),
+            available:
+              notionConfigured(env) &&
+              (await notionConnectionMetadata(env, account)).status ===
+                "connected",
           }
-        : {
-            publicOnly: !githubConfigured(env),
-            sourceModes: githubConfigured(env)
-              ? ["public", "connected_selected"]
-              : ["public"],
-          }),
+        : provider === "website"
+          ? {
+              available: websiteHosts(env).length > 0,
+              approvedHosts: websiteHosts(env),
+            }
+          : {
+              publicOnly: !githubConfigured(env),
+              sourceModes: githubConfigured(env)
+                ? ["public", "connected_selected"]
+                : ["public"],
+            }),
     });
   if (request.method === "POST" && !id) {
     let input: any;
@@ -460,6 +511,17 @@ export async function handleImports(
         );
       input = { repository: "website", ref: "selected", paths: urls };
     }
+    if (provider === "notion") {
+      if (!notionConfigured(env))
+        return json({ error: "Notion imports are not configured." }, 503);
+      const pageIds = notionSelection(input);
+      if (!pageIds)
+        return json(
+          { error: "Select 1 to 5 distinct Notion page UUIDs." },
+          400,
+        );
+      input = { repository: "notion", ref: "selected", paths: pageIds };
+    }
     if (provider === "github" && !selection(input))
       return json(
         {
@@ -470,24 +532,37 @@ export async function handleImports(
       );
     let connection;
     try {
-      connection = input.connectionId
-        ? await githubImportConnection(
-            env,
-            account,
-            input.connectionId,
-            input.repository,
-          )
-        : null;
+      if (provider === "notion") {
+        const current = await notionConnectionMetadata(env, account);
+        if (!current.id || current.status !== "connected")
+          throw new NotionConnectionError(403);
+        connection = await notionImportConnection(env, account, current.id, "");
+      } else
+        connection = input.connectionId
+          ? await githubImportConnection(
+              env,
+              account,
+              input.connectionId,
+              input.repository,
+            )
+          : null;
     } catch (e) {
       return json(
-        { error: "GitHub connection unavailable. Reconnect or retry." },
-        e instanceof GithubConnectionError ? e.status : 403,
+        {
+          error:
+            provider === "notion"
+              ? "Notion connection unavailable. Reconnect or retry."
+              : "GitHub connection unavailable. Reconnect or retry.",
+        },
+        e instanceof GithubConnectionError || e instanceof NotionConnectionError
+          ? e.status
+          : 403,
       );
     }
     const now = Date.now(),
       key = await digest(
         JSON.stringify({
-          ...(provider === "website" ? { provider } : {}),
+          ...(provider !== "github" ? { provider } : {}),
           ...(connection
             ? {
                 connectionId: connection.id,
@@ -548,12 +623,11 @@ export async function handleImports(
   if (request.method === "GET" && action === "draft") {
     if (job.connection_id) {
       try {
-        await githubCredentialHeader(
-          env,
-          job.connection_id,
-          job.account_id,
-          job.credential_version!,
-        );
+        await (
+          job.provider === "notion"
+            ? notionCredentialHeader
+            : githubCredentialHeader
+        )(env, job.connection_id, job.account_id, job.credential_version!);
       } catch {
         return json({ error: "Private draft is unavailable." }, 409);
       }
@@ -577,12 +651,11 @@ export async function handleImports(
       return json({ error: "Private draft is unavailable." }, 409);
     if (job.connection_id) {
       try {
-        await githubCredentialHeader(
-          env,
-          job.connection_id,
-          job.account_id,
-          job.credential_version!,
-        );
+        await (
+          job.provider === "notion"
+            ? notionCredentialHeader
+            : githubCredentialHeader
+        )(env, job.connection_id, job.account_id, job.credential_version!);
       } catch {
         return json({ error: "Private draft is unavailable." }, 409);
       }

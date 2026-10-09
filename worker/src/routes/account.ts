@@ -1,3 +1,4 @@
+import {handleNotionConnector,notionConnectionMetadata} from '../lib/notion-connector';
 import {handleGithubConnector,githubConnectionMetadata} from '../lib/github-connector';
 import {handleImports,importMetadata} from '../lib/import-jobs';
 import { handleAccountKeys } from '../lib/developer-keys';
@@ -80,6 +81,8 @@ export async function handleAccountRoute(request: Request, env: Env): Promise<Re
   }
   if (!session) return denied();
   if (method !== 'GET' && !validCsrf(request, session)) return json({ error: 'CSRF token required.' }, 403);
+  const notionResponse=await handleNotionConnector(request,env,session);
+  if(notionResponse)return notionResponse;
   const connectorResponse=await handleGithubConnector(request,env,session);
   if(connectorResponse)return connectorResponse;
   const importResponse=await handleImports(request,env,session.account);
@@ -147,7 +150,7 @@ export async function handleAccountRoute(request: Request, env: Env): Promise<Re
     const bookmarks=await savedItems(env,session.account,'bookmarks',null);
     const savedQuestions=await savedItems(env,session.account,'saved-questions',50);
     return json({ scope: 'Account profile, notification preferences, inbox metadata, bookmarks, active explicitly saved questions and pending deletion requests, workspace memberships, invitations and private import job metadata. Saved questions expire after 30 days. Paid answers, source content and immutable on-chain records are outside this export.',
-      deployment: { chainId, contractAddress: contract }, account: profile(session.account), deletionRequests: requests.results, notifications: inbox.results, bookmarks, savedQuestions, memberships: await ownWorkspaces(env,session.account.address), invitations: await ownInvitations(env,session.account.address), githubConnection: await githubConnectionMetadata(env,session.account), githubImports: await importMetadata(env,session.account), websiteImports: await importMetadata(env,session.account,'website') }, 200,
+      deployment: { chainId, contractAddress: contract }, account: profile(session.account), deletionRequests: requests.results, notifications: inbox.results, bookmarks, savedQuestions, memberships: await ownWorkspaces(env,session.account.address), invitations: await ownInvitations(env,session.account.address), notionConnection: await notionConnectionMetadata(env,session.account), githubConnection: await githubConnectionMetadata(env,session.account), githubImports: await importMetadata(env,session.account), websiteImports: await importMetadata(env,session.account,'website'), notionImports: await importMetadata(env,session.account,'notion') }, 200,
       { 'Content-Disposition': 'attachment; filename="datavault-account.json"' });
   }
   if (path === '/api/account/deletion-request' && method === 'POST') {

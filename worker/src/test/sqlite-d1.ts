@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // Execute real SQLite SQL through Python, supported by Node 20 CI and local Node.
-export function sqliteD1() {
+export function sqliteD1(throughMigration?: string) {
   const directory = mkdtempSync(join(tmpdir(), "datavault-account-"));
   const path = join(directory, "db.sqlite");
   const python = process.platform === "win32" ? "python" : "python3";
@@ -19,7 +19,7 @@ export function sqliteD1() {
   }
   execute(
     readdirSync("migrations")
-      .filter((f) => f.endsWith(".sql"))
+      .filter((f) => f.endsWith(".sql") && (!throughMigration || f <= throughMigration))
       .sort()
       .map((file) => readFileSync(`migrations/${file}`, "utf8"))
       .join("\n"),
@@ -80,6 +80,7 @@ export function sqliteD1() {
   } as unknown as D1Database;
   return {
     db,
+    migrate: (sql: string) => execute("PRAGMA foreign_keys=ON;\n" + sql, [], true),
     sqlite: {
       prepare(sql: string) {
         return { all: (...args: unknown[]) => execute(sql, args).rows };

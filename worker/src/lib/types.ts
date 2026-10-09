@@ -1,5 +1,7 @@
 export interface NotificationWork { chainId: number; contractAddress: string; recipient: string }
 export interface Env {
+  NOTION_CLIENT_ID?: string;
+  NOTION_CLIENT_SECRET?: string;
   WEBSITE_IMPORT_HOSTS?: string;
   GITHUB_APP_ID?: string;
   GITHUB_CLIENT_ID?: string;
