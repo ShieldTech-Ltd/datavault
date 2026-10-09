@@ -1,5 +1,6 @@
 export interface NotificationWork { chainId: number; contractAddress: string; recipient: string }
 export interface Env {
+  WEBSITE_IMPORT_HOSTS?: string;
   GITHUB_APP_ID?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
