@@ -136,3 +136,35 @@ A collection belongs to at most one deployment-scoped family. The family records
 Public history excludes an unlisted member's ID/name unless that exact member is independently requested by its known ID. A matching owner account session can read the complete own history. Hidden original/current IDs are omitted; a hidden current target is represented by `newerUnlistedRevision: true`. The public collection-detail response exposes `currentCollectionId` only when the target is public, otherwise only `newerUnlistedRevision`. Direct known unlisted URLs remain accessible. This is discoverability control, not a private ACL.
 
 The manage UI's Publish new revision flow reuses normal registration, including content, name, exact query price and sharing disclosure. The new publication starts public even when the original is unlisted. It links only after Worker registration confirmation. If linking fails, the published collection remains registered: both IDs remain visible with a link retry, and a manually supplied confirmed ID can be linked after refresh. There is no rollback promise. Old policy controls remain explicit; voluntarily pausing or changing the old policy may affect outstanding quotes and requests. Wallet and network re-reads fence prompts, confirmation and link operations; switched account history is hidden while fresh history loads.
+
+## Wallet workspaces
+
+Workspace operations use the deployment-bound account session. Mutations require trusted same-origin JSON and `x-csrf-token`. POST/PATCH/DELETE under `/api/workspaces/` join the account mutation quota (20 per IP per minute). Guessing a workspace ID grants no access.
+
+| Endpoint | Access and behavior |
+| --- | --- |
+| GET /api/account/workspaces | Own active memberships only, maximum 100 records |
+| POST /api/account/workspaces | `{name}` creates workspace and creator Owner atomically. Trimmed name 1 to 80 characters, maximum 5 owned workspaces per wallet and deployment |
+| GET /api/account/invitations | Own wallet pending unexpired invitations in current deployment, maximum 100 records |
+| GET /api/workspaces/:id | Current member gets workspace name and own role |
+| PATCH /api/workspaces/:id | Owner changes `{name}` |
+| GET /api/workspaces/:id/members | Current member reads wallet/role/joined time, no account profiles |
+| POST /api/workspaces/:id/invitations | Owner creates `{address,role}`, valid wallet and Owner/Editor/Viewer. Seven-day expiry, one pending invite per wallet. No message sent |
+| GET /api/workspaces/:id/invitations | Owner reads pending current invitations |
+| DELETE /api/workspaces/:id/invitations/:inviteId | Owner revokes, empty JSON object |
+| POST /api/workspaces/:id/invitations/:inviteId/accept | Invited wallet accepts, empty JSON object. Atomic single use and expiry/revocation guard. Retry cannot change the current membership role |
+| PATCH /api/workspaces/:id/members/:wallet | Owner changes `{role}` |
+| DELETE /api/workspaces/:id/members/:wallet | Owner removes membership, empty JSON object |
+| POST /api/workspaces/:id/leave | Leave own membership, empty JSON object |
+
+SQLite enforces a remaining Owner, including concurrent demotion/removal attempts. Conflicts return 409. Maximum 50 members and 50 pending invitations. Members/invitations/shared collections accept `limit` (1 to 50, default 20) and `cursor`, returning `nextCursor`. Audit rows contain actor wallet, action, target identifier and time, without credentials, source content or questions.
+
+## Explicit shared metadata
+
+`POST /api/workspaces/:id/collections` with `{collectionId}` requires the current account to be both workspace Owner and actual live on-chain owner of a confirmed collection in this deployment. It records that wallet as grantor. `DELETE /api/workspaces/:id/collections/:collectionId` with an empty JSON object allows Owner or grantor removal. `GET /api/workspaces/:id/collections` checks current membership, current grantor Owner membership, confirmed deployment record and live grantor ownership. Invalid grants are omitted. Unavailable chain verification returns 503 and no shared metadata. Fields are collection ID/name/description/category/visibility. No raw sources, R2 references, paid questions or buyer answers are returned.
+
+`PATCH /api/collections/:collectionId/metadata?workspaceId=:id` accepts existing description/category/visibility fields with account session and CSRF. A current Owner or Editor needs a valid grant from a current workspace Owner who still owns the collection on chain. Viewer is denied. Membership and grant authority are repeated in the write statement after chain verification. Without `workspaceId`, individual wallet ownership remains required. Team access grants no price, pause, publication, payout, on-chain signature or paid-query authority. Public catalogue and analytics do not incorporate workspace grants. Unlisted shared metadata appears in the authorized workspace feed only.
+
+Developer key creation optionally accepts `workspaceId`. Issuer must currently be workspace Owner and every allowed collection ID must have a valid live grant. Every call checks issuer's current Owner membership, active workspace, exact allowed IDs, scope and live grant ownership. Demotion/removal atomically revokes issuer workspace keys and invalidates their grants. Workspace key list/usage remains issuer-private and is unavailable after issuer loses Owner membership. Personal keys retain existing ownership rules. Secret is shown once. Invitations provide no credentials.
+
+Account export includes only the requesting wallet's memberships and pending invitations, alongside existing account metadata. It includes no other account profiles or key secrets. Deletion requests remain pending; the last Owner must appoint another Owner before leaving.
