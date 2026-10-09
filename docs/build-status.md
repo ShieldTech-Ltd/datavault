@@ -14,7 +14,7 @@ The SaaS roadmap is in [the implementation plan](superpowers/plans/2026-10-09-sa
 | Collection description, category, visibility and confirmed price editing | PR #54, `be1de8a`, locally accepted after review fixes; all eight remote CI/Security checks passed |
 | Immutable collection revisions | PR #55, `22c1c39` (feature `30a6481`), locally accepted after recovery fix and scoped review; all eight remote CI/Security checks passed |
 | In-app inbox and observed service status | PR #56, `ea4cc51` (feature `26ee386`), independently reviewed and locally accepted; all eight remote CI/Security checks passed |
-| Verified email and consent-aware delivery | `b23cb8e`, independently reviewed and locally accepted for route tests and disabled-provider UI; real sender/delivery unconfigured |
+| Verified email and consent-aware delivery | PR #57, `b6a2ef1` (feature `b23cb8e`), independently reviewed and locally accepted for route tests and disabled-provider UI; all eight remote CI/Security checks passed, real sender/delivery unconfigured |
 | Analytics/saved items, keys, teams, imports and billing | Subsequent implementation phases; not available yet |
 
 See [account acceptance](evidence/saas-account-local-acceptance.md) and [collection acceptance](evidence/saas-collection-local-acceptance.md). The feature PRs are drafts stacked on the unmerged dashboard baseline. See [revision acceptance](evidence/saas-revisions-local-acceptance.md) for immutable history, original answer recovery and interruption tests. A pending deletion request does not delete data. Local payment rehearsal passed all 19 checks after the account phase using the model stub.
