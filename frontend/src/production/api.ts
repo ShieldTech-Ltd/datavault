@@ -82,6 +82,9 @@ export function mon(value: string | null): string {
   try { return `${formatEther(BigInt(value))} MON`; } catch { return 'Unavailable'; }
 }
 export function short(value: string): string { return `${value.slice(0, 6)}...${value.slice(-4)}`; }
+export function selectedWindowLabel(data: Pick<Analytics,'windowStart'|'windowEnd'>):string {
+  return `Selected window: ${data.windowStart.slice(0,10)} to ${data.windowEnd.slice(0,10)} UTC (exclusive end)`;
+}
 export function revenueLabel(data: Analytics): string {
   return `${data.revenueCoverage.knownAmounts < data.revenueCoverage.settledQueries && data.recordedRevenueWei !== null ? 'At least ' : ''}${mon(data.recordedRevenueWei)}`;
 }

@@ -4,6 +4,12 @@ import { createServer } from 'vite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const cacheDir=join(tmpdir(),'datavault-analytics-tests-'+process.pid);
+test('inventory labels distinguish current collection inventory from exact selected activity window',async()=>{
+ const vite=await createServer({cacheDir,optimizeDeps:{noDiscovery:true},server:{middlewareMode:true},appType:'custom',logLevel:'silent'});
+ try{const {Metrics}=await vite.ssrLoadModule('/src/production/Views.tsx'),{selectedWindowLabel}=await vite.ssrLoadModule('/src/production/api.ts');const data={confirmedCollections:9,paidQueries:0,periodDays:2,recordedRevenueWei:'0',revenueCoverage:{knownAmounts:0,settledQueries:0},windowStart:'2026-09-01T00:00:00.000Z',windowEnd:'2026-09-03T00:00:00.000Z'};
+ const html=renderToString(React.createElement(Metrics,{data}));assert.match(html,/Current confirmed collections/);assert.match(html,/Current public inventory in this deployment/);assert.equal(selectedWindowLabel(data),'Selected window: 2026-09-01 to 2026-09-03 UTC (exclusive end)');
+ }finally{await vite.close();}
+});
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import Renderer from 'react-test-renderer';
