@@ -1,6 +1,6 @@
 ﻿# Approved website imports local acceptance
 
-Task 7B is independently reviewed and locally accepted at `4e2d27d`. Exact-head hosted checks remain pending. This is implementation evidence, not a public deployment claim.
+Task 7B is independently reviewed and locally accepted at `4e2d27d`. Draft PR #63 at `dd8f0cb19cc6431a5830b1579a3d77bae3ee9ee7` passed all eight hosted CI/Security checks. This is implementation evidence, not a public deployment claim.
 
 ## Verified behavior
 
@@ -23,5 +23,7 @@ Independent review found that awaited provenance hashing could finish after the 
 Tests cover global cross-provider atomic admission, migration compatibility, selected-only extraction, hostile URLs and HTML, private/mixed/changed DNS, bounded CNAMEs, redirects, streamed/aggregate resource limits, timeouts, cancellation, expiry, credential versions and account isolation. Deterministic workerd smoke uses intercepted network responses; the browser fixture above supplies separate actual public fetch evidence.
 
 ## Remaining release boundaries
+
+Hosted CI run `37975278603` passed 341 Worker tests with one optional live test skipped across 31 files (job `113971895935`), plus 47 frontend tests and build (job `113971895829`). This clean Linux default-command evidence is separate from the earlier bounded Windows and serial frontend results.
 
 Exact approved hosts and trustworthy DNS are required. DNS checks do not pin the subsequent HTTPS connection, so this is not complete DNS-rebinding resistance for arbitrary hosts. Normalized Unicode URL expansion beyond the raw 2,048-character limit remains a minor final-review item. Drafts expire logically after 24 hours; physical cleanup is bounded and opportunistic until scheduled/operator maintenance is configured. Real public resources, logging/privacy controls, provider setup, final cross-feature browser acceptance and deployment checks remain open.
