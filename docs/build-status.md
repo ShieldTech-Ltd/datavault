@@ -18,7 +18,7 @@ The SaaS roadmap is in [the implementation plan](superpowers/plans/2026-10-09-sa
 | Dated analytics, owner CSV, private bookmarks and optional saved questions | PR #58, `25f2a1` (feature `1f8846f`), independently reviewed and locally accepted; all eight remote CI/Security checks passed |
 | Scoped developer metadata keys and actual usage | PR #59, `1d1eed7` (feature `b74a929`), independently reviewed and locally accepted; all eight remote CI/Security checks passed |
 | Wallet workspaces, invitations, current roles and explicit metadata sharing | PR #60, `a89faf6` (feature `c9f3a38`), independently reviewed and locally accepted; all eight remote CI/Security checks passed |
-| Selected public GitHub file imports | Feature `0ebc779`, independently reviewed and locally accepted through private preview, confirmed publication, cancellation and wallet isolation; hosted CI pending |
+| Selected public GitHub file imports | PR #61, `87333d1` (feature `0ebc779`), independently reviewed and locally accepted through private preview, confirmed publication, cancellation and wallet isolation; all eight remote CI/Security checks passed |
 | Private GitHub, website, Notion and PDF/DOCX imports; billing | Subsequent implementation tasks; not available yet |
 
 See [account acceptance](evidence/saas-account-local-acceptance.md) and [collection acceptance](evidence/saas-collection-local-acceptance.md). The feature PRs are drafts stacked on the unmerged dashboard baseline. See [revision acceptance](evidence/saas-revisions-local-acceptance.md) for immutable history, original answer recovery and interruption tests. A pending deletion request does not delete data. Local payment rehearsal passed all 19 checks after the account phase using the model stub.
