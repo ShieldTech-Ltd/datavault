@@ -1,4 +1,8 @@
+export interface NotificationWork { chainId: number; contractAddress: string; recipient: string }
 export interface Env {
+  NOTIFICATIONS_QUEUE?: Queue<NotificationWork>;
+  NOTIFICATION_SCHEDULE_ENABLED?: string;
+  MONITOR_SECRET?: string;
   COLLECTION_STORE: R2Bucket;
   DB: D1Database;
   ASSETS: Fetcher;

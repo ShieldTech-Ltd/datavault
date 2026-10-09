@@ -138,3 +138,18 @@
 .dv-collection-edit-form .dv-button { justify-self:start; }
 .dv-collection-edit-form p { margin:0; color:var(--text-2); font-size:12px; line-height:1.6; }
 .dv-collection-price-form { margin-top:20px; }
+.dv-notifications { position: relative; }
+.dv-notification-popover { position: absolute; right: 0; top: 100%; width: min(380px, 90vw); max-height: 70vh; overflow: auto; padding: 20px; z-index: 50; }
+.dv-notification-popover ul { list-style: none; padding: 0; }
+.dv-notification-popover li { border-top: 1px solid #e5e7eb; padding: 12px 0; overflow-wrap: anywhere; }
+.dv-notification-popover h2 { margin-top: 0; font-size: 18px; }
+.dv-light-reference .dv-notification-popover .dv-notification-action { min-height: 44px; padding: 10px 14px; font-size: 12px; }
+.dv-notification-popover .dv-notification-link { display: inline-flex; align-items: center; min-height: 44px; color: #6345ff; font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.dv-notification-popover .dv-notification-time { color: #52617a; font-size: 12px; line-height: 1.6; }
+.dv-notification-popover li p { margin: 6px 0; line-height: 1.6; }
+.dv-notification-popover .dv-notification-action:focus-visible, .dv-notification-popover .dv-notification-link:focus-visible { outline: 2px solid #6345ff; outline-offset: 3px; }
+@media(max-width:700px) {
+  /* Anchor to the full header, whose height follows wrapped navigation. */
+  .dv-reference-topbar .dv-notifications { position: static; }
+  .dv-reference-topbar .dv-notification-popover { left: 14px; right: 14px; width: auto; }
+}

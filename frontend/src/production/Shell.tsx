@@ -1,3 +1,4 @@
+import Notifications from './Notifications';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { SquaresFour, Stack, ChatCircleText, Wallet, Receipt, ChartBar, Key, Gear, List, X, ShieldCheck } from './icons';
@@ -12,7 +13,7 @@ export default function Shell() {
     <header className="dv-reference-topbar">
       <NavLink className="dv-reference-brand" to="/"><img src="/assets/light/brand.png" alt=""/><strong>DataVault</strong><span>beta</span></NavLink>
       <nav aria-label="Product navigation"><NavLink to="/" end>Home</NavLink><NavLink to="/collections">Collections</NavLink><NavLink to="/marketplace">Marketplace</NavLink><a href="https://github.com/ShieldTech-Ltd/datavault/blob/master/docs/api-contract.md" target="_blank" rel="noreferrer">Docs</a><NavLink to="/analytics">Dashboard</NavLink></nav>
-      <div className="dv-reference-wallet"><span className="dv-network"><ShieldCheck size={16} weight="fill"/>{monadTestnet.name}</span><ConnectButton /></div>
+      <div className="dv-reference-wallet"><span className="dv-network"><ShieldCheck size={16} weight="fill"/>{monadTestnet.name}</span><Notifications /><ConnectButton /></div>
       <button className="dv-icon-button dv-mobile-menu" aria-label={menu ? 'Close navigation' : 'Open navigation'} aria-expanded={menu} onClick={() => setMenu(!menu)}>{menu ? <X size={22}/> : <List size={22}/>}</button>
     </header>
     <aside className={`dv-sidebar ${menu ? 'open' : ''}`}>
