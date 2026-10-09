@@ -17,6 +17,7 @@ const LIMITS: Record<string, number> = {
 };
 
 export function routeRateBucket(method: string, path: string): string | null {
+  if (method === "POST" && /^\/api\/collections\/[^/]+\/revisions$/.test(path)) return "account";
   if (method === "PATCH" && /^\/api\/collections\/[^/]+\/metadata$/.test(path)) return "account";
   if (method === "POST" && path.startsWith("/api/auth/")) return "auth";
   if ((method === "POST" || method === "PATCH") && (path === "/api/account" || path.startsWith("/api/account/"))) return "account";
@@ -27,6 +28,7 @@ export function routeRateBucket(method: string, path: string): string | null {
     path === "/api/owner/collections" ||
     path === "/api/buyer/queries" ||
     path === "/api/collections" ||
+    /^\/api\/collections\/[^/]+\/revisions$/.test(path) ||
     /^\/api\/collections\/[^/]+$/.test(path) ||
     /^\/api\/queries\/[^/]+\/(?:receipt|answer)$/.test(path)
   )) return "catalogue";

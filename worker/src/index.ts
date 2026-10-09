@@ -1,3 +1,4 @@
+import { handleCollectionRevisions } from "./routes/collection-revisions";
 import { handleCollectionMetadata } from './routes/collection-metadata';
 import { handleAccountRoute } from "./routes/account";
 import type { Env } from "./lib/types";
@@ -98,6 +99,8 @@ export default {
           /^\/api\/collections\/[^/]+$/.test(path)
         ) {
           res = await handleCollectionDetail(env, path.split("/")[3]);
+        } else if ((method === "GET" || method === "POST") && /^\/api\/collections\/[^/]+\/revisions$/.test(path)) {
+          res = await handleCollectionRevisions(request, env, path.split("/")[3]);
         } else if (method === "PATCH" && /^\/api\/collections\/[^/]+\/metadata$/.test(path)) {
           res = await handleCollectionMetadata(request, env, path.split("/")[3]);
         } else if (method === "POST" && path === "/api/collections") {
@@ -115,7 +118,7 @@ export default {
           res = new Response(
             JSON.stringify({
               error:
-                "Content replacement is unavailable until it can advance on-chain policy.",
+                "Collection content is immutable. Publish a new collection and link it as a revision.",
             }),
             {
               status: 410,

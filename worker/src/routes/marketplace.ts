@@ -1,3 +1,4 @@
+import { revisionSummary } from "./collection-revisions";
 import { collectionMetadata } from './collection-metadata';
 import type { Env } from "../lib/types";
 import { getCollectionRow } from "../lib/d1";
@@ -177,7 +178,7 @@ export async function handleCollectionDetail(
     return json({ error: "Monad collection state is unavailable." }, 503);
   if (collection === null)
     return json({ error: "Collection owner does not match Monad." }, 409);
-  return json(collection);
+  return json({ ...collection, ...(await revisionSummary(collectionId, env)) });
 }
 
 export async function handleOwnerCollections(
