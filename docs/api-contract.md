@@ -87,3 +87,13 @@ Every authenticated mutation requires the exact session `x-csrf-token` and a tru
 The export includes only the current deployment's own profile, notification preferences and pending deletion requests. It excludes cookie tokens, keys, source content, questions, paid answers, other wallets and immutable on-chain records. A deletion request is idempotent while pending. It is stored for later processing, does not delete anything and makes no completed-deletion promise. Private source/paid-answer retention and destructive processing must be defined in a separate phase; on-chain records are immutable.
 
 The Settings page restores a matching session without prompting the wallet. Sign-in prompts only after the user clicks the button. Wallet/network changes hide the old profile immediately, fence delayed responses and revoke the previous session where possible. Session tokens remain in HttpOnly cookies and are never saved to browser storage. Sign-out errors are visible and can be retried.
+
+## Collection settings
+
+`PATCH /api/collections/:id/metadata` requires a signed-in account session, same-origin request and `x-csrf-token`. The account must match both the confirmed deployment-scoped collection owner and the current owner read from the configured chain. Missing collections return 404, owner failures return 403, and unavailable chain verification returns 503.
+
+The JSON object accepts only `description` (string, maximum 2,000 characters), `category` (`General`, `Technology`, `Business`, `Research`, `Education`, `Finance`, `Legal`, `Other`) and `visibility` (`public` or `unlisted`). At least one property is required. Omitted properties preserve saved values. Collections without a metadata row default to an empty description, General category and public visibility.
+
+Unlisted collections remain accessible and queryable by ID. This setting excludes their identifiers, names and settlements from public catalogue search and public marketplace analytics. Signed owner collection and analytics endpoints include the owner's unlisted records. Public analytics report `scope: "public"` and count public collections only. Visibility is catalogue discoverability, not content access authorization.
+
+Query price changes use the existing on-chain `updatePolicy(collectionId, newPrice, currentActive)` transaction. The owner UI accepts exact MON decimals up to 18 places, greater than zero and at most 10 MON. It displays the saved policy only after a successful receipt and chain readback. Price and pause changes advance the policy version and may invalidate outstanding quotes and requests under the current policy rules. Metadata changes require no payment transaction.

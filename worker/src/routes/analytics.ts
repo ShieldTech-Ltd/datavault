@@ -99,7 +99,7 @@ async function payments(
                     AND q.chain_id = ? AND LOWER(q.contract_address) = ?
                     AND c.chain_id = ? AND c.contract_address = ?
                     AND c.status = 'confirmed' ${
-                      owner ? "AND c.owner_address = ?" : ""
+                      owner ? "AND c.owner_address = ?" : "AND NOT EXISTS (SELECT 1 FROM collection_metadata m WHERE m.chain_id = c.chain_id AND m.contract_address = c.contract_address AND m.collection_id = c.collection_id AND m.visibility = 'unlisted')"
                     }
                   ORDER BY q.settled_at DESC, q.request_id DESC LIMIT ?`;
   const args = owner
@@ -143,11 +143,12 @@ export async function handleMarketplaceAnalytics(env: Env): Promise<Response> {
       503
     );
   const count = await env.DB.prepare(
-    "SELECT COUNT(*) AS count FROM collections WHERE status = 'confirmed' AND chain_id = ? AND contract_address = ?"
+    "SELECT COUNT(*) AS count FROM collections c WHERE status = 'confirmed' AND chain_id = ? AND contract_address = ? AND NOT EXISTS (SELECT 1 FROM collection_metadata m WHERE m.chain_id = c.chain_id AND m.contract_address = c.contract_address AND m.collection_id = c.collection_id AND m.visibility = 'unlisted')"
   )
     .bind(Number(env.CHAIN_ID), env.CONTRACT_ADDRESS.toLowerCase())
     .first<{ count: number }>();
   return json({
+    scope: "public",
     periodDays: 30,
     confirmedCollections: count?.count ?? 0,
     ...summarise(rows),
