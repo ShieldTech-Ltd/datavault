@@ -46,10 +46,12 @@ export function setCookie(request: Request, name: string, value: string, seconds
 export interface AccountRow {
   account_id: string; address: string; chain_id: number; contract_address: string;
   display_name: string; locale: 'en-GB'; notify_in_app: number; notify_email: number; created_at: number; updated_at: number;
+  email_consent?: number; verified_email?: string | null; verified_at?: number | null;
 }
 export function profile(row: AccountRow): AccountProfile {
   return { address: row.address, displayName: row.display_name, locale: row.locale,
-    notificationPreferences: { inApp: row.notify_in_app === 1, email: row.notify_email === 1 },
+    notificationPreferences: { inApp: row.notify_in_app === 1, email: row.email_consent === 1 },
+    email: { verifiedEmail: row.verified_email ?? null, verifiedAt: row.verified_at ?? null },
     createdAt: row.created_at, updatedAt: row.updated_at };
 }
 export interface AccountSession { account: AccountRow; csrfToken: string; expiresAt: number; tokenHash: string }
@@ -58,8 +60,8 @@ export async function readSession(request: Request, env: Env): Promise<AccountSe
   const token = cookie(request, SESSION_COOKIE);
   if (!token) return null;
   const tokenHash = await digest(token), { chainId, contract } = deployment(env);
-  const row = await env.DB.prepare(`SELECT a.*, s.csrf_token, s.expires_at FROM account_sessions s
-    JOIN accounts a ON a.account_id = s.account_id WHERE s.token_hash = ? AND s.expires_at > ?
+  const row = await env.DB.prepare(`SELECT a.*, e.notify_email AS email_consent,e.verified_email,e.verified_at, s.csrf_token, s.expires_at FROM account_sessions s
+    JOIN accounts a ON a.account_id = s.account_id LEFT JOIN account_email e ON e.account_id=a.account_id WHERE s.token_hash = ? AND s.expires_at > ?
     AND a.chain_id = ? AND a.contract_address = ?`).bind(tokenHash, Date.now(), chainId, contract)
     .first<AccountRow & { csrf_token: string; expires_at: number }>();
   return row ? { account: row, csrfToken: row.csrf_token, expiresAt: row.expires_at, tokenHash } : null;

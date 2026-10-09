@@ -1,14 +1,20 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useWallet } from '../lib/wallet';
 import { useAccount } from './account';
+import type { EmailStatus } from './account-client';
 export default function AccountSettings() {
   const { primaryWallet, correctNetwork } = useWallet();
   const { client, state } = useAccount();
   const [displayName, setDisplayName] = useState(''), [inApp, setInApp] = useState(true);
   const [notice, setNotice] = useState(''), [confirmDelete, setConfirmDelete] = useState(false);
+  const [email,setEmail]=useState(''),[emailEnabled,setEmailEnabled]=useState(false),[emailStatus,setEmailStatus]=useState<EmailStatus|null>(null),[cooldown,setCooldown]=useState(0);
   useEffect(() => { setDisplayName(state.session?.account.displayName ?? ''); setInApp(state.session?.account.notificationPreferences.inApp ?? true); }, [state.session?.account]);
-  useEffect(() => { setNotice(''); setConfirmDelete(false); }, [state.session?.account.address]);
-  async function save(event: FormEvent) { event.preventDefault(); setNotice(''); if (await client.save({ displayName, locale: 'en-GB', notificationPreferences: { inApp, email: false } })) setNotice('Settings saved.'); }
+  useEffect(() => { setNotice(''); setConfirmDelete(false);setEmail('');setEmailStatus(null);setCooldown(0); }, [state.session?.account.address]);
+  useEffect(()=>{setEmailEnabled(state.session?.account.notificationPreferences.email??false);if(state.session)void client.emailStatus().then(result=>{if(result){setEmailStatus(result);setCooldown(result.resendAfter);}});},[client,state.session?.account]);
+  useEffect(()=>{if(!cooldown)return;const timer=setInterval(()=>setCooldown(value=>Math.max(0,value-1)),1000);return()=>clearInterval(timer);},[cooldown>0]);
+  async function save(event: FormEvent) { event.preventDefault(); setNotice(''); if (await client.save({ displayName, locale: 'en-GB', notificationPreferences: { inApp, email: emailEnabled } })) setNotice('Settings saved.'); }
+  async function sendVerification(event:FormEvent){event.preventDefault();setNotice('');const result=await client.challengeEmail(email);if(result){setCooldown(result.resendAfter??60);setNotice('Verification message accepted by the email provider. Check your inbox, then confirm with this wallet. Acceptance does not confirm delivery.');}else{const result=await client.emailStatus();if(result){setEmailStatus(result);setCooldown(result.resendAfter);}}}
+  async function removeEmail(){if(await client.removeEmail()){setEmail('');setEmailEnabled(false);setNotice('Email removed and email notifications disabled.');}}
   async function download() {
     setNotice(''); const blob = await client.exportAccount(); if (!blob) return;
     const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = 'datavault-account.json'; link.click();
@@ -23,8 +29,21 @@ export default function AccountSettings() {
       <form onSubmit={save}><label>Display name<input value={displayName} maxLength={80} onChange={event => setDisplayName(event.target.value)} disabled={state.loading} /></label>
         <label>Locale<select value="en-GB" disabled><option value="en-GB">English (United Kingdom)</option></select></label>
         <label className="dv-account-checkbox"><input type="checkbox" checked={inApp} disabled={state.loading} onChange={event => setInApp(event.target.checked)} /> Enable in-app notifications</label>
-        <p>Applies to new inbox deliveries. Events processed while disabled remain suppressed when you enable notifications later.</p><label className="dv-account-checkbox"><input type="checkbox" checked={false} disabled /> Email notifications unavailable</label><p>Email requires verified-email support before you can opt in.</p>
+        <p>Applies to new inbox deliveries. Events processed while disabled remain suppressed when you enable notifications later.</p>
+        <label className="dv-account-checkbox"><input type="checkbox" checked={emailEnabled} disabled={state.loading||(!emailEnabled&&(!emailStatus?.providerConfigured||!state.session.account.email?.verifiedEmail))} onChange={event=>setEmailEnabled(event.target.checked)} /> Enable transactional email notifications</label>
+        <p>Explicitly opt in to future collection registrations and settled payouts. No marketing messages or historical backlog. In-app notifications are independent.</p>
         <button className="dv-button" disabled={state.loading}>Save settings</button></form>
+      <h3>Verified email</h3>
+      {emailStatus===null?<p>Email status unavailable. <button className="dv-button secondary" disabled={state.loading} onClick={()=>void client.emailStatus().then(result=>{if(result){setEmailStatus(result);setCooldown(result.resendAfter);}})}>Retry email status</button></p>:<>
+        {!emailStatus.providerConfigured&&<p role="status">Email provider unavailable. Verification and email opt-in require a configured sender and trusted links.</p>}
+        <p>{emailStatus.verifiedEmail?<>Verified: <span className="dv-account-address">{emailStatus.verifiedEmail}</span></>:'No verified email address.'}</p>
+        {emailStatus.pendingEmail&&<p>Pending: <span className="dv-account-address">{emailStatus.pendingEmail}</span>. {emailStatus.status==='send_failed'?'The provider did not accept the verification message.':emailStatus.status==='expired'?'The verification link expired. Request a fresh message.':'Check your inbox and confirm with this wallet.'}</p>}
+        <form onSubmit={event=>void sendVerification(event)}><label>Email address<input type="email" autoComplete="email" maxLength={254} value={email} onChange={event=>setEmail(event.target.value)} disabled={state.loading||!emailStatus.providerConfigured} required /></label>
+          <p>Requesting a replacement revokes the previous email and disables email notifications. Verification does not opt you in.</p>
+          <button className="dv-button secondary" disabled={state.loading||!emailStatus.providerConfigured||!email.trim()||cooldown>0}>{cooldown>0?`Resend available in ${cooldown}s`:emailStatus.pendingEmail?'Resend verification':'Send verification'}</button>
+        </form>
+        {(emailStatus.verifiedEmail||emailStatus.pendingEmail)&&<button className="dv-button secondary" disabled={state.loading} onClick={()=>void removeEmail()}>Remove email</button>}
+      </>}
       <button className="dv-button secondary" disabled={state.loading} onClick={() => void client.signOut()}>Sign out</button>
       <h3>Your account data</h3><p>Export includes your profile, notification preferences, inbox metadata and pending deletion requests. Source content, paid answers and on-chain records are outside this account export.</p>
       <button className="dv-button secondary" disabled={state.loading} onClick={() => void download()}>Download account export</button>

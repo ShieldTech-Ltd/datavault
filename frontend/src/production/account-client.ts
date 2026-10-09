@@ -2,11 +2,12 @@ import type { AccountProfile, AccountSessionResponse } from '../../../shared/api
 type WalletClient = { getChainId(): Promise<number>; signMessage(input: { message: string }): Promise<string> };
 export type AccountWallet = { address: string; getWalletClient(): Promise<WalletClient> };
 export type AccountState = { session: AccountSessionResponse | null; loading: boolean; error: string };
+export type EmailStatus = { providerConfigured: boolean; verifiedEmail: string | null; verifiedAt: number | null; pendingEmail: string | null; status: string; resendAfter: number };
 function validSession(value: unknown): value is AccountSessionResponse {
   const v = value as AccountSessionResponse | null;
   return Boolean(v && /^0x[a-f0-9]{40}$/.test(v.account?.address) && typeof v.account.displayName === 'string' &&
     v.account.displayName.length <= 80 && v.account.locale === 'en-GB' && typeof v.account.notificationPreferences?.inApp === 'boolean' &&
-    v.account.notificationPreferences.email === false && Number.isSafeInteger(v.account.createdAt) && Number.isSafeInteger(v.account.updatedAt) &&
+    typeof v.account.notificationPreferences.email === 'boolean' && (!v.account.notificationPreferences.email || Boolean(v.account.email?.verifiedEmail && Number.isSafeInteger(v.account.email?.verifiedAt))) && Number.isSafeInteger(v.account.createdAt) && Number.isSafeInteger(v.account.updatedAt) &&
     /^[a-f0-9]{64}$/.test(v.csrfToken) && Number.isFinite(Date.parse(v.expiresAt)) && Date.parse(v.expiresAt) > Date.now());
 }
 // One controller survives navigation. Every async result is fenced by wallet generation.
@@ -129,6 +130,22 @@ export class AccountClient {
       return response.blob();
     });
   }
+  async emailStatus(): Promise<EmailStatus | null> {
+    return this.operation(async () => this.json<EmailStatus>('/api/account/email'));
+  }
+  private async emailMutation(path: string, method: string, input: unknown) {
+    const result=await this.operation(async session => {
+      const outcome=await this.json<{status:string;resendAfter?:number}>(path,{method,headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(input)});
+      const next:unknown=await this.json('/api/account');
+      if(!validSession(next)||next.account.address!==session.account.address)throw new Error('Invalid account response for this wallet.');
+      return {outcome,session:next};
+    });
+    if(result)this.publish({session:result.session});
+    return result?.outcome??null;
+  }
+  async challengeEmail(email:string){return this.emailMutation('/api/account/email/challenge','POST',{email});}
+  async verifyEmail(token:string){return this.emailMutation('/api/account/email/verify','POST',{token});}
+  async removeEmail(){return this.emailMutation('/api/account/email','DELETE',{});}
   async requestDeletion() {
     return this.operation(async session => {
       const result = await this.json<{ requestId: string; status: string }>('/api/account/deletion-request', { method: 'POST',
