@@ -113,3 +113,18 @@ export function queryRecoveryMessage(
     timestamp,
   ].join(":");
 }
+
+// Account sessions authorize SaaS metadata only. Payment signatures stay separate.
+export interface AccountProfile {
+  address: string;
+  displayName: string;
+  locale: 'en-GB';
+  notificationPreferences: { inApp: boolean; email: boolean };
+  createdAt: number;
+  updatedAt: number;
+}
+export interface AccountSessionResponse {
+  account: AccountProfile;
+  csrfToken: string;
+  expiresAt: string;
+}

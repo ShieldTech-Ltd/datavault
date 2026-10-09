@@ -1,0 +1,140 @@
+import type { AccountProfile, AccountSessionResponse } from '../../../shared/api';
+type WalletClient = { getChainId(): Promise<number>; signMessage(input: { message: string }): Promise<string> };
+export type AccountWallet = { address: string; getWalletClient(): Promise<WalletClient> };
+export type AccountState = { session: AccountSessionResponse | null; loading: boolean; error: string };
+function validSession(value: unknown): value is AccountSessionResponse {
+  const v = value as AccountSessionResponse | null;
+  return Boolean(v && /^0x[a-f0-9]{40}$/.test(v.account?.address) && typeof v.account.displayName === 'string' &&
+    v.account.displayName.length <= 80 && v.account.locale === 'en-GB' && typeof v.account.notificationPreferences?.inApp === 'boolean' &&
+    v.account.notificationPreferences.email === false && Number.isSafeInteger(v.account.createdAt) && Number.isSafeInteger(v.account.updatedAt) &&
+    /^[a-f0-9]{64}$/.test(v.csrfToken) && Number.isFinite(Date.parse(v.expiresAt)) && Date.parse(v.expiresAt) > Date.now());
+}
+// One controller survives navigation. Every async result is fenced by wallet generation.
+export class AccountClient {
+  state: AccountState = { session: null, loading: false, error: '' };
+  private wallet: AccountWallet | null = null;
+  private generation = 0;
+  private listeners = new Set<(state: AccountState) => void>();
+  private pending = false;
+  private cleanup: Promise<void> = Promise.resolve();
+  private revocationCsrf: string | undefined;
+  private hydrateAbort: AbortController | null = null;
+  constructor(private chainId: number, private contract: string | undefined, private network: typeof fetch = (...args) => globalThis.fetch(...args)) {}
+  subscribe(listener: (state: AccountState) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
+  private publish(value: Partial<AccountState>) { this.state = { ...this.state, ...value }; this.listeners.forEach(listener => listener(this.state)); }
+  private current(generation: number, address: string) { return this.generation === generation && this.wallet?.address.toLowerCase() === address; }
+  private async response(path: string, init: RequestInit = {}) {
+    return this.network(path, { ...init, credentials: 'same-origin', cache: 'no-store' });
+  }
+  private async json<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const response = await this.response(path, init);
+    if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? 'Account authorization expired or was rejected. Sign in again.'
+      : response.status === 429 ? 'Too many requests. Please wait a minute and retry.' : 'Account service unavailable. Please retry.');
+    try { return await response.json() as T; } catch { throw new Error('Invalid account service response.'); }
+  }
+  private revoke(csrfToken?: string): Promise<void> {
+    this.revocationCsrf = csrfToken ?? this.revocationCsrf;
+    const token = this.revocationCsrf;
+    const operation = this.cleanup.then(async () => {
+      const response = await this.response('/api/auth/logout', { method: 'POST', headers: token ? { 'x-csrf-token': token } : {} });
+      if (!response.ok) throw new Error('Server sign-out failed. Retry sign-out before leaving a shared browser.');
+      if (this.revocationCsrf === token) this.revocationCsrf = undefined;
+    });
+    this.cleanup = operation.catch(() => {});
+    return operation;
+  }
+  async setWallet(wallet: AccountWallet | null, correctNetwork: boolean) {
+    const next = correctNetwork && this.contract ? wallet : null;
+    const previous = this.wallet?.address.toLowerCase(), address = next?.address.toLowerCase();
+    if (previous === address) return;
+    const previousSession = this.state.session;
+    this.wallet = next; const generation = ++this.generation;
+    this.hydrateAbort?.abort(); this.publish({ session: null, error: '', loading: false });
+    if (previousSession) {
+      try { await this.revoke(previousSession.csrfToken); } catch (cause) { if (generation === this.generation) this.publish({ error: (cause as Error).message }); }
+    }
+    if (!address || !this.current(generation, address)) return;
+    await this.cleanup;
+    if (!this.current(generation, address)) return;
+    const controller = new AbortController(); this.hydrateAbort = controller;
+    this.publish({ loading: true });
+    try {
+      const response = await this.response('/api/account', { signal: controller.signal });
+      if (response.status === 401) return;
+      if (!response.ok) throw new Error('Could not restore your account. Retry sign-in.');
+      const session: unknown = await response.json();
+      if (!validSession(session)) throw new Error('Invalid account session response.');
+      if (!this.current(generation, address) || session.account.address !== address) { await this.revoke(session.csrfToken); return; }
+      this.publish({ session });
+    } catch (cause) {
+      if (this.current(generation, address) && !controller.signal.aborted) this.publish({ error: (cause as Error).message });
+    } finally { if (this.current(generation, address)) this.publish({ loading: false }); }
+  }
+  async signIn() {
+    if (!this.wallet || !this.contract || this.pending) return;
+    const wallet = this.wallet, address = wallet.address.toLowerCase(), generation = this.generation;
+    this.pending = true; this.publish({ loading: true, error: '' });
+    try {
+      await this.cleanup;
+      if (!this.current(generation, address)) return;
+      const client = await wallet.getWalletClient();
+      if (await client.getChainId() !== this.chainId) throw new Error('Switch to the deployment network first.');
+      if (!this.current(generation, address)) return;
+      const challenge = await this.json<{ message: string; nonce: string; expiresAt: string }>('/api/auth/challenge', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address }) });
+      if (!this.current(generation, address)) return;
+      if (typeof challenge.message !== 'string' || !/^[a-f0-9]{64}$/.test(challenge.nonce) || !Number.isFinite(Date.parse(challenge.expiresAt)) || Date.parse(challenge.expiresAt) <= Date.now()) throw new Error('Invalid sign-in challenge.');
+      const signature = await client.signMessage({ message: challenge.message });
+      // Re-read the injected wallet after the prompt, before issuing an authenticated cookie.
+      const latest = await wallet.getWalletClient();
+      if (await latest.getChainId() !== this.chainId || !this.current(generation, address)) return;
+      const result: unknown = await this.json('/api/auth/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: challenge.message, signature }) });
+      if (!validSession(result)) throw new Error('Invalid account session response.');
+      if (!this.current(generation, address) || result.account.address !== address) { await this.revoke(result.csrfToken); return; }
+      let unchanged = false;
+      try { const afterVerify = await wallet.getWalletClient(); unchanged = await afterVerify.getChainId() === this.chainId && this.current(generation, address); } catch { /* Wallet changed during verification. */ }
+      if (!unchanged) { await this.revoke(result.csrfToken); return; }
+      this.publish({ session: result });
+    } catch (cause) { if (this.current(generation, address)) this.publish({ error: cause instanceof Error ? cause.message : 'Sign-in failed.' }); }
+    finally { this.pending = false; this.publish({ loading: false }); }
+  }
+  async signOut() {
+    const session = this.state.session;
+    ++this.generation; this.hydrateAbort?.abort(); this.publish({ session: null, loading: true, error: '' });
+    try { await this.revoke(session?.csrfToken); } catch (cause) { this.publish({ error: (cause as Error).message }); }
+    finally { this.publish({ loading: false }); }
+  }
+  private async operation<T>(task: (session: AccountSessionResponse) => Promise<T>): Promise<T | null> {
+    const session = this.state.session, address = this.wallet?.address.toLowerCase(), generation = this.generation;
+    if (!session || !address || this.pending || Date.parse(session.expiresAt) <= Date.now()) { if (session && Date.parse(session.expiresAt) <= Date.now()) this.publish({ session: null, error: 'Account session expired. Sign in again.' }); return null; }
+    this.pending = true; this.publish({ loading: true, error: '' });
+    try { const result = await task(session); return this.current(generation, address) ? result : null; }
+    catch (cause) { if (this.current(generation, address)) this.publish({ error: (cause as Error).message }); return null; }
+    finally { this.pending = false; if (this.current(generation, address)) this.publish({ loading: false }); }
+  }
+  async save(settings: Pick<AccountProfile, 'displayName' | 'locale' | 'notificationPreferences'>) {
+    const result = await this.operation(async session => this.json<{ account: AccountProfile }>('/api/account', { method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': session.csrfToken }, body: JSON.stringify(settings) }));
+    if (result && this.state.session) {
+      const next = { ...this.state.session, account: result.account };
+      if (!validSession(next) || next.account.address !== this.state.session.account.address) { this.publish({ session: null, error: 'Invalid profile response for this wallet.' }); return false; }
+      this.publish({ session: next }); return true;
+    }
+    return false;
+  }
+  async exportAccount(): Promise<Blob | null> {
+    return this.operation(async () => {
+      const response = await this.response('/api/account/export');
+      if (!response.ok || !response.headers.get('Content-Type')?.includes('application/json')) throw new Error('Account export unavailable.');
+      return response.blob();
+    });
+  }
+  async requestDeletion() {
+    return this.operation(async session => {
+      const result = await this.json<{ requestId: string; status: string }>('/api/account/deletion-request', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': session.csrfToken }, body: '{}' });
+      if (result.status !== 'pending' || !/^[a-f0-9]{64}$/.test(result.requestId)) throw new Error('Invalid deletion-request response.');
+      return result;
+    });
+  }
+}

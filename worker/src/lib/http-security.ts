@@ -40,14 +40,14 @@ export function corsHeaders(origin: string | null): Headers {
   const headers = new Headers({ "Vary": "Origin" });
   if (origin) {
     headers.set("Access-Control-Allow-Origin", origin);
-    headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    headers.set("Access-Control-Allow-Headers", "Content-Type, x-signature, x-timestamp");
+    headers.set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
+    headers.set("Access-Control-Allow-Headers", "Content-Type, x-signature, x-timestamp, x-csrf-token");
   }
   return headers;
 }
 
 export async function boundedApiRequest(request: Request): Promise<Request | Response> {
-  if (request.method !== "POST") return request;
+  if (request.method !== "POST" && request.method !== "PATCH") return request;
   const path = new URL(request.url).pathname;
   // The retired upload route never parses a body and must consistently return 410.
   if (/^\/api\/collections\/[^/]+\/upload$/.test(path)) return request;
