@@ -19,7 +19,7 @@ export default function Shell() {
     <aside className={`dv-sidebar ${menu ? 'open' : ''}`}>
       <nav aria-label="Main navigation">{links.map(([to,label,Icon]) => <NavLink key={to} to={to} end={to === '/'} onClick={() => setMenu(false)}><Icon size={19} weight="duotone"/><span>{label}</span></NavLink>)}</nav>
       <img className="dv-sidebar-art" src="/assets/light/sidebar.png" alt=""/>
-      <div className="dv-reference-pro"><strong>DataVault Pro</strong><p>Advanced plans and API keys are not available yet.</p><button disabled>Upgrade unavailable</button></div>
+      <div className="dv-reference-pro"><strong>DataVault Pro</strong><p>Advanced plans are not available yet. Scoped developer keys are available in API Access.</p><button disabled>Upgrade unavailable</button></div>
     </aside>
     <div className="dv-main"><main id="dashboard-content" className="dv-content" tabIndex={-1}><Outlet/></main><footer className="dv-footer"><span>DataVault · {monadTestnet.name} · Test tokens</span><NavLink to="/manage">Register a collection</NavLink></footer></div>
   </div>;
