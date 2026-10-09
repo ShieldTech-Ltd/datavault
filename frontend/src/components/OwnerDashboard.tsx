@@ -29,11 +29,13 @@ interface PendingRegistration {
   txHash: string;
   ownerAddress: string;
   name: string;
+  revisionParent?: string;
 }
 
 function readPending(ownerAddress: string): PendingRegistration | null {
   try {
-    const raw = localStorage.getItem(PENDING_KEY);
+    const scopedKey = `${PENDING_KEY}:${ownerAddress.toLowerCase()}`;
+    const raw = localStorage.getItem(scopedKey) ?? localStorage.getItem(PENDING_KEY);
     if (!raw || raw.length > 2_000) return null;
     const item: unknown = JSON.parse(raw);
     if (!item || typeof item !== "object") return null;
@@ -41,17 +43,28 @@ function readPending(ownerAddress: string): PendingRegistration | null {
     if (!HASH_RE.test(value.collectionId ?? "") ||
         !HASH_RE.test(value.txHash ?? "") ||
         value.ownerAddress?.toLowerCase() !== ownerAddress.toLowerCase() ||
-        typeof value.name !== "string") return null;
+        typeof value.name !== "string" ||
+        (value.revisionParent !== undefined && !HASH_RE.test(value.revisionParent))) return null;
+    // Preserve pre-existing deployment-scoped records for their matching owner.
+    if (!localStorage.getItem(scopedKey)) {
+      localStorage.setItem(scopedKey, raw);
+      localStorage.removeItem(PENDING_KEY);
+    }
     return value as PendingRegistration;
   } catch {
     return null;
   }
 }
 
-function storePending(value: PendingRegistration | null) {
+function storePending(value: PendingRegistration | null, ownerAddress = value?.ownerAddress ?? "") {
+  if (!ownerAddress) return;
   try {
-    if (value) localStorage.setItem(PENDING_KEY, JSON.stringify(value));
-    else localStorage.removeItem(PENDING_KEY);
+    const scopedKey = `${PENDING_KEY}:${ownerAddress.toLowerCase()}`;
+    if (value) localStorage.setItem(scopedKey, JSON.stringify(value));
+    else localStorage.removeItem(scopedKey);
+    const legacy = localStorage.getItem(PENDING_KEY);
+    if (legacy && JSON.parse(legacy).ownerAddress?.toLowerCase() === ownerAddress.toLowerCase())
+      localStorage.removeItem(PENDING_KEY);
   } catch {
     // Recovery still works in the current tab when storage is unavailable.
   }
@@ -238,6 +251,12 @@ export default function OwnerDashboard({
       setStep("awaiting_wallet");
       setStatusMsg("Sign the registration transaction in your wallet...");
 
+      const registrationInput = {
+        collectionId,
+        ownerAddress: walletAddress,
+        name: file.name.replace(/\.md$/i, ""),
+        ...(revisionParent ? { revisionParent } : {}),
+      };
       let txHash: string;
       try {
         txHash = await walletClient.sendTransaction({
@@ -251,17 +270,14 @@ export default function OwnerDashboard({
         );
       }
 
+      const registration = { ...registrationInput, txHash };
+      // Broadcast is irreversible. Save the original owner's tuple even when
+      // a wallet switch or unmount has made this UI operation stale.
+      storePending(registration);
       await guardWallet();
       setStep("awaiting_confirm");
       setStatusMsg("Waiting for on-chain confirmation...");
-      const registration = {
-        collectionId,
-        txHash,
-        ownerAddress: walletAddress,
-        name: file.name.replace(/\.md$/i, ""),
-      };
       setPending(registration);
-      storePending(registration);
       await confirmPending(registration);
     } catch (err: unknown) {
       if (!current()) return;
@@ -274,6 +290,8 @@ export default function OwnerDashboard({
     if (!CONTRACT_ADDRESS || !primaryWallet ||
         registration.ownerAddress.toLowerCase() !== primaryWallet.address.toLowerCase())
       throw new Error("Connect the wallet that registered this collection.");
+    if (revisionParent && registration.revisionParent && revisionParent !== registration.revisionParent)
+      throw new Error(`Open the original revision parent ${registration.revisionParent} to resume this registration.`);
     await guardWallet(registration.ownerAddress);
     setStep("awaiting_confirm");
     const receipt = await viemClient.waitForTransactionReceipt({
@@ -282,7 +300,7 @@ export default function OwnerDashboard({
     await guardWallet(registration.ownerAddress);
     if (receipt.status !== "success") {
       setPending(null);
-      storePending(null);
+      storePending(null, registration.ownerAddress);
       throw new Error("Registration transaction reverted. No collection was registered.");
     }
     const confirmRes = await fetch(
@@ -308,7 +326,7 @@ export default function OwnerDashboard({
     if (col[0].toLowerCase() !== registration.ownerAddress.toLowerCase())
       throw new Error("Confirmed collection owner does not match this wallet.");
     if (revisionParent) {
-      setPending(null);storePending(null);setStep("done");
+      setPending(null);storePending(null, registration.ownerAddress);setStep("done");
       setStatusMsg(`New public collection confirmed: ${registration.collectionId}`);
       await onConfirmed?.(registration.collectionId);
       return;
@@ -322,9 +340,9 @@ export default function OwnerDashboard({
       collectionName: registration.name,
     });
     setPending(null);
-    storePending(null);
+    storePending(null, registration.ownerAddress);
     setStep("done");
-    setStatusMsg(`Registered and confirmed. Tx: ${registration.txHash}`);
+    setStatusMsg(`Registered and confirmed. Tx: ${registration.txHash}${registration.revisionParent ? `. Revision parent: ${registration.revisionParent}. Open /manage?collection=${registration.revisionParent} and link confirmed collection ${registration.collectionId}.` : ""}`);
     onChanged?.();
   }
 
@@ -462,11 +480,12 @@ export default function OwnerDashboard({
           <strong>Registration needs confirmation</strong>
           <p>Transaction: {pending.txHash}</p>
           <p>Collection: {pending.collectionId}</p>
+          {pending.revisionParent && <p>Revision parent: <a href={`/manage?collection=${pending.revisionParent}`}>{pending.revisionParent}</a></p>}
           <button type="button" onClick={() => void resumeConfirmation()}
             disabled={isLoading} style={styles.button}>
             {isLoading ? "Checking registration..." : "Resume confirmation"}
           </button>
-          <button type="button" onClick={() => { setPending(null); storePending(null); }}
+          <button type="button" onClick={() => { setPending(null); storePending(null, pending.ownerAddress); }}
             disabled={isLoading} style={{ ...styles.linkButton, marginLeft: "0.75rem" }}>
             Clear local record
           </button>
