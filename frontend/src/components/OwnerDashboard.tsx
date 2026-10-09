@@ -1,3 +1,5 @@
+import CollectionEditor from '../production/CollectionEditor';
+import { updateCollectionPrice } from '../production/collection-policy';
 import { useState, useEffect } from "react";
 import { useWallet } from "@/lib/wallet";
 import { DATAVAULT_ABI, CONTRACT_ADDRESS, viemClient } from "@/lib/contract";
@@ -94,6 +96,7 @@ export default function OwnerDashboard({
   const [loadingPolicy, setLoadingPolicy] = useState(false);
   const [disclosureAccepted, setDisclosureAccepted] = useState(false);
   const [policyTxPending, setPolicyTxPending] = useState(false);
+  const [newPrice, setNewPrice] = useState("");
   const [pending, setPending] = useState<PendingRegistration | null>(null);
   const [recoveryCollectionId, setRecoveryCollectionId] = useState("");
   const [recoveryTxHash, setRecoveryTxHash] = useState("");
@@ -361,7 +364,7 @@ export default function OwnerDashboard({
         functionName: "getCollection",
         args: [policy.collectionId as `0x${string}`],
       })) as [string, string, bigint, number, boolean];
-      setPolicy({ ...policy, active: col[4], policyVersion: col[3] });
+      setPolicy({ ...policy, price: col[2], active: col[4], policyVersion: col[3] });
       onChanged?.();
       setStatusMsg(`Policy updated. Tx: ${txHash}`);
     } catch (err: unknown) {
@@ -371,6 +374,21 @@ export default function OwnerDashboard({
     } finally {
       setPolicyTxPending(false);
     }
+  }
+
+  async function handlePriceUpdate(event: React.FormEvent) {
+    event.preventDefault();
+    if (!primaryWallet || !policy || !contractReady || !(await checkNetwork())) return;
+    setPolicyTxPending(true);
+    try {
+      const walletClient = await primaryWallet.getWalletClient();
+      const saved = await updateCollectionPrice(walletClient, viemClient, CONTRACT_ADDRESS!, policy.collectionId as `0x${string}`, newPrice, policy.active);
+      setPolicy({ ...policy, ...saved });
+      setNewPrice("");
+      setStatusMsg("Price updated and confirmed on chain.");
+      onChanged?.();
+    } catch (error) { setStatusMsg(error instanceof Error ? error.message : "Price update unavailable."); }
+    finally { setPolicyTxPending(false); }
   }
 
   function handleForgetCollection() {
@@ -565,6 +583,12 @@ export default function OwnerDashboard({
             Price: <strong>{formatEther(policy.price)} MON</strong> per query
           </div>
 
+          <form onSubmit={event => void handlePriceUpdate(event)}>
+            <label>New price per query (MON)<input aria-label="New price per query (MON)" inputMode="decimal" value={newPrice} onChange={event => setNewPrice(event.target.value)} required /></label>
+            <button type="submit" disabled={policyTxPending} style={styles.button}>Update price</button>
+            <p>Price and pause changes advance the policy version and can invalidate outstanding quotes and requests under the current policy rules.</p>
+          </form>
+          <CollectionEditor collectionId={policy.collectionId} onChanged={onChanged} />
           <div
             style={{
               display: "flex",

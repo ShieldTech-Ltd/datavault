@@ -5,6 +5,7 @@ export interface Collection {
   registrationTxHash: string | null; paidQueries: number; priceWei: string;
   policyVersion: number; active: boolean; queryAvailable: boolean;
   chainId: number; contractAddress: string;
+  description?: string; category?: string; visibility?: "public" | "unlisted";
 }
 export interface CollectionPage { collections: Collection[]; hasMore: boolean; limit: number; offset: number }
 export interface Activity {
@@ -31,6 +32,9 @@ function validatePayload(path: string, value: any): boolean {
   const count = (v: unknown) => Number.isSafeInteger(v) && Number(v) >= 0;
   const amount = (v: unknown) => typeof v === 'string' && /^\d+$/.test(v);
   const collection = (v: any) => v && hash(v.collectionId) && address(v.ownerAddress) && typeof v.name === 'string'
+    && (v.description === undefined || typeof v.description === 'string' && v.description.length <= 2000)
+    && (v.category === undefined || ['General','Technology','Business','Research','Education','Finance','Legal','Other'].includes(v.category))
+    && (v.visibility === undefined || ['public','unlisted'].includes(v.visibility))
     && amount(v.priceWei) && count(v.paidQueries) && typeof v.active === 'boolean' && typeof v.queryAvailable === 'boolean';
   const page = (v: any) => v && typeof v.hasMore === 'boolean' && count(v.offset) && count(v.limit) && v.limit > 0;
   const route = path.split('?')[0];

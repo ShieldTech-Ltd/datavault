@@ -26,7 +26,7 @@ export function WorkspaceGate({ kind = 'all' }: { kind?: 'all' | 'collections' |
 export function Metrics({ data, uptime = false }: { data: Analytics; uptime?: boolean }) {
   const complete = data.revenueCoverage.knownAmounts === data.revenueCoverage.settledQueries;
   return <div className="dv-metrics">
-    <div className="dv-card"><Stack size={24} /><span>Confirmed collections</span><strong>{data.confirmedCollections}</strong><small>In this deployment</small></div>
+    <div className="dv-card"><Stack size={24} /><span>Confirmed collections</span><strong>{data.confirmedCollections}</strong><small>{data.ownerAddress ? 'Owned collections, including unlisted' : 'Public collections in this deployment'}</small></div>
     <div className="dv-card"><ChatCircleText size={24} /><span>Settled queries</span><strong>{data.paidQueries}</strong><small>Last {data.periodDays} days</small></div>
     <div className="dv-card"><Wallet size={24} /><span>Recorded owner revenue</span><strong>{revenueLabel(data)}</strong><small>{complete ? 'Exact for recorded settlements' : 'Older records have missing amounts'}</small></div>
     {uptime && <div className="dv-card"><ShieldCheck size={24}/><span>Uptime</span><strong>Unavailable</strong><small>No uptime monitor</small></div>}
