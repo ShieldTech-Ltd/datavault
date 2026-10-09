@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { ethers } from "ethers";
 
 const api = "http://127.0.0.1:8790";
@@ -74,9 +75,10 @@ function signedHeaders(signature, timestamp) {
 }
 function localSql(sql) {
   execFileSync(
-    new URL("../worker/node_modules/.bin/wrangler", import.meta.url).pathname,
-    ["d1", "execute", "datavault-db", "--local", "--command", sql],
-    { cwd: new URL("../worker/", import.meta.url), stdio: "pipe" }
+    process.execPath,
+    [fileURLToPath(new URL("../worker/node_modules/wrangler/bin/wrangler.js", import.meta.url)),
+      "d1", "execute", "datavault-db", "--local", "--command", sql],
+    { cwd: fileURLToPath(new URL("../worker/", import.meta.url)), stdio: "pipe" }
   );
 }
 
