@@ -7,8 +7,29 @@ const WINDOW_SECONDS = 60;
 const LIMITS: Record<string, number> = {
   execute:  10, // model calls are expensive
   register:  5,
+  catalogue: 30,
+  quote: 30,
+  confirm: 10,
+  reconcile: 10,
   default:  30,
 };
+
+export function routeRateBucket(method: string, path: string): string | null {
+  if (method === "GET" && (
+    path === "/api/demo" ||
+    path === "/api/marketplace/analytics" ||
+    path === "/api/owner/analytics" ||
+    path === "/api/owner/collections" ||
+    path === "/api/buyer/queries" ||
+    path === "/api/collections" ||
+    /^\/api\/collections\/[^/]+$/.test(path) ||
+    /^\/api\/queries\/[^/]+\/(?:receipt|answer)$/.test(path)
+  )) return "catalogue";
+  if (method === "POST" && path === "/api/queries/prepare") return "quote";
+  if (method === "POST" && /^\/api\/collections\/[^/]+\/confirm$/.test(path)) return "confirm";
+  if (method === "POST" && /^\/api\/queries\/[^/]+\/reconcile$/.test(path)) return "reconcile";
+  return null;
+}
 
 export async function checkRateLimit(
   identity: string,

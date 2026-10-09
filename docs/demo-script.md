@@ -7,7 +7,7 @@ Target a technical video under three minutes. Record the actual deployed app and
 | 0:00 to 0:15 | State the problem: owners cannot control paid AI access to a private guide after handing out a copy. Show the public site and Monad testnet label. | Site URL and connected network. |
 | 0:15 to 0:45 | In the owner session, upload the permitted sample guide, review model-provider disclosure, set a price, sign the registration, and show confirmation. | Owner address, collection ID, registration transaction, active policy. |
 | 0:45 to 1:35 | In a fresh buyer session, choose the guided collection, ask a real question, review the quoted price and refund terms, then sign and wait for the opening transaction. | Buyer wallet, exact test MON price, opening transaction hash. |
-| 1:35 to 2:15 | Show a newly generated answer, expand a versioned cited passage, and open the receipt and settlement transaction. | Citation text, content version, confirmed owner payout. |
+| 1:35 to 2:15 | Show a newly generated answer, expand a versioned cited passage, and open the receipt and settlement transaction. | Citation text, content version, the buyer view's answer-digest match against the `QuerySettled` event, and confirmed owner payout. |
 | 2:15 to 2:40 | On the separate presentation collection, pause access and attempt the next query. Show denial before retrieval. | Policy transaction and denied quote or execution. |
 | 2:40 to 2:55 | Show source repository, contract explorer link, and one limitation. | Working URLs, no mock data or secret values. |
 

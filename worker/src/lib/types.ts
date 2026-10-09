@@ -20,6 +20,8 @@ export interface Env {
 
 export interface CollectionRow {
   collection_id: string;
+  chain_id: number | null;
+  contract_address: string | null;
   owner_address: string;
   collection_name: string;
   content_hash: string;
@@ -32,11 +34,7 @@ export interface CollectionRow {
 }
 
 // outcome state machine:
-//   pending -> running -> answer_recorded -> settled
-//                     \-> failed
-//   pending -> refundable  (set externally when timeout observed)
-// outcome state machine:
-//   pending -> running -> answer_recorded -> settlement_pending -> settled
+//   pending -> running -> answer_recorded -> settling -> settlement_pending -> settled
 //                     \-> failed
 //   pending -> refundable  (set externally when timeout observed)
 export interface QueryRow {
@@ -49,6 +47,7 @@ export interface QueryRow {
   chain_id: number | null;
   contract_address: string | null;
   content_hash: string | null;
+  amount_wei: string | null;
   policy_version: number;
   question_digest: string;
   passage_ids: string;
@@ -57,6 +56,7 @@ export interface QueryRow {
   outcome: string;
   claimed_at: number | null;
   lease_expires_at: number | null;
+  lease_token: string | null;
   created_at: number;
   settled_at: number | null;
 }

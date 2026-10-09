@@ -15,7 +15,7 @@ Internal target: 12 October 2026. The participant-provided Terms v3 state a fina
 
 ## Freeze and submit
 
-1. Merge approved contributor PRs, #48, and stacked #49. Record the final commit and pass all required CI and Security checks.
+1. Confirm merged #48, #49, and #50. Review and merge PR #51 with passing CI and Security checks as source integration, and record its merge commit. The merge is not production or demo acceptance.
 2. Confirm the frontend dependency audit is clear, replace placeholder deployment configuration, verify secrets by name without exposing values, and run `npm run check:release-config`.
 3. Complete the live acceptance list in [deployment.md](deployment.md), including three paid queries, fresh-wallet onboarding, recovery, pause denial, and genuine refund. Record redacted transaction evidence and actual completion times.
 4. Record and publish the real video from [demo-script.md](demo-script.md). Run `npm run check:release-config -- --submission` with public URLs and transaction identifiers, then open every URL in a clean browser.

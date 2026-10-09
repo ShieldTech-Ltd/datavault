@@ -2,6 +2,7 @@ import { createPublicClient, createWalletClient, encodeFunctionData, http, parse
 import { privateKeyToAccount } from "viem/accounts";
 import type { Env } from "./types";
 import { rpcMatchesConfiguredChain } from "./chain-identity";
+import { settlementReceiptMatches } from "./chain-receipts";
 
 export type SettlementResult = {
   hash: `0x${string}`;
@@ -12,6 +13,7 @@ export type SettlementResult = {
 // authoritative if the receipt is delayed, the RPC fails, or the Worker exits.
 export async function settleOnChainWithConfirmation(
   requestId: `0x${string}`,
+  answerDigest: `0x${string}`,
   env: Env,
 ): Promise<SettlementResult> {
   if (!(await rpcMatchesConfiguredChain(env))) throw new Error("Monad RPC chain does not match this deployment.");
@@ -26,8 +28,8 @@ export async function settleOnChainWithConfirmation(
 
   const walletClient = createWalletClient({ account, chain, transport: http() });
   const publicClient = createPublicClient({ chain, transport: http() });
-  const settleAbi = parseAbi(["function settleQuery(bytes32 requestId) external"]);
-  const data = encodeFunctionData({ abi: settleAbi, functionName: "settleQuery", args: [requestId] });
+  const settleAbi = parseAbi(["function settleQuery(bytes32 requestId, bytes32 answerDigest) external"]);
+  const data = encodeFunctionData({ abi: settleAbi, functionName: "settleQuery", args: [requestId, answerDigest] });
 
   const hash = await walletClient.sendTransaction({
     to: env.CONTRACT_ADDRESS as Address,
@@ -38,7 +40,12 @@ export async function settleOnChainWithConfirmation(
 
   try {
     const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 20_000, confirmations: 1 });
-    return { hash, status: receipt.status === "success" ? "confirmed" : "reverted" };
+    if (receipt.status !== "success") return { hash, status: "reverted" };
+    return {
+      hash,
+      status: settlementReceiptMatches(receipt, env.CONTRACT_ADDRESS, requestId, answerDigest)
+        ? "confirmed" : "pending",
+    };
   } catch {
     return { hash, status: "pending" };
   }

@@ -2,20 +2,52 @@ import { useEffect, useState } from "react";
 import { useWallet } from "@/lib/wallet";
 import { encodeFunctionData, formatEther, keccak256, toBytes } from "viem";
 import { DATAVAULT_ABI, CONTRACT_ADDRESS, viemClient } from "@/lib/contract";
-import { executionMessage, type CitedPassage, type QueryResult, type RecoveredAnswer } from "../../../shared/api";
+import { transactionExplorerUrl } from "@/lib/network";
+import { verifyAnswerAnchor } from "@/lib/provenance";
+import {
+  buyerHistoryMessage,
+  executionMessage,
+  queryRecoveryMessage,
+  type CitedPassage,
+  type QueryResult,
+  type RecoveredAnswer,
+} from "../../../shared/api";
 
 const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID) || 10143;
-const HISTORY_KEY = "datavault_requests";
+const CHAIN_LABEL =
+  CHAIN_ID === 31337 ? "the local test chain" : "Monad testnet";
+const HISTORY_KEY = `datavault_requests:${CHAIN_ID}:${
+  CONTRACT_ADDRESS?.toLowerCase() ?? "unconfigured"
+}`;
+const LEGACY_HISTORY_KEY = "datavault_requests";
 const SAMPLE_QUESTIONS = [
   "What information should a freelancer include on an invoice?",
   "Why might a sole trader use a separate business bank account?",
   "What records should a freelancer keep for business expenses?",
 ];
 
-type Step = "idle" | "quoting" | "quoted" | "awaiting_wallet" | "confirming_open" |
-  "answering" | "settlement_pending" | "done" | "failed";
-interface Quote { collectionId: string; collectionName: string; priceWei: string; priceDisplay: string }
-interface Demo { collectionId: string; collectionName: string; ownerAddress: string; priceWei: string }
+type Step =
+  | "idle"
+  | "quoting"
+  | "quoted"
+  | "awaiting_wallet"
+  | "confirming_open"
+  | "answering"
+  | "settlement_pending"
+  | "done"
+  | "failed";
+interface Quote {
+  collectionId: string;
+  collectionName: string;
+  priceWei: string;
+  priceDisplay: string;
+}
+interface Demo {
+  collectionId: string;
+  collectionName: string;
+  ownerAddress: string;
+  priceWei: string;
+}
 interface SavedRequest {
   requestId: string;
   collectionId: string;
@@ -32,38 +64,88 @@ interface DisplayAnswer {
   requestId: string;
   openTxHash: string;
   settleTxHash: string | null;
+  responseDigest: string;
 }
 
-function history(): SavedRequest[] {
+function readSafeHistory(key: string): SavedRequest[] {
   try {
-    const value: unknown = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    if (raw.length > 100_000) {
+      localStorage.removeItem(key);
+      return [];
+    }
+    const value: unknown = JSON.parse(raw);
     if (!Array.isArray(value)) return [];
     const bytes32 = /^0x[0-9a-fA-F]{64}$/;
     const address = /^0x[0-9a-fA-F]{40}$/;
-    const safe = value.flatMap((item): SavedRequest[] => {
-      if (!item || typeof item !== "object" || !bytes32.test(item.requestId) ||
-          !bytes32.test(item.collectionId) || !bytes32.test(item.openTxHash) ||
-          !address.test(item.buyerAddress)) return [];
-      return [{ requestId: item.requestId, collectionId: item.collectionId,
-        openTxHash: item.openTxHash, buyerAddress: item.buyerAddress,
-        openedAt: Number(item.openedAt) || 0, outcome: String(item.outcome ?? "unknown") }];
-    }).slice(0, 20);
+    const safe = value
+      .flatMap((item): SavedRequest[] => {
+        if (
+          !item ||
+          typeof item !== "object" ||
+          !bytes32.test(item.requestId) ||
+          !bytes32.test(item.collectionId) ||
+          !bytes32.test(item.openTxHash) ||
+          !address.test(item.buyerAddress)
+        )
+          return [];
+        return [
+          {
+            requestId: item.requestId,
+            collectionId: item.collectionId,
+            openTxHash: item.openTxHash,
+            buyerAddress: item.buyerAddress,
+            openedAt: Number(item.openedAt) || 0,
+            outcome: String(item.outcome ?? "unknown"),
+          },
+        ];
+      })
+      .slice(0, 20);
     // Rewrite legacy records to remove previously persisted plaintext questions.
-    if (JSON.stringify(safe) !== JSON.stringify(value)) localStorage.setItem(HISTORY_KEY, JSON.stringify(safe));
+    if (JSON.stringify(safe) !== JSON.stringify(value))
+      localStorage.setItem(key, JSON.stringify(safe));
     return safe;
-  } catch { return []; }
+  } catch {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* Storage may be disabled. */
+    }
+    return [];
+  }
+}
+function history(): SavedRequest[] {
+  if (HISTORY_KEY !== LEGACY_HISTORY_KEY) readSafeHistory(LEGACY_HISTORY_KEY);
+  return readSafeHistory(HISTORY_KEY);
 }
 function save(request: SavedRequest): SavedRequest[] {
-  const next = [request, ...history().filter((item) => item.requestId !== request.requestId)].slice(0, 20);
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); } catch { /* Payment flow must survive disabled storage. */ }
+  const next = [
+    request,
+    ...history().filter((item) => item.requestId !== request.requestId),
+  ].slice(0, 20);
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  } catch {
+    /* Payment flow must survive disabled storage. */
+  }
   return next;
 }
 async function sha256Hex(value: string): Promise<string> {
-  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(bytes)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const bytes = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value)
+  );
+  return Array.from(new Uint8Array(bytes))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-export default function BuyerDashboard() {
+export default function BuyerDashboard({
+  selectedCollection,
+}: {
+  selectedCollection?: string | null;
+}) {
   const { primaryWallet } = useWallet();
   const address = primaryWallet?.address ?? "";
   const [demo, setDemo] = useState<Demo | null>(null);
@@ -73,17 +155,42 @@ export default function BuyerDashboard() {
   const [step, setStep] = useState<Step>("idle");
   const [message, setMessage] = useState("");
   const [answer, setAnswer] = useState<DisplayAnswer | null>(null);
+  const [anchorStatus, setAnchorStatus] = useState<
+    "idle" | "checking" | "verified" | "unavailable" | "mismatch"
+  >("idle");
   const [requests, setRequests] = useState<SavedRequest[]>([]);
+  const [historyStatus, setHistoryStatus] = useState<
+    "idle" | "loading" | "error"
+  >("idle");
+  const [historyMessage, setHistoryMessage] = useState("");
   const [current, setCurrent] = useState<SavedRequest | null>(null);
   const [refundAt, setRefundAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    setRequests(history().filter((item) => item.buyerAddress.toLowerCase() === address.toLowerCase()));
-    setCurrent(null); setAnswer(null); setQuote(null); setRefundAt(null); setStep("idle"); setMessage("");
-    fetch("/api/demo").then((response) => response.ok ? response.json() as Promise<Demo> : null)
-      .then((item) => setDemo(item)).catch(() => setDemo(null));
+    setRequests(
+      history().filter(
+        (item) => item.buyerAddress.toLowerCase() === address.toLowerCase()
+      )
+    );
+    setCurrent(null);
+    setAnswer(null);
+    setQuote(null);
+    setRefundAt(null);
+    setStep("idle");
+    setMessage("");
+    setHistoryStatus("idle");
+    setHistoryMessage("");
+    fetch("/api/demo")
+      .then((response) =>
+        response.ok ? (response.json() as Promise<Demo>) : null
+      )
+      .then((item) => setDemo(item))
+      .catch(() => setDemo(null));
   }, [address]);
+  useEffect(() => {
+    if (selectedCollection) changeCollection(selectedCollection);
+  }, [selectedCollection]);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -91,203 +198,777 @@ export default function BuyerDashboard() {
 
   function remember(request: SavedRequest) {
     setCurrent(request);
-    setRequests(save(request).filter((item) => item.buyerAddress.toLowerCase() === address.toLowerCase()));
+    setRequests(
+      save(request).filter(
+        (item) => item.buyerAddress.toLowerCase() === address.toLowerCase()
+      )
+    );
   }
-  function changeCollection(value: string) { setCollectionId(value); setQuote(null); setStep("idle"); }
-  function changeQuestion(value: string) { setQuestion(value); setQuote(null); setStep("idle"); }
+  function changeCollection(value: string) {
+    setCollectionId(value);
+    setQuote(null);
+    setStep("idle");
+  }
+  function changeQuestion(value: string) {
+    setQuestion(value);
+    setQuote(null);
+    if (step !== "settlement_pending" && step !== "failed") setStep("idle");
+  }
 
   async function wallet() {
     if (!primaryWallet) throw new Error("Connect an EVM wallet first.");
     const client = await primaryWallet.getWalletClient();
-    if (await client.getChainId() !== CHAIN_ID) throw new Error(`Switch your wallet to Monad testnet (${CHAIN_ID}).`);
+    if ((await client.getChainId()) !== CHAIN_ID)
+      throw new Error(`Switch your wallet to ${CHAIN_LABEL} (${CHAIN_ID}).`);
     return client;
   }
-  async function signedHeaders(prefix: string, requestId: string) {
+  async function signedHeaders(purpose: "answer" | "reconcile", requestId: string) {
     const client = await wallet();
+    if (!CONTRACT_ADDRESS) throw new Error("Contract is not configured.");
     const timestamp = Date.now();
-    const signature = await client.signMessage({ message: `${prefix}:${requestId}:${timestamp}` });
+    const signature = await client.signMessage({
+      message: queryRecoveryMessage(purpose, CHAIN_ID, CONTRACT_ADDRESS, requestId, timestamp),
+    });
     return { "x-signature": signature, "x-timestamp": String(timestamp) };
   }
   async function loadRefundTime(request: SavedRequest) {
     if (!CONTRACT_ADDRESS) return;
     try {
-      const query = await viemClient.readContract({
-        address: CONTRACT_ADDRESS, abi: DATAVAULT_ABI, functionName: "getQuery",
+      const query = (await viemClient.readContract({
+        address: CONTRACT_ADDRESS,
+        abi: DATAVAULT_ABI,
+        functionName: "getQuery",
         args: [request.requestId as `0x${string}`],
-      }) as [`0x${string}`, string, bigint, number, bigint, number];
+      })) as [`0x${string}`, string, bigint, number, bigint, number];
       setRefundAt(query[5] === 0 ? Number(query[4]) * 1000 + 600_000 : null);
-    } catch { setRefundAt(null); }
+    } catch {
+      setRefundAt(null);
+    }
   }
 
   async function prepare(event: React.FormEvent) {
     event.preventDefault();
-    setStep("quoting"); setMessage(""); setAnswer(null);
+    setStep("quoting");
+    setMessage("");
+    setAnswer(null);
     try {
       const response = await fetch("/api/queries/prepare", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ collectionId, question }),
       });
       if (!response.ok) throw new Error(await response.text());
-      setQuote(await response.json() as Quote);
+      setQuote((await response.json()) as Quote);
       setStep("quoted");
-    } catch (error) { setMessage(String(error)); setStep("idle"); }
+    } catch (error) {
+      setMessage(String(error));
+      setStep("idle");
+    }
   }
 
   async function execute() {
     if (!quote || !CONTRACT_ADDRESS) return;
-    setMessage(""); setStep("awaiting_wallet");
+    setMessage("");
+    setStep("awaiting_wallet");
     let request: SavedRequest | null = null;
     try {
       const client = await wallet();
-      const requestId = keccak256(toBytes(`${address}:${Date.now()}:${crypto.randomUUID()}`));
-      const data = encodeFunctionData({ abi: DATAVAULT_ABI, functionName: "openQuery",
-        args: [requestId, quote.collectionId as `0x${string}`] });
-      const openTxHash = await client.sendTransaction({
-        to: CONTRACT_ADDRESS, data, value: BigInt(quote.priceWei),
+      const requestId = keccak256(
+        toBytes(`${address}:${Date.now()}:${crypto.randomUUID()}`)
+      );
+      const data = encodeFunctionData({
+        abi: DATAVAULT_ABI,
+        functionName: "openQuery",
+        args: [requestId, quote.collectionId as `0x${string}`],
       });
-      request = { requestId, collectionId: quote.collectionId, openTxHash,
-        buyerAddress: address, openedAt: Date.now(), outcome: "open_pending" };
+      const openTxHash = await client.sendTransaction({
+        to: CONTRACT_ADDRESS,
+        data,
+        value: BigInt(quote.priceWei),
+      });
+      request = {
+        requestId,
+        collectionId: quote.collectionId,
+        openTxHash,
+        buyerAddress: address,
+        openedAt: Date.now(),
+        outcome: "open_pending",
+      };
       remember(request);
       setStep("confirming_open");
-      const receipt = await viemClient.waitForTransactionReceipt({ hash: openTxHash });
-      if (receipt.status !== "success") throw new Error("Opening transaction reverted. No payment was escrowed.");
+      const receipt = await viemClient.waitForTransactionReceipt({
+        hash: openTxHash,
+      });
+      if (receipt.status !== "success")
+        throw new Error(
+          "Opening transaction reverted. No payment was escrowed."
+        );
       await loadRefundTime(request);
-      const timestamp = Date.now();
-      const signature = await client.signMessage({ message: executionMessage(
-        CHAIN_ID, CONTRACT_ADDRESS, requestId, quote.collectionId,
-        await sha256Hex(question), openTxHash, timestamp,
-      ) });
-      setStep("answering");
-      const response = await fetch("/api/queries/execute", {
-        method: "POST", headers: { "Content-Type": "application/json", "x-signature": signature,
-          "x-timestamp": String(timestamp) },
-        body: JSON.stringify({ requestId, collectionId: quote.collectionId, question, openTxHash }),
+      await runOpenedRequest(request, question);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+      setStep("failed");
+      if (request) {
+        remember({ ...request, outcome: "failed" });
+        await loadRefundTime(request);
+      }
+    }
+  }
+
+  async function runOpenedRequest(request: SavedRequest, queryText: string) {
+    if (!CONTRACT_ADDRESS) throw new Error("Contract is not configured.");
+    const client = await wallet();
+    const timestamp = Date.now();
+    const signature = await client.signMessage({
+      message: executionMessage(
+        CHAIN_ID,
+        CONTRACT_ADDRESS,
+        request.requestId,
+        request.collectionId,
+        await sha256Hex(queryText),
+        request.openTxHash,
+        timestamp
+      ),
+    });
+    setStep("answering");
+    const response = await fetch("/api/queries/execute", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-signature": signature,
+        "x-timestamp": String(timestamp),
+      },
+      body: JSON.stringify({
+        requestId: request.requestId,
+        collectionId: request.collectionId,
+        question: queryText,
+        openTxHash: request.openTxHash,
+      }),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const result = (await response.json()) as QueryResult;
+    if (result.outcome === "settlement_pending") {
+      remember({ ...request, outcome: "settlement_pending" });
+      setStep("settlement_pending");
+      setMessage(
+        result.settleTxHash
+          ? "Settlement confirmation is uncertain. Check the chain status before retrying payment. Your answer remains private until settlement is confirmed."
+          : "Settlement broadcast is uncertain. Check the chain status before retrying payment. If escrow stays open, you can refund after the timeout."
+      );
+      return;
+    }
+    if (result.outcome !== "settled" || !result.answer)
+      throw new Error("Unexpected query result.");
+    setAnswer({
+      answer: result.answer,
+      buyerAddress: request.buyerAddress,
+      citedPassageIds: result.citedPassageIds ?? [],
+      citedPassages: result.citedPassages ?? [],
+      requestId: request.requestId,
+      openTxHash: request.openTxHash,
+      settleTxHash: result.settleTxHash,
+      responseDigest: result.responseDigest ?? "",
+    });
+    remember({ ...request, outcome: "settled" });
+    setStep("done");
+  }
+
+  async function resumeOpenRequest() {
+    if (
+      !current ||
+      !question.trim() ||
+      current.buyerAddress.toLowerCase() !== address.toLowerCase()
+    )
+      return;
+    setMessage("");
+    try {
+      await runOpenedRequest(current, question);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+      setStep("failed");
+      remember({ ...current, outcome: "failed" });
+      await loadRefundTime(current);
+    }
+  }
+
+  async function recover(request: SavedRequest) {
+    setCurrent(request);
+    setMessage("");
+    setAnswer(null);
+    await loadRefundTime(request);
+    try {
+      const response = await fetch(`/api/queries/${request.requestId}/answer`, {
+        headers: await signedHeaders("answer", request.requestId),
       });
       if (!response.ok) throw new Error(await response.text());
-      const result = await response.json() as QueryResult;
-      if (result.outcome === "settlement_pending") {
-        remember({ ...request, outcome: "settlement_pending" });
-        setStep("settlement_pending");
-        setMessage(result.settleTxHash
-          ? "Settlement confirmation is uncertain. Check the chain status before retrying payment. Your answer remains private until settlement is confirmed."
-          : "Settlement broadcast is uncertain. Check the chain status before retrying payment. If escrow stays open, you can refund after the timeout.");
-        return;
-      }
-      if (result.outcome !== "settled" || !result.answer) throw new Error("Unexpected query result.");
-      setAnswer({ answer: result.answer, buyerAddress: request.buyerAddress,
-        citedPassageIds: result.citedPassageIds ?? [],
-        citedPassages: result.citedPassages ?? [], requestId, openTxHash,
-        settleTxHash: result.settleTxHash });
+      const result = (await response.json()) as RecoveredAnswer;
+      setAnswer({
+        answer: result.answer,
+        buyerAddress: request.buyerAddress,
+        citedPassageIds: result.citedPassageIds,
+        citedPassages: result.citedPassages ?? [],
+        requestId: request.requestId,
+        openTxHash: request.openTxHash,
+        settleTxHash: result.settleTxHash,
+        responseDigest: result.responseDigest,
+      });
       remember({ ...request, outcome: "settled" });
       setStep("done");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
       setStep("failed");
-      if (request) { remember({ ...request, outcome: "failed" }); await loadRefundTime(request); }
     }
   }
 
-  async function recover(request: SavedRequest) {
-    setCurrent(request); setMessage(""); setAnswer(null);
-    await loadRefundTime(request);
+  async function syncHistory() {
+    if (!primaryWallet || !CONTRACT_ADDRESS) return;
+    setHistoryStatus("loading");
+    setHistoryMessage("");
     try {
-      const response = await fetch(`/api/queries/${request.requestId}/answer`, {
-        headers: await signedHeaders("datavault-answer", request.requestId),
+      const client = await wallet();
+      const timestamp = Date.now();
+      const signature = await client.signMessage({
+        message: buyerHistoryMessage(
+          CHAIN_ID,
+          CONTRACT_ADDRESS,
+          address,
+          timestamp
+        ),
       });
-      if (!response.ok) throw new Error(await response.text());
-      const result = await response.json() as RecoveredAnswer;
-      setAnswer({ answer: result.answer, buyerAddress: request.buyerAddress,
-        citedPassageIds: result.citedPassageIds,
-        citedPassages: result.citedPassages ?? [], requestId: request.requestId, openTxHash: request.openTxHash,
-        settleTxHash: result.settleTxHash });
-      remember({ ...request, outcome: "settled" }); setStep("done");
-    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); setStep("failed"); }
+      const response = await fetch(
+        `/api/buyer/queries?address=${encodeURIComponent(address)}&limit=20`,
+        {
+          headers: {
+            "x-signature": signature,
+            "x-timestamp": String(timestamp),
+          },
+        }
+      );
+      if (!response.ok)
+        throw new Error("Request history is unavailable. Try again.");
+      const result = (await response.json()) as { requests: SavedRequest[] };
+      const bytes32 = /^0x[0-9a-fA-F]{64}$/;
+      const synced = result.requests
+        .filter(
+          (item) =>
+            bytes32.test(item.requestId) &&
+            bytes32.test(item.collectionId) &&
+            bytes32.test(item.openTxHash) &&
+            Number.isFinite(item.openedAt)
+        )
+        .map((item) => ({ ...item, buyerAddress: address }));
+      const merged = [...synced, ...history()]
+        .filter(
+          (item, index, all) =>
+            all.findIndex((other) => other.requestId === item.requestId) ===
+            index
+        )
+        .sort((a, b) => b.openedAt - a.openedAt)
+        .slice(0, 20);
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(merged));
+      } catch {
+        /* Local storage is optional. */
+      }
+      setRequests(merged);
+      setHistoryStatus("idle");
+      setHistoryMessage(
+        synced.length
+          ? `Loaded ${synced.length} recorded requests.`
+          : "No recorded requests for this wallet."
+      );
+    } catch (cause) {
+      setHistoryStatus("error");
+      setHistoryMessage(
+        cause instanceof Error
+          ? cause.message
+          : "Could not load request history."
+      );
+    }
   }
 
   async function reconcile() {
     if (!current) return;
     setMessage("");
     try {
-      const response = await fetch(`/api/queries/${current.requestId}/reconcile`, {
-        method: "POST", headers: await signedHeaders("datavault-reconcile", current.requestId),
-      });
+      const response = await fetch(
+        `/api/queries/${current.requestId}/reconcile`,
+        {
+          method: "POST",
+          headers: await signedHeaders(
+            "reconcile",
+            current.requestId
+          ),
+        }
+      );
       if (!response.ok) throw new Error(await response.text());
-      const result = await response.json() as { outcome: string };
-      if (result.outcome === "settled") await recover(current);
-      else setMessage("Settlement is still pending. Check again shortly or claim a refund after the timeout if the escrow remains open.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+      const result = (await response.json()) as {
+        outcome: string;
+        message?: string;
+      };
+      if (result.outcome === "settled") {
+        await recover(current);
+      } else if (result.outcome === "refunded") {
+        remember({ ...current, outcome: "refunded" });
+        setRefundAt(null);
+        setStep("idle");
+        setMessage("This escrow was refunded on Monad.");
+      } else if (result.outcome === "refundable") {
+        remember({ ...current, outcome: "refundable" });
+        await loadRefundTime(current);
+        setStep("failed");
+        setMessage(
+          "Escrow is still open and the refund timeout has passed. You can claim the refund below."
+        );
+      } else if (result.outcome === "settlement_pending") {
+        remember({ ...current, outcome: "settlement_pending" });
+        await loadRefundTime(current);
+        setStep("settlement_pending");
+        setMessage(
+          result.message ??
+            "Settlement is still pending on Monad. Check again shortly."
+        );
+      } else {
+        setStep("failed");
+        setMessage(
+          result.message ??
+            "No answer is recorded. If escrow is open, retry the exact original question or refund after timeout."
+        );
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
   }
 
   async function refund() {
-    if (!current || !CONTRACT_ADDRESS || refundAt === null || now < refundAt) return;
+    if (!current || !CONTRACT_ADDRESS || refundAt === null || now < refundAt)
+      return;
     setMessage("");
     try {
       const client = await wallet();
-      const data = encodeFunctionData({ abi: DATAVAULT_ABI, functionName: "refundExpired",
-        args: [current.requestId as `0x${string}`] });
+      const query = (await viemClient.readContract({
+        address: CONTRACT_ADDRESS,
+        abi: DATAVAULT_ABI,
+        functionName: "getQuery",
+        args: [current.requestId as `0x${string}`],
+      })) as [`0x${string}`, string, bigint, number, bigint, number];
+      if (query[1].toLowerCase() !== address.toLowerCase())
+        throw new Error("Connected wallet is not the escrow buyer.");
+      if (query[5] !== 0) {
+        remember({
+          ...current,
+          outcome: query[5] === 1 ? "settlement_pending" : "refunded",
+        });
+        setRefundAt(null);
+        setStep(query[5] === 1 ? "settlement_pending" : "idle");
+        throw new Error(
+          query[5] === 1
+            ? "Escrow already settled. Check settlement to recover the answer."
+            : "Escrow was already refunded on Monad."
+        );
+      }
+      const latestBlock = await viemClient.getBlock();
+      if (latestBlock.timestamp < query[4] + 600n)
+        throw new Error(
+          "The on-chain refund timeout has not passed yet. Check again after the next block."
+        );
+      const data = encodeFunctionData({
+        abi: DATAVAULT_ABI,
+        functionName: "refundExpired",
+        args: [current.requestId as `0x${string}`],
+      });
       const hash = await client.sendTransaction({ to: CONTRACT_ADDRESS, data });
       const receipt = await viemClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") throw new Error("Refund transaction reverted.");
-      remember({ ...current, outcome: "refunded" }); setRefundAt(null); setStep("idle");
+      if (receipt.status !== "success")
+        throw new Error("Refund transaction reverted.");
+      remember({ ...current, outcome: "refunded" });
+      setRefundAt(null);
+      setStep("idle");
       setMessage(`Refund confirmed. Transaction: ${hash}`);
-    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
   }
 
-  const busy = ["quoting", "awaiting_wallet", "confirming_open", "answering"].includes(step);
-  const visibleRequests = requests.filter((item) => item.buyerAddress.toLowerCase() === address.toLowerCase());
-  return <div style={{ maxWidth: 720 }}>
-    <h2>Ask a Question</h2>
-    <p>Pay a fixed testnet MON price to ask about a private collection. Selected passages go to the model provider. A failed, unsettled payment can be refunded after ten minutes.</p>
-    {demo && <section style={box}>
-      <strong>Try the UK Practical Guide</strong> <span>Team-authored sample</span>
-      <p>Owner: {demo.ownerAddress}<br />Price: {formatEther(BigInt(demo.priceWei))} test MON</p>
-      {SAMPLE_QUESTIONS.map((sample) => <button key={sample} type="button" style={smallButton}
-        onClick={() => { changeCollection(demo.collectionId); changeQuestion(sample); }}>
-        {sample}
-      </button>)}
-    </section>}
-    <form onSubmit={prepare} style={{ display: "grid", gap: 12 }}>
-      <label>Collection ID<input style={field} value={collectionId} onChange={(event) => changeCollection(event.target.value)} required disabled={busy} /></label>
-      <label>Question<textarea style={field} rows={3} value={question} onChange={(event) => changeQuestion(event.target.value)} required maxLength={500} disabled={busy} /></label>
-      <button type="submit" disabled={busy || !CONTRACT_ADDRESS} style={button}>Get current price</button>
-    </form>
-    {quote && step === "quoted" && <section style={box}>
-      <strong>{quote.collectionName}</strong><p>Price: {quote.priceDisplay} test MON</p>
-      <p>Your wallet will open escrow. The Worker will verify payment and current policy before private retrieval.</p>
-      <p>An honest answer that says the document lacks enough information is still a paid query. A service failure that leaves escrow open is refundable after ten minutes.</p>
-      <button type="button" onClick={execute} style={button}>Sign and pay</button>
-    </section>}
-    {step === "awaiting_wallet" && <p>Check your wallet for the opening transaction.</p>}
-    {step === "confirming_open" && <p>Opening transaction sent. Waiting for chain confirmation.</p>}
-    {step === "answering" && <p>Payment confirmed. Retrieving passages, generating an answer, and settling.</p>}
-    {step === "settlement_pending" && <button type="button" onClick={reconcile} style={button}>Check settlement</button>}
-    {message && <p role="status" style={{ color: step === "failed" ? "#b91c1c" : "#374151", overflowWrap: "anywhere" }}>{message}</p>}
-    {answer && answer.buyerAddress.toLowerCase() === address.toLowerCase() && <section style={box}>
-      <h3>Cited answer</h3><p style={{ whiteSpace: "pre-wrap" }}>{answer.answer}</p>
-      {answer.citedPassageIds.map((id) => {
-        const passage = answer.citedPassages.find((item) => item.id === id);
-        return <details key={id}><summary>{id}</summary>
-          <p style={{ whiteSpace: "pre-wrap" }}>{passage?.text ?? "Passage text is available only in the original answer response."}</p>
-        </details>;
-      })}
-      <p>Open transaction: {answer.openTxHash}<br />Settlement transaction: {answer.settleTxHash}</p>
-      <a href={`/api/queries/${answer.requestId}/receipt`} target="_blank" rel="noreferrer">View public receipt</a>
-    </section>}
-    {current && current.buyerAddress.toLowerCase() === address.toLowerCase() && refundAt !== null && step !== "done" && <section style={box}>
-      <p>{now < refundAt ? `Refund available in ${Math.ceil((refundAt - now) / 1000)} seconds if escrow remains open.` : "Refund timeout reached. Check settlement before refunding."}</p>
-      <button type="button" disabled={now < refundAt} onClick={refund} style={button}>Claim expired refund</button>
-    </section>}
-    {visibleRequests.length > 0 && <section style={box}><h3>Your recent requests</h3>
-      {visibleRequests.map((request) => <div key={request.requestId} style={{ marginBottom: 12, overflowWrap: "anywhere" }}>
-        <strong>{request.outcome}</strong> Request {request.requestId.slice(0, 12)}<br />
-        <button type="button" onClick={() => recover(request)} style={smallButton}>Recover answer</button>
-        <button type="button" onClick={async () => { setCurrent(request); await loadRefundTime(request); setStep("settlement_pending"); }} style={smallButton}>Check or refund</button>
-      </div>)}
-    </section>}
-  </div>;
+  const busy = [
+    "quoting",
+    "awaiting_wallet",
+    "confirming_open",
+    "answering",
+  ].includes(step);
+  const visibleRequests = requests.filter(
+    (item) => item.buyerAddress.toLowerCase() === address.toLowerCase()
+  );
+  const visibleAnswer =
+    answer && answer.buyerAddress.toLowerCase() === address.toLowerCase()
+      ? answer
+      : null;
+  useEffect(() => {
+    if (!visibleAnswer) {
+      setAnchorStatus("idle");
+      return;
+    }
+    let active = true;
+    setAnchorStatus("checking");
+    void verifyAnswerAnchor(visibleAnswer).then((status) => {
+      if (active) setAnchorStatus(status);
+    });
+    return () => {
+      active = false;
+    };
+  }, [visibleAnswer]);
+  return (
+    <div className="workspace-grid">
+      <section
+        className="workspace-card query-card"
+        aria-labelledby="query-heading"
+      >
+        <div className="workspace-card-header">
+          <div>
+            <span className="workspace-icon" aria-hidden="true">
+              Q
+            </span>
+            <strong id="query-heading">Query workspace</strong>
+          </div>
+          <span className="workspace-caption">Buyer flow</span>
+        </div>
+        <p className="workspace-description">
+          Ask a private collection. You review the live price before a wallet
+          payment.
+        </p>
+        {demo && (
+          <div className="workspace-demo">
+            <div>
+              <strong>{demo.collectionName}</strong>
+              <span>Confirmed sample collection</span>
+            </div>
+            <span>{formatEther(BigInt(demo.priceWei))} test MON</span>
+          </div>
+        )}
+        {!demo && (
+          <p className="workspace-muted">
+            The guided sample collection will appear after it is registered and
+            confirmed on Monad.
+          </p>
+        )}
+        {demo && (
+          <div className="workspace-suggestions">
+            <span>Suggested questions</span>
+            {SAMPLE_QUESTIONS.map((sample) => (
+              <button
+                key={sample}
+                type="button"
+                onClick={() => {
+                  changeCollection(demo.collectionId);
+                  changeQuestion(sample);
+                }}
+              >
+                {sample}
+              </button>
+            ))}
+          </div>
+        )}
+        <form onSubmit={prepare} className="workspace-form">
+          <label htmlFor="collection-id">Collection ID</label>
+          <input
+            id="collection-id"
+            value={collectionId}
+            onChange={(event) => changeCollection(event.target.value)}
+            placeholder="Choose a collection below or paste its ID"
+            required
+            disabled={busy}
+          />
+          <label htmlFor="query-question">Your question</label>
+          <textarea
+            id="query-question"
+            rows={4}
+            value={question}
+            onChange={(event) => changeQuestion(event.target.value)}
+            placeholder="Ask a question about the collection"
+            required
+            maxLength={500}
+            disabled={busy}
+          />
+          <div className="workspace-form-foot">
+            <span>Up to 500 characters</span>
+            <span>Selected passages are sent to the model provider</span>
+          </div>
+          <button
+            type="submit"
+            disabled={busy || !CONTRACT_ADDRESS}
+            className="workspace-pay-button"
+          >
+            {step === "quoting" ? "Checking price..." : "Review current price"}{" "}
+            <span aria-hidden="true">&#8594;</span>
+          </button>
+          {!CONTRACT_ADDRESS && (
+            <p className="workspace-muted">
+              Paid queries become available after the Monad contract is
+              configured.
+            </p>
+          )}
+        </form>
+        {quote && step === "quoted" && (
+          <div className="workspace-quote">
+            <div>
+              <span>Current price for {quote.collectionName}</span>
+              <strong>{quote.priceDisplay} test MON</strong>
+            </div>
+            <p>
+              Your wallet opens escrow on Monad. The Worker checks the payment
+              and current policy before reading private passages. An
+              insufficient-evidence answer is still a paid query. A service
+              failure with open escrow can be refunded after ten minutes.
+            </p>
+            <button
+              type="button"
+              onClick={execute}
+              disabled={!primaryWallet}
+              className="workspace-pay-button"
+            >
+              {primaryWallet ? "Sign and pay" : "Connect wallet to pay"}{" "}
+              <span aria-hidden="true">&#8594;</span>
+            </button>
+          </div>
+        )}
+        {step === "awaiting_wallet" && (
+          <p className="workspace-notice">
+            Check your wallet for the opening transaction.
+          </p>
+        )}
+        {step === "confirming_open" && (
+          <p className="workspace-notice">
+            Opening transaction sent. Waiting for Monad confirmation.
+          </p>
+        )}
+        {step === "answering" && (
+          <p className="workspace-notice">
+            Payment confirmed. Retrieving passages, generating an answer, and
+            settling.
+          </p>
+        )}
+        {current &&
+          (step === "settlement_pending" || step === "failed") &&
+          current.outcome !== "refunded" &&
+          current.outcome !== "settled" && (
+            <button
+              type="button"
+              onClick={reconcile}
+              className="workspace-secondary-button"
+            >
+              Check settlement
+            </button>
+          )}
+        {current &&
+          (step === "settlement_pending" || step === "failed") &&
+          current.outcome !== "settled" &&
+          current.outcome !== "refunded" &&
+          current.buyerAddress.toLowerCase() === address.toLowerCase() && (
+            <div className="workspace-recovery">
+              <p>
+                If escrow is still open, re-enter the exact original question
+                above and retry this request. This uses the existing payment.
+                Questions are not saved in this browser.
+              </p>
+              <button
+                type="button"
+                onClick={() => void resumeOpenRequest()}
+                disabled={!primaryWallet || !question.trim()}
+                className="workspace-secondary-button"
+              >
+                Retry this paid request
+              </button>
+            </div>
+          )}
+        {message && (
+          <p
+            role="status"
+            className={
+              step === "failed" ? "workspace-error" : "workspace-notice"
+            }
+          >
+            {message}
+          </p>
+        )}
+        {current &&
+          current.buyerAddress.toLowerCase() === address.toLowerCase() &&
+          refundAt !== null &&
+          step !== "done" && (
+            <div className="workspace-recovery">
+              <p>
+                {now < refundAt
+                  ? `Refund available in ${Math.ceil(
+                      (refundAt - now) / 1000
+                    )} seconds if escrow remains open.`
+                  : "Refund timeout reached. Check settlement before refunding."}
+              </p>
+              <button
+                type="button"
+                disabled={now < refundAt}
+                onClick={refund}
+                className="workspace-secondary-button"
+              >
+                Claim expired refund
+              </button>
+            </div>
+          )}
+      </section>
+      <aside
+        className="workspace-card proof-card"
+        aria-labelledby="proof-heading"
+      >
+        <div className="workspace-card-header">
+          <div>
+            <span className="proof-icon" aria-hidden="true">
+              P
+            </span>
+            <strong id="proof-heading">Proof of provenance</strong>
+          </div>
+          <span
+            className={
+              visibleAnswer ? "workspace-status settled" : "workspace-status"
+            }
+          >
+            {visibleAnswer ? "Settled" : "Waiting"}
+          </span>
+        </div>
+        {visibleAnswer ? (
+          <>
+            <div className="proof-answer">
+              <span>Answer</span>
+              <p>{visibleAnswer.answer}</p>
+            </div>
+            <h3>Key cited sources</h3>
+            <div className="proof-citations">
+              {visibleAnswer.citedPassageIds.map((id, index) => {
+                const passage = visibleAnswer.citedPassages.find(
+                  (item) => item.id === id
+                );
+                return (
+                  <details key={id}>
+                    <summary>
+                      <b>{index + 1}</b>
+                      {id}
+                    </summary>
+                    <p>
+                      {passage?.text ??
+                        "Passage text is available only in the original answer response."}
+                    </p>
+                  </details>
+                );
+              })}
+            </div>
+            <h3>On-chain receipt</h3>
+            <p className="proof-limitation" role="status">
+              {anchorStatus === "verified"
+                ? "Answer digest matches the Monad settlement event."
+                : anchorStatus === "checking"
+                ? "Checking the answer digest against Monad..."
+                : anchorStatus === "mismatch"
+                ? "Answer digest does not match the settlement event. Do not rely on this answer."
+                : "Answer digest verification is unavailable. Check the receipt and transaction manually."}
+            </p>
+            <dl className="proof-receipt">
+              <div>
+                <dt>Opening transaction</dt>
+                <dd>
+                  {visibleAnswer.openTxHash}
+                  {transactionExplorerUrl(visibleAnswer.openTxHash) && (
+                    <a
+                      href={transactionExplorerUrl(visibleAnswer.openTxHash)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View on Monad explorer
+                    </a>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Settlement transaction</dt>
+                <dd>
+                  {visibleAnswer.settleTxHash ?? "Pending confirmation"}
+                  {transactionExplorerUrl(visibleAnswer.settleTxHash) && (
+                    <a
+                      href={transactionExplorerUrl(visibleAnswer.settleTxHash)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      View on Monad explorer
+                    </a>
+                  )}
+                </dd>
+              </div>
+            </dl>
+            <p className="proof-limitation">
+              The receipt links the payment to a content version and cited
+              passages. It does not establish that the answer is correct.
+            </p>
+            <a
+              className="workspace-secondary-button"
+              href={`/api/queries/${visibleAnswer.requestId}/receipt`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              View public receipt
+            </a>
+          </>
+        ) : (
+          <div className="proof-empty">
+            <div className="proof-empty-symbol" aria-hidden="true">
+              P
+            </div>
+            <h3>Your verified answer appears here</h3>
+            <p>
+              The answer, cited passages, and transaction receipt are shown
+              after an actual paid query settles. No sample receipt is presented
+              as a real transaction.
+            </p>
+          </div>
+        )}
+        {(visibleRequests.length > 0 || primaryWallet) && (
+          <div className="workspace-history">
+            <h3>Your recent requests</h3>
+            {primaryWallet && CONTRACT_ADDRESS && (
+              <button
+                type="button"
+                onClick={() => void syncHistory()}
+                disabled={historyStatus === "loading"}
+              >
+                {historyStatus === "loading"
+                  ? "Loading..."
+                  : "Sync from account"}
+              </button>
+            )}
+            {historyMessage && <p role="status">{historyMessage}</p>}
+            {visibleRequests.map((request) => (
+              <div key={request.requestId}>
+                <span>
+                  <strong>{request.outcome}</strong>{" "}
+                  {request.requestId.slice(0, 12)}...
+                </span>
+                <div>
+                  <button type="button" onClick={() => recover(request)}>
+                    Recover answer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setCurrent(request);
+                      setCollectionId(request.collectionId);
+                      setQuote(null);
+                      await loadRefundTime(request);
+                      setStep("settlement_pending");
+                    }}
+                  >
+                    Check or refund
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </aside>
+    </div>
+  );
 }
-
-const box: React.CSSProperties = { border: "1px solid #d1d5db", borderRadius: 8, padding: 16, margin: "16px 0" };
-const field: React.CSSProperties = { display: "block", width: "100%", boxSizing: "border-box", padding: 8, marginTop: 4 };
-const button: React.CSSProperties = { padding: "10px 16px", background: "#4f46e5", color: "white", border: 0, borderRadius: 6, cursor: "pointer" };
-const smallButton: React.CSSProperties = { padding: "6px 10px", margin: "6px 8px 0 0", border: "1px solid #a5b4fc", background: "white", borderRadius: 6, cursor: "pointer" };

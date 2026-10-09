@@ -1,6 +1,7 @@
 import { privateKeyToAccount } from "viem/accounts";
 import { isValidAddress } from "./validation";
 import type { Env, OnChainCollection } from "./types";
+import { modelApiBase } from "./model-endpoint";
 import publicTestWallets from "../../../shared/public-test-wallets.json";
 
 const SECP256K1_ORDER = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
@@ -19,9 +20,18 @@ export function settlementKeyConfigured(key: string | undefined): boolean {
 }
 
 export function paidServiceConfigured(env: Env): boolean {
-  return isValidAddress(env.CONTRACT_ADDRESS) &&
-    settlementKeyConfigured(env.SETTLEMENT_PRIVATE_KEY) &&
-    typeof env.MODEL_API_KEY === "string" && env.MODEL_API_KEY.trim().length > 0;
+  if (!isValidAddress(env.CONTRACT_ADDRESS) ||
+      !settlementKeyConfigured(env.SETTLEMENT_PRIVATE_KEY) ||
+      typeof env.MODEL_API_KEY !== "string" || !env.MODEL_API_KEY.trim()) return false;
+  if (env.MODEL_PROVIDER !== "openai" && env.MODEL_PROVIDER !== "kimi") return false;
+  if (env.MODEL_PROVIDER === "kimi" &&
+      (!env.MODEL_API_BASE || !env.MODEL_NAME?.trim())) return false;
+  try {
+    modelApiBase(env.MODEL_API_BASE);
+  } catch {
+    return false;
+  }
+  return true;
 }
 
 export function operatorMatches(env: Env, collection: OnChainCollection): boolean {

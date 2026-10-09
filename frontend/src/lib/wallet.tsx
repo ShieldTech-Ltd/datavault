@@ -105,7 +105,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const current = await walletProvider.request({ method: "eth_chainId" });
       const selected = typeof current === "string" ? Number(current) : null;
       setChainId(selected);
-      if (selected !== monadTestnet.chainId) throw new Error("Wallet did not switch to Monad testnet.");
+      if (selected !== monadTestnet.chainId) throw new Error(`Wallet did not switch to ${monadTestnet.name}.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Network switch failed.");
     }

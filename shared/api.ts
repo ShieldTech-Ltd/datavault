@@ -14,6 +14,7 @@ export interface QueryResult {
   citedPassages?: CitedPassage[];
   citedPassageIds?: string[];
   isInsufficientEvidence?: boolean;
+  responseDigest?: string;
 }
 
 export interface RecoveredAnswer {
@@ -34,12 +35,17 @@ export function executionMessage(
   collectionId: string,
   questionDigest: string,
   openTxHash: string,
-  timestamp: number,
+  timestamp: number
 ): string {
   return [
-    "datavault-execute", chainId, contractAddress.toLowerCase(),
-    requestId.toLowerCase(), collectionId.toLowerCase(), questionDigest,
-    openTxHash.toLowerCase(), timestamp,
+    "datavault-execute",
+    chainId,
+    contractAddress.toLowerCase(),
+    requestId.toLowerCase(),
+    collectionId.toLowerCase(),
+    questionDigest,
+    openTxHash.toLowerCase(),
+    timestamp,
   ].join(":");
 }
 
@@ -49,8 +55,61 @@ export function registrationMessage(
   ownerAddress: string,
   contentHash: string,
   priceWei: string,
-  timestamp: number,
+  timestamp: number
 ): string {
-  return ["datavault-register", chainId, contractAddress.toLowerCase(),
-    ownerAddress.toLowerCase(), contentHash.toLowerCase(), priceWei, timestamp].join(":");
+  return [
+    "datavault-register",
+    chainId,
+    contractAddress.toLowerCase(),
+    ownerAddress.toLowerCase(),
+    contentHash.toLowerCase(),
+    priceWei,
+    timestamp,
+  ].join(":");
+}
+
+export function ownerSummaryMessage(
+  chainId: number,
+  contractAddress: string,
+  ownerAddress: string,
+  timestamp: number
+): string {
+  return [
+    "datavault-owner-summary",
+    chainId,
+    contractAddress.toLowerCase(),
+    ownerAddress.toLowerCase(),
+    timestamp,
+  ].join(":");
+}
+
+export function buyerHistoryMessage(
+  chainId: number,
+  contractAddress: string,
+  buyerAddress: string,
+  timestamp: number
+): string {
+  return [
+    "datavault-buyer-history",
+    chainId,
+    contractAddress.toLowerCase(),
+    buyerAddress.toLowerCase(),
+    timestamp,
+  ].join(":");
+}
+
+export function queryRecoveryMessage(
+  purpose: "answer" | "reconcile",
+  chainId: number,
+  contractAddress: string,
+  requestId: string,
+  timestamp: number
+): string {
+  return [
+    `datavault-${purpose}`,
+    chainId,
+    contractAddress.toLowerCase(),
+    requestId.toLowerCase(),
+    timestamp,
+  ].join(":");
 }

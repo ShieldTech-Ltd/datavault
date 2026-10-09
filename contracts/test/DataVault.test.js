@@ -6,6 +6,7 @@ describe("DataVault", function () {
   const COLLECTION_ID = ethers.keccak256(ethers.toUtf8Bytes("demo-collection-v1"));
   const REQUEST_ID    = ethers.keccak256(ethers.toUtf8Bytes("req-001"));
   const PRICE         = ethers.parseEther("0.001");
+  const ANSWER_DIGEST = ethers.sha256(ethers.toUtf8Bytes("A cited answer."));
 
   beforeEach(async function () {
     [owner, operator, buyer, other] = await ethers.getSigners();
@@ -140,7 +141,7 @@ describe("DataVault", function () {
     const ownerBefore = await ethers.provider.getBalance(owner.address);
     const operatorBefore = await ethers.provider.getBalance(operator.address);
 
-    const tx = await contract.connect(operator).settleQuery(REQUEST_ID);
+    const tx = await contract.connect(operator).settleQuery(REQUEST_ID, ANSWER_DIGEST);
     const receipt = await tx.wait();
     const gasCost = receipt.gasUsed * tx.gasPrice;
 
@@ -156,25 +157,33 @@ describe("DataVault", function () {
     expect(q.state).to.equal(1n);
   });
 
+  it("requires a nonzero answer digest before releasing escrow", async function () {
+    await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
+    await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
+    await expect(contract.connect(operator).settleQuery(REQUEST_ID, ethers.ZeroHash))
+      .to.be.revertedWith("answer digest required");
+    expect((await contract.getQuery(REQUEST_ID)).state).to.equal(0n);
+  });
+
   it("owner cannot settle their own collection (must use operator)", async function () {
     await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
     await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
-    await expect(contract.connect(owner).settleQuery(REQUEST_ID))
+    await expect(contract.connect(owner).settleQuery(REQUEST_ID, ANSWER_DIGEST))
       .to.be.revertedWith("not authorized operator");
   });
 
   it("random address cannot settle", async function () {
     await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
     await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
-    await expect(contract.connect(other).settleQuery(REQUEST_ID))
+    await expect(contract.connect(other).settleQuery(REQUEST_ID, ANSWER_DIGEST))
       .to.be.revertedWith("not authorized operator");
   });
 
   it("cannot settle an already settled query", async function () {
     await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
     await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
-    await contract.connect(operator).settleQuery(REQUEST_ID);
-    await expect(contract.connect(operator).settleQuery(REQUEST_ID))
+    await contract.connect(operator).settleQuery(REQUEST_ID, ANSWER_DIGEST);
+    await expect(contract.connect(operator).settleQuery(REQUEST_ID, ANSWER_DIGEST))
       .to.be.revertedWith("already finalised");
   });
 
@@ -184,13 +193,13 @@ describe("DataVault", function () {
     await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
 
     // Old operator can no longer settle
-    await expect(contract.connect(operator).settleQuery(REQUEST_ID))
+    await expect(contract.connect(operator).settleQuery(REQUEST_ID, ANSWER_DIGEST))
       .to.be.revertedWith("not authorized operator");
 
     // New operator can settle
-    await expect(contract.connect(other).settleQuery(REQUEST_ID))
+    await expect(contract.connect(other).settleQuery(REQUEST_ID, ANSWER_DIGEST))
       .to.emit(contract, "QuerySettled")
-      .withArgs(REQUEST_ID, owner.address);
+      .withArgs(REQUEST_ID, owner.address, ANSWER_DIGEST);
   });
 
   // ── refundExpired ───────────────────────────────────────────────
@@ -224,7 +233,7 @@ describe("DataVault", function () {
   it("cannot refund an already settled query", async function () {
     await contract.connect(owner).registerCollection(COLLECTION_ID, PRICE, operator.address);
     await contract.connect(buyer).openQuery(REQUEST_ID, COLLECTION_ID, { value: PRICE });
-    await contract.connect(operator).settleQuery(REQUEST_ID);
+    await contract.connect(operator).settleQuery(REQUEST_ID, ANSWER_DIGEST);
     await ethers.provider.send("evm_increaseTime", [600]);
     await ethers.provider.send("evm_mine", []);
     await expect(contract.connect(buyer).refundExpired(REQUEST_ID))
