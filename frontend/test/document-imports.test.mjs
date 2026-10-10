@@ -101,12 +101,14 @@ test('worker client terminates cancellation, timeout and completed jobs; fences 
     const worker = { postMessage() {}, terminate() { terminated++; }, onmessage: null };
     const file = new File(['hello'], 'hello.txt', {type:'text/plain'});
     const cancelled = extractLocalDocument(file, ()=> assert.fail('late progress'), ()=>worker);
-    cancelled.cancel(); worker.onmessage({data:{text:'late'}});
+    cancelled.cancel(); worker.onmessage({data:{source:'datavault-document-v1',kind:'result',text:'late'}});
     await assert.rejects(cancelled.result, /cancelled/); assert.equal(terminated,1);
     const timeout = extractLocalDocument(file, ()=>{}, ()=>worker, 5);
     await assert.rejects(timeout.result, /timed out/); assert.equal(terminated,2);
     const complete = extractLocalDocument(file, ()=>{}, ()=>worker);
-    worker.onmessage({data:{text:'hello'}});
+    for (const data of [null, { sourceName:'worker', targetName:'main', action:'ready' }, { text:'unrelated' }, { source:'datavault-document-v1', kind:'result', text:12 }, { source:'datavault-document-v1', kind:'unknown', error:'not our error' }]) worker.onmessage({data});
+    assert.equal(terminated,2, 'unrelated or malformed messages must not terminate extraction');
+    worker.onmessage({data:{source:'datavault-document-v1',kind:'result',text:'hello'}});
     assert.equal(await complete.result,'hello'); assert.equal(terminated,3);
   } finally { await vite.close(); rmSync(cacheDir, { recursive: true, force: true }); }
 });

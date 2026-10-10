@@ -17,13 +17,19 @@ export function extractLocalDocument(file: File, progress: (message: string) => 
     timer = setTimeout(() => { finish(); reject(Error('Extraction timed out after 30 seconds. Try a smaller document.')); }, timeoutMs);
     worker.onmessage = event => {
       if (settled) return;
-      if (typeof event.data.progress === 'string') { progress(event.data.progress); return; }
+      const data = event.data;
+      // PDF.js may emit its own bootstrap messages on the enclosing worker.
+      // Only our tagged, shape-checked protocol can update or settle a job.
+      if (!data || typeof data !== 'object' || data.source !== 'datavault-document-v1') return;
+      if (data.kind === 'progress' && typeof data.progress === 'string') { progress(data.progress); return; }
+      if (data.kind === 'error' && typeof data.error === 'string') { finish(); reject(Error(data.error)); return; }
+      if (data.kind !== 'result' || typeof data.text !== 'string') return;
       finish();
-      if (typeof event.data.text === 'string' && new TextEncoder().encode(event.data.text).length <= MAX_TEXT_BYTES) resolve(event.data.text);
-      else reject(Error(typeof event.data.error === 'string' ? event.data.error : 'Extracted text exceeds 2 MiB.'));
+      if (new TextEncoder().encode(data.text).length <= MAX_TEXT_BYTES) resolve(data.text);
+      else reject(Error('Extracted text exceeds 2 MiB.'));
     };
     worker.onerror = () => { if (!settled) { finish(); reject(Error('Document extraction failed. Try another file.')); } };
-    file.arrayBuffer().then(bytes => { if (!settled) worker!.postMessage({ bytes, name: file.name, type: file.type }, [bytes]); }).catch(() => {
+    file.arrayBuffer().then(bytes => { if (!settled) worker!.postMessage({ source: 'datavault-document-v1', kind: 'extract', bytes, name: file.name, type: file.type }, [bytes]); }).catch(() => {
       if (!settled) { finish(); reject(Error('Could not read document.')); }
     });
   });
