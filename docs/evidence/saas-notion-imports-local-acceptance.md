@@ -1,6 +1,6 @@
 ﻿# Selected Notion imports local acceptance
 
-Task 7C is independently reviewed and locally accepted at `e63feee`. Exact-head hosted checks remain pending. Live provider consent and deployment readiness are not claimed.
+Task 7C is independently reviewed and locally accepted at `e63feee`. All eight hosted checks passed at PR #64 head `fb4c3c2be01ec491dddc7c4911c5fc1c70c2f189`. Live provider consent and deployment readiness are not claimed.
 
 ## Gates
 
@@ -10,7 +10,7 @@ Task 7C is independently reviewed and locally accepted at `e63feee`. Exact-head 
 - [x] Selected-page traversal remains bounded; unsupported formats report coverage and no remote embedded resources are fetched.
 - [x] New drafts require current credentials and explicit review before ordinary owner registration.
 - [x] Unconfigured browser UI is truthful, wallet changes clear private views, export contains only safe metadata, and mobile controls fit.
-- [ ] Covering suites, independent review and exact-head hosted CI pass.
+- [x] Covering suites, independent review and exact-head hosted CI pass.
 
 External HTTPS provider configuration, real user consent, selected private pages and live refresh/revocation are separate acceptance gates. Mocked API tests and deterministic workerd smoke do not prove live Notion behavior.
 
@@ -31,3 +31,7 @@ Frontend serial tests passed 51/51 and focused Notion tests passed 4/4. Both typ
 Independent review found an Important cleanup-loss path: reconnect or failed disconnect could remove a token with only an overwriteable warning bit, then successful replacement hid uncertainty. Fix `e63feee` atomically records obligations before credential removal, adopts legacy uncertainty before replacement, and clears only the corresponding successfully revoked obligation. Ten cases reproduced RED and passed GREEN, with rollback and late-success coverage. Complete GitHub and Notion auth suites passed 60/60 with native-preserving exit zero; typecheck and both runtime smokes passed. Scoped re-review approved the fix with no new Critical or Important findings. No schema or UI changed in this fix.
 
 Notion's documented token response has no expiry field. Explicit authenticated refresh uses the encrypted rotating token pair and shared lease/version fences; a null refresh token requires reconnect. Operator Read content only configuration and selected-page consent remain required. Introspection does not provide a documented exhaustive capability inventory, so the implementation does not claim comprehensive scope verification. Consult [provider setup](../notion-imports.md) before enabling it.
+
+## Hosted verification
+
+On 10 October, the controller verified [PR #64](https://github.com/ShieldTech-Ltd/datavault/pull/64) at exact head `fb4c3c2be01ec491dddc7c4911c5fc1c70c2f189`: all eight CI and Security checks passed. [CI run 37980119178](https://github.com/ShieldTech-Ltd/datavault/actions/runs/37980119178) reports 398 passing Worker tests, one optional live-provider skip and 35 passing files (90.83 seconds), plus 51 passing frontend tests. This clean Linux result closes the hosted gate after the focused lifecycle fix. Live provider and public deployment gates remain open.
