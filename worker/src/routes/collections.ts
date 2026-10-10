@@ -15,6 +15,7 @@ import { registrationMessage } from "../../../shared/api";
 import { paidServiceConfigured } from "../lib/config";
 import { rpcMatchesConfiguredChain } from "../lib/chain-identity";
 import { collectionIdFor } from "../lib/collection-id";
+import { decodeCollectionText } from '../../../shared/document-text';
 
 // Staging collections expire after 30 minutes if the owner never confirms the tx.
 const STAGING_EXPIRY_MS = 30 * 60 * 1000;
@@ -42,9 +43,10 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
   if (!isValidAddress(ownerAddress)) return error400("ownerAddress must be a 0x-prefixed 20-byte hex address");
   if (!isValidPriceWei(priceWeiStr)) return error400("priceWei must be a positive integer string no larger than 10 MON");
 
-  const content = await (file as File).text();
-  if (!content.trim()) return error400("File is empty");
-  if (new TextEncoder().encode(content).length > LIMITS.MAX_UPLOAD_BYTES) return error413();
+  if (file.size > LIMITS.MAX_UPLOAD_BYTES) return error413();
+  let content: string;
+  try { content = decodeCollectionText(new Uint8Array(await file.arrayBuffer()), file.name); }
+  catch (error) { return error400(error instanceof Error ? error.message : 'Invalid text file'); }
 
   const priceWei = BigInt(priceWeiStr as string);
   const contentHash = keccak256(toBytes(content));

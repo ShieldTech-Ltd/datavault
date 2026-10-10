@@ -17,6 +17,7 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    worker: { format: "es" },
     build: {
       outDir: "dist",
       emptyOutDir: true,

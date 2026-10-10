@@ -1,3 +1,5 @@
+import DocumentImport from '../production/DocumentImport';
+import { decodeCollectionText, MAX_TEXT_BYTES } from '../../../shared/document-text';
 import WebsiteImport from '../production/WebsiteImport';
 import NotionImport from '../production/NotionImport';
 import {useOptionalAccount} from '../production/account';
@@ -17,7 +19,7 @@ import {
   toBytes,
 } from "viem";
 import { registrationMessage } from "../../../shared/api";
-import { CloudArrowUp, FileText, Globe, GithubLogo } from '../production/icons';
+import { FileText, Globe, GithubLogo } from '../production/icons';
 
 const MONAD_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID) || 10143;
 const NETWORK_LABEL =
@@ -114,7 +116,8 @@ export default function OwnerDashboard({
   useEffect(()=>{if(!accountState?.session && importedSource.current){setFile(null);setSourceText('');setDisclosureAccepted(false);importedSource.current=false;}},[accountState?.session]);
   function updateSourceText(name: string, text: string) {
     setTextName(name); setSourceText(text);
-    setFile(text.trim() && name.trim() ? new File([text], `${name.trim().replace(/[\\/]/g, '_')}.md`, { type: 'text/markdown' }) : null);
+    const reviewed = text.trim() && name.trim() ? new File([text], `${name.trim().replace(/[\\/]/g, '_')}.md`, { type: 'text/markdown' }) : null;
+    setFile(reviewed && reviewed.size <= MAX_TEXT_BYTES ? reviewed : null);
   }
   const [priceEth, setPriceEth] = useState("0.001");
   const [step, setStep] = useState<Step>("idle");
@@ -141,6 +144,10 @@ export default function OwnerDashboard({
     const wallet=await primaryWallet.getWalletClient();
     await assertRevisionWallet(wallet,owner,MONAD_CHAIN_ID,current);
   }
+
+  useEffect(() => {
+    setFile(null); setSourceText(''); setTextName('Knowledge collection'); setDisclosureAccepted(false);
+  }, [walletIdentity]);
 
   useEffect(() => {
     setPending(walletAddress ? readPending(walletAddress) : null);
@@ -222,7 +229,8 @@ export default function OwnerDashboard({
       if (!(await checkNetwork())) return;
       const walletClient = await primaryWallet.getWalletClient();
       await guardWallet();
-      const contentHash = keccak256(toBytes(await file.text()));
+      const reviewedText = decodeCollectionText(new Uint8Array(await file.arrayBuffer()), file.name);
+      const contentHash = keccak256(toBytes(reviewedText));
       const priceWei = parseEther(priceEth);
       const timestamp = Date.now();
       const signature = await walletClient.signMessage({
@@ -504,18 +512,7 @@ export default function OwnerDashboard({
         <form onSubmit={handleRegister} style={styles.form}>
           <div style={styles.label}>
             <div className="dv-upload-tabs" aria-label="Collection source"><button type="button" aria-pressed={inputMode === 'file'} onClick={() => { setInputMode('file'); setFile(null); }}><FileText size={16}/> Upload Files</button><button type="button" disabled={!accountContext} title="Import selected approved public pages" aria-pressed={inputMode === 'website'} onClick={() => { setInputMode('website'); setFile(null); }}><Globe size={15}/> Website</button><button type="button" disabled={!accountContext} title="Import selected Notion pages" aria-pressed={inputMode === 'notion'} onClick={() => { setInputMode('notion'); setFile(null); }}>Notion</button><button type="button" disabled={!accountContext} title={accountContext ? 'Import selected public files' : 'Account imports are available in the dashboard'} aria-pressed={inputMode === 'github'} onClick={() => { setInputMode('github'); setFile(null); }}><GithubLogo size={15}/> GitHub</button><button type="button" aria-pressed={inputMode === 'text'} onClick={() => { setInputMode('text'); updateSourceText(textName, sourceText); }}>Text</button></div>
-            {inputMode === 'notion' ? <NotionImport onInvalidated={() => setFile(null)} onReviewed={(name, text) => { importedSource.current=true; setInputMode('text'); updateSourceText(name, text); setDisclosureAccepted(false); }}/> : inputMode === 'website' ? <WebsiteImport onInvalidated={() => setFile(null)} onReviewed={(name, text) => { importedSource.current=true; setInputMode('text'); updateSourceText(name, text); setDisclosureAccepted(false); }}/> : inputMode === 'github' ? <GithubImport onInvalidated={() => setFile(null)} onReviewed={(name, text) => { importedSource.current=true; setInputMode('text'); updateSourceText(name, text); setDisclosureAccepted(false); }}/> : inputMode === 'text' ? <div className="dv-source-text"><label>Collection name<input value={textName} maxLength={80} required onChange={event => updateSourceText(event.target.value, sourceText)}/></label><label>Knowledge text<textarea value={sourceText} maxLength={512000} required rows={8} placeholder="Paste your Markdown knowledge here" onChange={event => updateSourceText(textName, event.target.value)}/></label><small>Saved privately through the same Markdown upload flow.</small></div> : <label className="dv-upload-dropzone" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); setFile(event.dataTransfer.files?.[0] ?? null); }}><CloudArrowUp size={46} weight="duotone"/><strong>Drag & drop your file here</strong><small>Markdown or TXT (max 500 KB)</small>
-            <span className="dv-file-label">Knowledge collection (Markdown file)</span>
-            <input
-              type="file"
-              aria-label="Knowledge collection (Markdown file)"
-              accept=".md,.txt"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              required={!file}
-              style={styles.input}
-            />
-            {file && <span className="dv-upload-selected"><FileText size={19}/><span>{file.name}</span><small>{(file.size / 1024).toFixed(1)} KB</small></span>}
-            </label>}
+            {inputMode === 'notion' ? <NotionImport onInvalidated={() => setFile(null)} onReviewed={(name, text) => { importedSource.current=true; setInputMode('text'); updateSourceText(name, text); setDisclosureAccepted(false); }}/> : inputMode === 'website' ? <WebsiteImport onInvalidated={() => setFile(null)} onReviewed={(name, text) => { importedSource.current=true; setInputMode('text'); updateSourceText(name, text); setDisclosureAccepted(false); }}/> : inputMode === 'github' ? <GithubImport onInvalidated={() => setFile(null)} onReviewed={(name, text) => { importedSource.current=true; setInputMode('text'); updateSourceText(name, text); setDisclosureAccepted(false); }}/> : inputMode === 'text' ? <div className="dv-source-text"><label>Collection name<input value={textName} maxLength={80} required onChange={event => updateSourceText(event.target.value, sourceText)}/></label><label>Knowledge text<textarea value={sourceText} maxLength={MAX_TEXT_BYTES} required rows={8} placeholder="Paste your Markdown knowledge here" onChange={event => updateSourceText(textName, event.target.value)}/></label><small>Up to 2 MiB of UTF8 text. Review the text, name, price and disclosure before signing.</small>{new TextEncoder().encode(sourceText).length > MAX_TEXT_BYTES && <p role="alert">Text exceeds 2 MiB. Shorten it before continuing.</p>}</div> : <DocumentImport key={walletIdentity} onReviewed={(name, text) => { setInputMode('text'); updateSourceText(name, text); setDisclosureAccepted(false); }}/>}
           </div>
 
           <label style={styles.label}>

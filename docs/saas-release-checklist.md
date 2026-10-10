@@ -27,6 +27,8 @@ Developer keys: [local acceptance](evidence/saas-api-keys-local-acceptance.md) r
 
 Workspaces: [local acceptance](evidence/saas-workspaces-local-acceptance.md) records invitation acceptance, Editor/Viewer boundaries, last-Owner protection, immediate key revocation and restored grants without reviving old keys. Final cross-feature checks remain pending.
 
+Document imports: [implementation evidence](evidence/saas-document-imports-local-acceptance.md) records bounded local PDF/DOCX parsers, the PDF worker bootstrap fix, worker-entry integration tests and 2 MiB text validation. Actual browser uploads/CSP and hosted CPU/memory acceptance remain required. The interrupted full Windows suite is not a passing full-suite result.
+
 ## Public deployment
 
 Selected Notion pages: [local acceptance](evidence/saas-notion-imports-local-acceptance.md) covers bounded extraction, shared credential lifecycle and cleanup review, preserving migration, and provider-disabled wallet/export/mobile states. Actual Notion integration configuration, user consent, private page import, refresh and revocation remain live gates.
