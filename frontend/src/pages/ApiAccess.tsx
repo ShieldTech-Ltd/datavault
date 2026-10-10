@@ -73,7 +73,15 @@ const RESPONSE_EXAMPLE = `{
 function Toast({ message, onDone }: { message: string; onDone: () => void }) {
   setTimeout(onDone, 2500);
   return (
-    <div style={{ position: "fixed", top: 16, right: 16, background: "#10b981", color: "white", borderRadius: 8, padding: "0.625rem 1rem", zIndex: 1000, fontWeight: 600, fontSize: "0.85rem" }}>
+    <div style={{
+      position: "fixed", top: 20, right: 20,
+      background: "#059669", color: "white", borderRadius: 10,
+      padding: "0.65rem 1.1rem", zIndex: 1000, fontWeight: 600, fontSize: "0.85rem",
+      boxShadow: "0 4px 16px rgba(5,150,105,0.4)",
+      display: "flex", alignItems: "center", gap: "0.5rem",
+      animation: "fadeIn 0.2s ease",
+    }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
       {message}
     </div>
   );
@@ -261,7 +269,7 @@ export default function ApiAccess() {
   };
 
   return (
-    <div style={{ padding: "2rem", color: "var(--text)", maxWidth: 900, margin: "0 auto" }}>
+    <div style={{ color: "var(--text)", maxWidth: 900 }}>
       {toast && <Toast message={toast} onDone={() => setToast(null)} />}
       {showModal && <CreateKeyModal onClose={() => setShowModal(false)} onSubmit={handleCreateKey} />}
 

@@ -17,9 +17,53 @@ interface OnChainPolicy {
   collectionName: string;
 }
 
+const STEPS: { key: Step; label: string }[] = [
+  { key: "uploading",       label: "Upload" },
+  { key: "awaiting_wallet", label: "Sign" },
+  { key: "awaiting_confirm",label: "Confirm" },
+  { key: "done",            label: "Done" },
+];
+
+function StepIndicator({ step }: { step: Step }) {
+  const active = ["uploading","awaiting_wallet","awaiting_confirm","done"].indexOf(step);
+  if (active < 0) return null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 0, marginTop: "1.5rem", marginBottom: "0.5rem" }}>
+      {STEPS.map((s, i) => {
+        const done = i < active;
+        const current = i === active;
+        return (
+          <div key={s.key} style={{ display: "flex", alignItems: "center", flex: i < STEPS.length - 1 ? 1 : undefined }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "0.72rem", fontWeight: 700, flexShrink: 0,
+                background: done ? "var(--green)" : current ? "var(--accent)" : "var(--surface-3)",
+                color: (done || current) ? "white" : "var(--text-3)",
+                border: current ? "2px solid var(--accent-bdr)" : "2px solid transparent",
+                boxShadow: current ? "0 0 0 3px var(--accent-bg)" : undefined,
+                transition: "all 0.2s",
+              }}>
+                {done ? "✓" : i + 1}
+              </div>
+              <span style={{ fontSize: "0.65rem", fontWeight: current ? 600 : 400, color: current ? "var(--accent)" : done ? "var(--green)" : "var(--text-3)", whiteSpace: "nowrap" }}>
+                {s.label}
+              </span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <div style={{ flex: 1, height: 2, background: i < active ? "var(--green)" : "var(--border)", margin: "0 6px", marginBottom: 20, transition: "background 0.3s" }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function OwnerDashboard() {
   const { primaryWallet } = useWallet();
   const [file, setFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const [priceEth, setPriceEth] = useState("0.001");
   const [step, setStep] = useState<Step>("idle");
   const [statusMsg, setStatusMsg] = useState("");
@@ -31,7 +75,6 @@ export default function OwnerDashboard() {
   const contractReady = Boolean(CONTRACT_ADDRESS);
   const walletAddress = primaryWallet?.address ?? "";
 
-  // Load saved collection and on-chain state after connect or refresh
   useEffect(() => {
     setPolicy(null);
     setLoadingPolicy(false);
@@ -198,62 +241,99 @@ export default function OwnerDashboard() {
   const isLoading = step === "uploading" || step === "awaiting_wallet" || step === "awaiting_confirm";
 
   return (
-    <div>
-      <h2>Register a Knowledge Collection</h2>
-      <p style={styles.subtext}>
-        Your Markdown document will be stored privately. Selected passages are sent to the AI model
-        provider only to answer queries. Buyers are informed of this before purchase.
-      </p>
+    <div className="animate-fadeIn" style={{ maxWidth: 560 }}>
+      <div style={{ marginBottom: "1.5rem" }}>
+        <h2 style={{ fontSize: "1.4rem", fontWeight: 800, color: "var(--text)", letterSpacing: "-0.02em", marginBottom: "0.35rem" }}>
+          Register a Knowledge Collection
+        </h2>
+        <p style={{ color: "var(--text-2)", fontSize: "0.875rem", lineHeight: 1.6 }}>
+          Your Markdown document is stored privately. Selected passages are sent to the AI model
+          provider only to answer buyer queries. Buyers are informed before purchase.
+        </p>
+      </div>
 
       {!contractReady && (
-        <div style={styles.warning}>
-          Contract address not configured. Deploy the contract and set VITE_CONTRACT_ADDRESS.
+        <div style={st.alertYellow}>
+          <span style={{ fontSize: "1rem" }} aria-hidden="true">⚠️</span>
+          <span>Contract address not configured. Deploy the contract and set <code>VITE_CONTRACT_ADDRESS</code>.</span>
         </div>
       )}
 
       {loadingPolicy && (
-        <div style={styles.info}>Loading your collection from chain...</div>
+        <div style={st.alertBlue}>
+          <span className="animate-spin" style={{ display: "inline-block", width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%" }} aria-hidden="true" />
+          <span>Loading your collection from chain...</span>
+        </div>
       )}
 
       {!policy && !loadingPolicy && (
-        <form onSubmit={handleRegister} style={styles.form}>
-          <label style={styles.label}>
-            Knowledge collection (Markdown file)
-            <input
-              type="file"
-              accept=".md,.txt"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              required
-              style={styles.input}
-            />
-          </label>
-
-          <label style={styles.label}>
-            Price per query (MON)
-            <input
-              type="number"
-              step="0.0001"
-              min="0.0001"
-              max="10"
-              value={priceEth}
-              onChange={(e) => setPriceEth(e.target.value)}
-              required
-              style={styles.input}
-            />
-          </label>
-
-          <div style={styles.disclosureBox}>
-            <label style={{ display: "flex", gap: "0.6rem", alignItems: "flex-start", cursor: "pointer" }}>
+        <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: "1.125rem" }}>
+          {/* Drop zone */}
+          <div>
+            <label style={st.fieldLabel}>Knowledge collection (Markdown or plain text)</label>
+            <div
+              style={{ ...st.dropzone, ...(dragOver ? st.dropzoneActive : {}), ...(file ? st.dropzoneFilled : {}) }}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) setFile(f); }}
+            >
               <input
-                type="checkbox"
-                checked={disclosureAccepted}
-                onChange={(e) => setDisclosureAccepted(e.target.checked)}
-                style={{ marginTop: 3, flexShrink: 0 }}
+                type="file"
+                accept=".md,.txt"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                required
+                style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
               />
-              <span style={{ fontSize: "0.82rem", color: "#374151", lineHeight: 1.5 }}>
+              {file ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                  <span style={{ fontSize: "1.25rem" }} aria-hidden="true">📄</span>
+                  <div>
+                    <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text)" }}>{file.name}</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>{(file.size / 1024).toFixed(1)} KB</div>
+                  </div>
+                  <span style={{ marginLeft: "auto", fontSize: "0.75rem", color: "var(--green)", fontWeight: 600 }}>✓ Ready</span>
+                </div>
+              ) : (
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: "1.75rem", marginBottom: "0.5rem" }} aria-hidden="true">📁</div>
+                  <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-2)" }}>Drop your file here or click to browse</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 4 }}>.md or .txt · up to 2 MiB</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Price */}
+          <div>
+            <label style={st.fieldLabel} htmlFor="price-input">Price per query (MON)</label>
+            <div style={st.inputWrap}>
+              <span style={{ color: "var(--text-3)", fontSize: "0.8rem", padding: "0 0.5rem", userSelect: "none" }}>◈</span>
+              <input
+                id="price-input"
+                type="number"
+                step="0.0001"
+                min="0.0001"
+                max="10"
+                value={priceEth}
+                onChange={(e) => setPriceEth(e.target.value)}
+                required
+                style={st.input}
+              />
+              <span style={{ color: "var(--text-3)", fontSize: "0.78rem", padding: "0 0.75rem", userSelect: "none", borderLeft: "1px solid var(--border)" }}>MON</span>
+            </div>
+          </div>
+
+          {/* Disclosure */}
+          <div style={st.disclosureBox}>
+            <label style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start", cursor: "pointer" }}>
+              <div style={{ ...st.checkbox, ...(disclosureAccepted ? st.checkboxChecked : {}) }} onClick={() => setDisclosureAccepted((v) => !v)} role="checkbox" aria-checked={disclosureAccepted} tabIndex={0} onKeyDown={(e) => e.key === " " && setDisclosureAccepted((v) => !v)}>
+                {disclosureAccepted && <span style={{ color: "white", fontSize: "0.7rem", fontWeight: 800 }}>✓</span>}
+                <input type="checkbox" checked={disclosureAccepted} onChange={(e) => setDisclosureAccepted(e.target.checked)} style={{ position: "absolute", opacity: 0, pointerEvents: "none" }} />
+              </div>
+              <span style={{ fontSize: "0.8rem", color: "var(--text-2)", lineHeight: 1.6 }}>
                 I understand that passages from my document will be sent to an external AI model provider
-                when buyers submit queries. I confirm I have the right to share this content under these
-                terms and that it does not violate any third-party rights.
+                when buyers submit queries. I confirm I have the right to share this content and it does
+                not violate any third-party rights.
               </span>
             </label>
           </div>
@@ -261,55 +341,91 @@ export default function OwnerDashboard() {
           <button
             type="submit"
             disabled={isLoading || !file || !disclosureAccepted}
-            style={styles.button}
+            style={isLoading || !file || !disclosureAccepted ? st.btnDisabled : st.btnPrimary}
           >
-            {isLoading ? stepLabel(step) : "Register Collection"}
+            {isLoading ? (
+              <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span className="animate-spin" style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "white", borderRadius: "50%", display: "inline-block" }} aria-hidden="true" />
+                {stepLabel(step)}
+              </span>
+            ) : "Register Collection"}
           </button>
 
           {step === "awaiting_wallet" && (
-            <div style={styles.stepNote}>
-              Check your wallet for the transaction prompt.
+            <div style={st.stepNote}>
+              <span aria-hidden="true">👛</span> Check your wallet for the transaction prompt.
             </div>
           )}
           {step === "awaiting_confirm" && (
-            <div style={styles.stepNote}>
-              Transaction broadcast. Waiting for Worker to verify on-chain...
+            <div style={st.stepNote}>
+              <span aria-hidden="true">⏳</span> Transaction broadcast. Waiting for on-chain confirmation...
             </div>
           )}
         </form>
       )}
 
+      {(isLoading || step === "done") && <StepIndicator step={step} />}
+
       {statusMsg && (
-        <div style={step === "error" ? styles.errorBox : styles.successBox}>
-          {statusMsg}
+        <div style={step === "error" ? st.alertRed : st.alertGreen} className="animate-fadeIn" role={step === "error" ? "alert" : "status"}>
+          <span aria-hidden="true">{step === "error" ? "❌" : "✅"}</span>
+          <span style={{ fontFamily: step === "done" ? "monospace" : undefined, fontSize: step === "done" ? "0.78rem" : undefined, wordBreak: "break-all" }}>
+            {statusMsg}
+          </span>
         </div>
       )}
 
       {policy && (
-        <div style={styles.policyCard}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem" }}>
-            <strong>Active collection{policy.collectionName ? `: ${policy.collectionName}` : ""}</strong>
-            <button onClick={handleForgetCollection} style={styles.linkButton}>
-              Forget (switch collection)
+        <div style={st.policyCard} className="animate-fadeIn">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span style={{ fontSize: "1.1rem" }} aria-hidden="true">🗃️</span>
+              <strong style={{ fontSize: "0.9rem", color: "var(--text)" }}>
+                {policy.collectionName ? policy.collectionName : "Active Collection"}
+              </strong>
+            </div>
+            <button onClick={handleForgetCollection} style={st.linkBtn} type="button">
+              Switch collection
             </button>
           </div>
-          <div style={styles.mono}>ID: {policy.collectionId}</div>
-          <div style={{ marginTop: "0.4rem" }}>
-            Status: <strong>{policy.active ? "Active" : "Paused"}</strong> (policy v{policy.policyVersion})
-          </div>
-          <div>Price: <strong>{formatEther(policy.price)} MON</strong> per query</div>
 
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1rem" }}>
+            <div style={st.statBox}>
+              <div style={st.statLabel}>Status</div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: policy.active ? "var(--green)" : "var(--yellow)", display: "inline-block" }} aria-hidden="true" />
+                <strong style={{ fontSize: "0.875rem", color: policy.active ? "var(--green)" : "var(--yellow)" }}>
+                  {policy.active ? "Active" : "Paused"}
+                </strong>
+              </div>
+            </div>
+            <div style={st.statBox}>
+              <div style={st.statLabel}>Price</div>
+              <strong style={{ fontSize: "0.875rem", color: "var(--text)" }}>{formatEther(policy.price)} MON</strong>
+            </div>
+            <div style={{ ...st.statBox, gridColumn: "1 / -1" }}>
+              <div style={st.statLabel}>Collection ID (v{policy.policyVersion})</div>
+              <code style={{ fontSize: "0.72rem", color: "var(--text-2)", wordBreak: "break-all", fontFamily: "monospace" }}>{policy.collectionId}</code>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <button
               onClick={handleTogglePause}
               disabled={policyTxPending}
-              style={{ ...styles.button, background: policy.active ? "#ef4444" : "#22c55e" }}
+              type="button"
+              style={policyTxPending ? st.btnDisabled : (policy.active ? st.btnDanger : st.btnSuccess)}
             >
-              {policyTxPending ? "Signing..." : policy.active ? "Pause Access" : "Resume Access"}
+              {policyTxPending ? (
+                <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                  <span className="animate-spin" style={{ width: 12, height: 12, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "white", borderRadius: "50%", display: "inline-block" }} aria-hidden="true" />
+                  Signing...
+                </span>
+              ) : policy.active ? "⏸ Pause Access" : "▶ Resume Access"}
             </button>
           </div>
 
-          <p style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "1rem" }}>
+          <p style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: "0.875rem", lineHeight: 1.5 }}>
             Document replacement is unavailable while policy versioning is being completed.
           </p>
         </div>
@@ -325,19 +441,36 @@ function stepLabel(step: Step): string {
   return "Working...";
 }
 
-const styles = {
-  form: { display: "flex", flexDirection: "column" as const, gap: "1rem", maxWidth: 480, marginTop: "1.5rem" },
-  label: { display: "flex", flexDirection: "column" as const, gap: "0.35rem", fontSize: "0.9rem", fontWeight: 500 },
-  input: { border: "1px solid #d1d5db", borderRadius: 6, padding: "0.5rem 0.75rem", fontSize: "0.9rem" },
-  button: { padding: "0.6rem 1.25rem", borderRadius: 6, background: "#6366f1", color: "white", border: "none", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem" },
-  linkButton: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: "0.8rem", padding: 0, textDecoration: "underline" },
-  warning: { background: "#fef3c7", border: "1px solid #fbbf24", padding: "0.75rem 1rem", borderRadius: 6, fontSize: "0.875rem", marginBottom: "1rem" },
-  info: { background: "#f0f9ff", border: "1px solid #bae6fd", padding: "0.75rem 1rem", borderRadius: 6, fontSize: "0.875rem", marginBottom: "1rem" },
-  successBox: { background: "#f0fdf4", border: "1px solid #86efac", padding: "0.75rem 1rem", borderRadius: 6, fontSize: "0.875rem", marginTop: "1rem", fontFamily: "monospace", wordBreak: "break-all" as const },
-  errorBox: { background: "#fef2f2", border: "1px solid #fca5a5", padding: "0.75rem 1rem", borderRadius: 6, fontSize: "0.875rem", marginTop: "1rem" },
-  disclosureBox: { background: "#f9fafb", border: "1px solid #e5e7eb", padding: "0.75rem 1rem", borderRadius: 6 },
-  stepNote: { fontSize: "0.82rem", color: "#6b7280", padding: "0.4rem 0" },
-  policyCard: { background: "#f8fafc", border: "1px solid #e2e8f0", padding: "1rem", borderRadius: 8, marginTop: "1.5rem", maxWidth: 520 },
-  mono: { fontFamily: "monospace", fontSize: "0.78rem", marginTop: "0.3rem", wordBreak: "break-all" as const, color: "#374151" },
-  subtext: { color: "#6b7280", fontSize: "0.875rem" },
+const st = {
+  fieldLabel: { display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--text-2)", marginBottom: "0.4rem" } as React.CSSProperties,
+  dropzone: {
+    position: "relative" as const, borderRadius: 10, border: "2px dashed var(--border-2)",
+    padding: "1.5rem 1.25rem", cursor: "pointer", transition: "all 0.15s",
+    background: "var(--surface-2)",
+  } as React.CSSProperties,
+  dropzoneActive: { borderColor: "var(--accent)", background: "var(--accent-bg)", boxShadow: "0 0 0 3px var(--accent-bg)" } as React.CSSProperties,
+  dropzoneFilled: { borderStyle: "solid", borderColor: "var(--green)", background: "var(--green-bg)" } as React.CSSProperties,
+  inputWrap: { display: "flex", alignItems: "center", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface-2)", overflow: "hidden" } as React.CSSProperties,
+  input: { flex: 1, background: "transparent", border: "none", outline: "none", padding: "0.55rem 0.5rem", color: "var(--text)", fontSize: "0.875rem" } as React.CSSProperties,
+  disclosureBox: { background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 9, padding: "0.875rem 1rem" } as React.CSSProperties,
+  checkbox: {
+    width: 18, height: 18, borderRadius: 5, border: "2px solid var(--border-2)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    flexShrink: 0, marginTop: 2, cursor: "pointer", transition: "all 0.15s",
+    position: "relative" as const, background: "var(--surface)",
+  } as React.CSSProperties,
+  checkboxChecked: { background: "var(--accent)", borderColor: "var(--accent)" } as React.CSSProperties,
+  btnPrimary: { padding: "0.65rem 1.25rem", borderRadius: 9, background: "linear-gradient(135deg,#7c3aed,#6366f1)", color: "white", border: "none", cursor: "pointer", fontWeight: 700, fontSize: "0.875rem", boxShadow: "0 2px 8px rgba(124,58,237,0.3)", width: "100%" } as React.CSSProperties,
+  btnDisabled: { padding: "0.65rem 1.25rem", borderRadius: 9, background: "var(--surface-3)", color: "var(--text-3)", border: "1px solid var(--border)", cursor: "not-allowed", fontWeight: 600, fontSize: "0.875rem", width: "100%" } as React.CSSProperties,
+  btnDanger: { padding: "0.55rem 1.1rem", borderRadius: 8, background: "var(--red-bg)", color: "var(--red)", border: "1px solid rgba(220,38,38,0.25)", cursor: "pointer", fontWeight: 600, fontSize: "0.82rem" } as React.CSSProperties,
+  btnSuccess: { padding: "0.55rem 1.1rem", borderRadius: 8, background: "var(--green-bg)", color: "var(--green)", border: "1px solid rgba(22,163,74,0.25)", cursor: "pointer", fontWeight: 600, fontSize: "0.82rem" } as React.CSSProperties,
+  linkBtn: { background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: "0.78rem", fontWeight: 600, padding: 0, textDecoration: "underline", textUnderlineOffset: "2px" } as React.CSSProperties,
+  alertYellow: { display: "flex", gap: "0.6rem", alignItems: "flex-start", padding: "0.75rem 1rem", borderRadius: 9, background: "var(--yellow-bg)", border: "1px solid rgba(217,119,6,0.25)", fontSize: "0.82rem", color: "var(--yellow)", marginBottom: "1rem" } as React.CSSProperties,
+  alertBlue:   { display: "flex", gap: "0.6rem", alignItems: "center", padding: "0.75rem 1rem", borderRadius: 9, background: "var(--blue-bg)", border: "1px solid rgba(37,99,235,0.2)", fontSize: "0.82rem", color: "var(--blue)", marginBottom: "1rem" } as React.CSSProperties,
+  alertGreen:  { display: "flex", gap: "0.6rem", alignItems: "flex-start", padding: "0.875rem 1rem", borderRadius: 9, background: "var(--green-bg)", border: "1px solid rgba(22,163,74,0.25)", fontSize: "0.82rem", color: "var(--green-text)", marginTop: "1rem" } as React.CSSProperties,
+  alertRed:    { display: "flex", gap: "0.6rem", alignItems: "flex-start", padding: "0.875rem 1rem", borderRadius: 9, background: "var(--red-bg)", border: "1px solid rgba(220,38,38,0.25)", fontSize: "0.82rem", color: "var(--red)", marginTop: "1rem" } as React.CSSProperties,
+  stepNote: { display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.8rem", color: "var(--text-3)", padding: "0.25rem 0" } as React.CSSProperties,
+  policyCard: { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.25rem", marginTop: "1.75rem", boxShadow: "var(--shadow-md)" } as React.CSSProperties,
+  statBox: { background: "var(--surface-2)", borderRadius: 8, padding: "0.6rem 0.75rem", border: "1px solid var(--border)" } as React.CSSProperties,
+  statLabel: { fontSize: "0.7rem", fontWeight: 600, color: "var(--text-3)", marginBottom: "0.25rem", textTransform: "uppercase" as const, letterSpacing: "0.05em" } as React.CSSProperties,
 } as const;

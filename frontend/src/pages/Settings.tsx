@@ -69,7 +69,15 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
 function Toast({ message, onDone }: { message: string; onDone: () => void }) {
   setTimeout(onDone, 2500);
   return (
-    <div style={{ position: "fixed", top: 16, right: 16, background: "#10b981", color: "white", borderRadius: 8, padding: "0.625rem 1rem", zIndex: 1000, fontWeight: 600, fontSize: "0.85rem" }}>
+    <div style={{
+      position: "fixed", top: 20, right: 20,
+      background: "#059669", color: "white", borderRadius: 10,
+      padding: "0.65rem 1.1rem", zIndex: 1000, fontWeight: 600, fontSize: "0.85rem",
+      boxShadow: "0 4px 16px rgba(5,150,105,0.4)",
+      display: "flex", alignItems: "center", gap: "0.5rem",
+      animation: "fadeIn 0.2s ease",
+    }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
       {message}
     </div>
   );
@@ -134,7 +142,7 @@ export default function Settings() {
   };
 
   return (
-    <div style={{ padding: "2rem", color: "var(--text)", maxWidth: 860, margin: "0 auto" }}>
+    <div style={{ color: "var(--text)", maxWidth: 860 }}>
       {toast && <Toast message={toast} onDone={() => setToast(null)} />}
 
       {/* Header */}
@@ -146,22 +154,23 @@ export default function Settings() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid var(--border)", marginBottom: "1.5rem", overflowX: "auto" }}>
+      <div style={{ display: "flex", gap: 2, borderBottom: "1px solid var(--border)", marginBottom: "1.5rem", overflowX: "auto" }}>
         {tabs.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             style={{
-              background: "none",
+              background: tab === t ? "var(--accent-bg)" : "none",
               border: "none",
               cursor: "pointer",
-              padding: "0.6rem 1rem",
+              padding: "0.55rem 1rem",
+              borderRadius: "8px 8px 0 0",
               fontSize: "0.82rem",
               fontWeight: 600,
               color: tab === t ? "var(--accent)" : "var(--text-2)",
               borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent",
               marginBottom: -1,
-              transition: "color 0.15s",
+              transition: "color 0.15s, background 0.15s",
               whiteSpace: "nowrap",
             }}
           >

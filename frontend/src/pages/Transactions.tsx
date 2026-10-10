@@ -95,22 +95,26 @@ function MiniStat({ label, value, color }: { label: string; value: string | numb
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
+        borderLeft: color ? `3px solid ${color}` : "3px solid var(--border-2)",
         borderRadius: "var(--radius-sm)",
-        padding: "0.75rem 1rem",
+        padding: "0.85rem 1rem",
         minWidth: 0,
         flex: 1,
+        transition: "box-shadow 0.15s",
       }}
     >
       <div
         style={{
-          fontSize: "1.15rem",
-          fontWeight: 700,
+          fontSize: "1.3rem",
+          fontWeight: 800,
           color: color ?? "var(--text)",
+          letterSpacing: "-0.02em",
+          lineHeight: 1.15,
         }}
       >
         {value}
       </div>
-      <div style={{ fontSize: "0.73rem", color: "var(--text-3)", marginTop: 2 }}>{label}</div>
+      <div style={{ fontSize: "0.7rem", fontWeight: 500, color: "var(--text-3)", marginTop: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
     </div>
   );
 }
@@ -206,7 +210,8 @@ export default function Transactions() {
     <div style={{ padding: "2rem", maxWidth: 1280, margin: "0 auto" }}>
       {/* Header */}
       <div style={{ marginBottom: "1.75rem" }}>
-        <h1 style={{ fontSize: "1.6rem", fontWeight: 800, color: "var(--text)", margin: 0 }}>
+        <p style={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 6 }}>On-Chain Activity</p>
+        <h1 style={{ fontSize: "1.75rem", fontWeight: 800, color: "var(--text)", margin: 0, letterSpacing: "-0.02em" }}>
           Transaction History
         </h1>
         <p style={{ color: "var(--text-3)", marginTop: 6, fontSize: "0.875rem" }}>
@@ -341,16 +346,17 @@ export default function Transactions() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={7}
-                    style={{
-                      textAlign: "center",
-                      padding: "3rem 1rem",
-                      color: "var(--text-3)",
-                      fontSize: "0.875rem",
-                    }}
-                  >
-                    No transactions match your filters.
+                  <td colSpan={7} style={{ textAlign: "center", padding: "3.5rem 1rem" }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.75rem" }}>
+                      <div style={{ width: 56, height: 56, borderRadius: "50%", background: "var(--surface-3)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="1.5">
+                          <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/>
+                          <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/>
+                        </svg>
+                      </div>
+                      <div style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text-2)" }}>No transactions found</div>
+                      <div style={{ fontSize: "0.8rem", color: "var(--text-3)", maxWidth: 260 }}>Try adjusting your filters or check back after completing a query.</div>
+                    </div>
                   </td>
                 </tr>
               ) : (

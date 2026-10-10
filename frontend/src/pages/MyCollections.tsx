@@ -680,13 +680,46 @@ export default function MyCollections() {
       {filtered.length === 0 ? (
         <div
           style={{
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius)",
+            padding: "4rem 2rem",
             textAlign: "center",
-            padding: "3rem 1rem",
-            color: "var(--text-3)",
-            fontSize: "0.9rem",
+            boxShadow: "var(--shadow)",
           }}
         >
-          No collections match your filters.
+          <div style={{
+            width: 56, height: 56, borderRadius: "50%",
+            background: "var(--accent-bg)", border: "1px solid var(--accent-bdr)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            margin: "0 auto 1rem",
+          }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.5">
+              <rect x="2" y="2" width="9" height="9" rx="1.5"/><rect x="13" y="2" width="9" height="9" rx="1.5"/>
+              <rect x="2" y="13" width="9" height="9" rx="1.5"/><rect x="13" y="13" width="9" height="9" rx="1.5"/>
+            </svg>
+          </div>
+          <div style={{ fontSize: "1rem", fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>
+            {owned.length === 0 ? "No collections yet" : "No collections match your filters"}
+          </div>
+          <div style={{ fontSize: "0.84rem", color: "var(--text-2)", marginBottom: "1.25rem", maxWidth: 320, margin: "0 auto 1.25rem" }}>
+            {owned.length === 0
+              ? "Create your first knowledge collection to start earning from your expertise."
+              : "Try adjusting your search terms or clearing the category filter."}
+          </div>
+          {owned.length === 0 && (
+            <button
+              onClick={() => setShowCreate(true)}
+              style={{
+                background: "linear-gradient(135deg,#7c3aed,#6366f1)",
+                color: "white", border: "none", borderRadius: 8,
+                padding: "0.6rem 1.4rem", fontWeight: 700,
+                fontSize: "0.85rem", cursor: "pointer",
+              }}
+            >
+              + Create Your First Collection
+            </button>
+          )}
         </div>
       ) : (
         <div
@@ -699,6 +732,7 @@ export default function MyCollections() {
           {filtered.map((col) => (
             <div
               key={col.id}
+              className="card-hover"
               style={{
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
@@ -760,21 +794,31 @@ export default function MyCollections() {
 
               {/* Body */}
               <div style={{ padding: "0.9rem 1rem", flex: 1 }}>
-                <h3
-                  style={{
-                    fontSize: "0.95rem",
-                    fontWeight: 700,
-                    color: "var(--text)",
-                    margin: "0 0 0.35rem",
-                  }}
-                >
-                  {col.name}
-                </h3>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6, marginBottom: "0.35rem" }}>
+                  <h3
+                    style={{
+                      fontSize: "0.95rem",
+                      fontWeight: 700,
+                      color: "var(--text)",
+                      margin: 0,
+                    }}
+                  >
+                    {col.name}
+                  </h3>
+                  {col.verified && (
+                    <span style={{
+                      fontSize: "0.65rem", fontWeight: 700, flexShrink: 0,
+                      background: "rgba(251,191,36,0.15)", color: "#d97706",
+                      border: "1px solid rgba(217,119,6,0.3)",
+                      borderRadius: 20, padding: "1px 7px",
+                    }}>✦ Verified</span>
+                  )}
+                </div>
                 <p
                   style={{
                     fontSize: "0.78rem",
                     color: "var(--text-2)",
-                    margin: "0 0 0.6rem",
+                    margin: "0 0 0.75rem",
                     lineHeight: 1.5,
                     display: "-webkit-box",
                     WebkitLineClamp: 2,
@@ -785,26 +829,25 @@ export default function MyCollections() {
                   {col.description}
                 </p>
 
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.75rem",
-                    fontSize: "0.75rem",
-                    color: "var(--text-2)",
-                    marginBottom: "0.5rem",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span>{col.queries} queries</span>
-                  <span>·</span>
-                  <span style={{ color: "var(--accent)", fontWeight: 600 }}>
-                    {col.price}
-                  </span>
-                  <span>·</span>
-                  <span style={{ color: "var(--yellow)" }}>
-                    ★ {col.rating.toFixed(1)}
-                  </span>
+                {/* Stats row */}
+                <div style={{
+                  display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
+                  gap: "0.5rem", marginBottom: "0.65rem",
+                  background: "var(--surface-2)", borderRadius: 8,
+                  padding: "0.5rem 0.6rem",
+                }}>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--text)" }}>{col.queries.toLocaleString()}</div>
+                    <div style={{ fontSize: "0.65rem", color: "var(--text-3)", marginTop: 1 }}>Queries</div>
+                  </div>
+                  <div style={{ textAlign: "center", borderLeft: "1px solid var(--border)", borderRight: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--accent)" }}>{col.price}</div>
+                    <div style={{ fontSize: "0.65rem", color: "var(--text-3)", marginTop: 1 }}>Per Query</div>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--yellow)" }}>★ {col.rating.toFixed(1)}</div>
+                    <div style={{ fontSize: "0.65rem", color: "var(--text-3)", marginTop: 1 }}>Rating</div>
+                  </div>
                 </div>
 
                 <div

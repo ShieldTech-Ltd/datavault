@@ -414,7 +414,7 @@ export default function AskQuery() {
             disabled={!question.trim() || !selectedCollection || queryState === "loading"}
             style={{
               width: "100%",
-              padding: "0.85rem",
+              padding: "0.9rem",
               borderRadius: "var(--radius-sm)",
               border: "none",
               background:
@@ -423,18 +423,32 @@ export default function AskQuery() {
                   : "linear-gradient(135deg,#7c3aed,#6366f1)",
               color:
                 !question.trim() || !selectedCollection ? "var(--text-3)" : "#fff",
-              fontSize: "1rem",
+              fontSize: "0.95rem",
               fontWeight: 700,
               cursor:
                 !question.trim() || !selectedCollection || queryState === "loading"
                   ? "not-allowed"
                   : "pointer",
               letterSpacing: "0.03em",
-              transition: "opacity .15s",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.5rem",
               opacity: queryState === "loading" ? 0.7 : 1,
+              boxShadow: !question.trim() || !selectedCollection ? "none" : "0 4px 14px rgba(124,58,237,0.35)",
             }}
           >
-            {queryState === "loading" ? "Processing…" : "Ask →"}
+            {queryState === "loading" ? (
+              <>
+                <div style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", animation: "spin 0.8s linear infinite" }} />
+                Processing…
+              </>
+            ) : (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                Ask DataVault
+              </>
+            )}
           </button>
 
           {/* ── Loading state ── */}

@@ -62,6 +62,7 @@ function StatCard({
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
+        borderLeft: `3px solid ${accent}`,
         borderRadius: "var(--radius)",
         boxShadow: "var(--shadow)",
         padding: "1.25rem",
@@ -70,26 +71,28 @@ function StatCard({
         gap: "1rem",
         flex: 1,
         minWidth: 0,
+        transition: "box-shadow 0.15s",
       }}
     >
       <div
         style={{
-          width: 42,
-          height: 42,
-          borderRadius: 10,
-          background: accent + "22",
+          width: 44,
+          height: 44,
+          borderRadius: 11,
+          background: accent + "18",
+          border: `1px solid ${accent}28`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: "1.2rem",
+          fontSize: "1.25rem",
           flexShrink: 0,
         }}
       >
         {icon}
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text)" }}>{value}</div>
-        <div style={{ fontSize: "0.78rem", color: "var(--text-3)", marginTop: 2 }}>{label}</div>
+        <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--text)", letterSpacing: "-0.02em", lineHeight: 1.15 }}>{value}</div>
+        <div style={{ fontSize: "0.72rem", fontWeight: 500, color: "var(--text-3)", marginTop: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
       </div>
     </div>
   );
@@ -208,13 +211,20 @@ export default function Earnings() {
       <Toast visible={toastVisible} />
 
       {/* Header */}
-      <div style={{ marginBottom: "1.75rem" }}>
-        <h1 style={{ fontSize: "1.6rem", fontWeight: 800, color: "var(--text)", margin: 0 }}>
-          Earnings &amp; Monetization
-        </h1>
-        <p style={{ color: "var(--text-3)", marginTop: 6, fontSize: "0.875rem" }}>
-          Track your earnings, payouts, and growth analytics.
-        </p>
+      <div style={{ marginBottom: "1.75rem", display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+        <div>
+          <p style={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 6 }}>Revenue Dashboard</p>
+          <h1 style={{ fontSize: "1.75rem", fontWeight: 800, color: "var(--text)", margin: 0, letterSpacing: "-0.02em" }}>
+            Earnings &amp; Monetization
+          </h1>
+          <p style={{ color: "var(--text-3)", marginTop: 6, fontSize: "0.875rem" }}>
+            Track your earnings, payouts, and growth analytics.
+          </p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0.4rem 0.75rem", background: "var(--green-bg)", border: "1px solid rgba(22,163,74,0.2)", borderRadius: 8 }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--green)", display: "inline-block" }} />
+          <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--green-text)" }}>Live on Monad Testnet</span>
+        </div>
       </div>
 
       {/* Stats row */}
@@ -455,7 +465,7 @@ export default function Earnings() {
               Recent Payouts
             </h2>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-              {PAYOUTS.map((p) => (
+              {PAYOUTS.map((p, idx) => (
                 <div
                   key={p.id}
                   style={{
@@ -464,74 +474,31 @@ export default function Earnings() {
                     gap: "1rem",
                     padding: "0.875rem 1rem",
                     borderRadius: "var(--radius-sm)",
-                    background: "var(--surface-2)",
+                    background: idx % 2 === 0 ? "var(--surface-2)" : "transparent",
+                    border: "1px solid transparent",
                     flexWrap: "wrap",
+                    transition: "background 0.12s",
                   }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "var(--surface-3)"; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = idx % 2 === 0 ? "var(--surface-2)" : "transparent"; }}
                 >
-                  <span
-                    style={{
-                      fontWeight: 700,
-                      color: "var(--green)",
-                      fontSize: "0.95rem",
-                      minWidth: 90,
-                    }}
-                  >
-                    {p.amount}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 110 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--green-bg)", border: "1px solid rgba(22,163,74,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", flexShrink: 0 }}>↑</div>
+                    <span style={{ fontWeight: 700, color: "var(--green)", fontSize: "0.92rem" }}>{p.amount}</span>
+                  </div>
+                  <span style={{ flex: 1, fontSize: "0.82rem", color: "var(--text)", minWidth: 140 }}>{p.collection}</span>
+                  <span style={{ fontSize: "0.78rem", color: "var(--text-3)", minWidth: 110 }}>{p.date}</span>
+                  <span style={{
+                    fontSize: "0.72rem", fontWeight: 600, padding: "0.2rem 0.65rem", borderRadius: 99,
+                    background: p.status === "Completed" ? "var(--green-bg)" : "var(--yellow-bg)",
+                    color: p.status === "Completed" ? "var(--green-text)" : "var(--yellow)",
+                    whiteSpace: "nowrap",
+                  }}>
+                    {p.status === "Completed" ? "✓ " : "⏳ "}{p.status}
                   </span>
-                  <span
-                    style={{
-                      flex: 1,
-                      fontSize: "0.82rem",
-                      color: "var(--text)",
-                      minWidth: 140,
-                    }}
-                  >
-                    {p.collection}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "0.78rem",
-                      color: "var(--text-3)",
-                      minWidth: 110,
-                    }}
-                  >
-                    {p.date}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "0.72rem",
-                      fontWeight: 600,
-                      padding: "0.2rem 0.6rem",
-                      borderRadius: 99,
-                      background:
-                        p.status === "Completed" ? "var(--green-bg)" : "var(--yellow-bg)",
-                      color: p.status === "Completed" ? "var(--green-text)" : "var(--yellow)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {p.status}
-                  </span>
-                  <span
-                    style={{
-                      fontFamily: "monospace",
-                      fontSize: "0.75rem",
-                      color: "var(--text-3)",
-                      minWidth: 110,
-                    }}
-                  >
-                    {p.hash}
-                  </span>
-                  <a
-                    href="#"
-                    style={{
-                      fontSize: "0.78rem",
-                      color: "var(--accent)",
-                      textDecoration: "none",
-                      fontWeight: 600,
-                    }}
-                    onClick={(e) => e.preventDefault()}
-                  >
-                    View &#8594;
+                  <span style={{ fontFamily: "monospace", fontSize: "0.73rem", color: "var(--text-3)", minWidth: 100 }}>{p.hash}</span>
+                  <a href="#" style={{ fontSize: "0.78rem", color: "var(--accent)", textDecoration: "none", fontWeight: 600, whiteSpace: "nowrap" }} onClick={(e) => e.preventDefault()}>
+                    View ↗
                   </a>
                 </div>
               ))}

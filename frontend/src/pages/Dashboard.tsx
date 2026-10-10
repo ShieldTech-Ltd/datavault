@@ -8,24 +8,28 @@ const statCards = [
     label: "Collections",
     icon: "⚡",
     bg: "var(--accent-bg)",
+    accent: "#7c3aed",
   },
   {
     value: DASHBOARD_STATS.totalQueries.toLocaleString(),
     label: "Total Queries",
     icon: "📊",
     bg: "rgba(59,130,246,0.1)",
+    accent: "#3b82f6",
   },
   {
     value: DASHBOARD_STATS.totalEarnings,
     label: "Total Earnings",
     icon: "🪙",
     bg: "var(--green-bg)",
+    accent: "#16a34a",
   },
   {
     value: DASHBOARD_STATS.uptime,
     label: "Uptime",
     icon: "✅",
     bg: "var(--green-bg)",
+    accent: "#10b981",
   },
 ];
 
@@ -110,24 +114,27 @@ export default function Dashboard() {
                 color: "white",
                 border: "none",
                 borderRadius: 8,
-                padding: "0.6rem 1.3rem",
-                fontWeight: 600,
+                padding: "0.65rem 1.4rem",
+                fontWeight: 700,
                 fontSize: "0.9rem",
                 cursor: "pointer",
+                boxShadow: "0 4px 14px rgba(124,58,237,0.35)",
               }}
             >
-              Create Collection
+              Create Collection →
             </button>
             <button
               onClick={() => navigate("/marketplace")}
               style={{
-                background: "transparent",
-                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                border: "1px solid var(--border-2)",
                 color: "var(--text-2)",
                 borderRadius: 8,
-                padding: "0.55rem 1.2rem",
+                padding: "0.6rem 1.25rem",
                 fontSize: "0.9rem",
+                fontWeight: 500,
                 cursor: "pointer",
+                boxShadow: "var(--shadow)",
               }}
             >
               Explore Marketplace
@@ -264,20 +271,23 @@ export default function Dashboard() {
             style={{
               background: "var(--surface)",
               border: "1px solid var(--border)",
+              borderLeft: `3px solid ${s.accent}`,
               borderRadius: "var(--radius)",
               boxShadow: "var(--shadow)",
               padding: "1.1rem 1.25rem",
               display: "flex",
               alignItems: "center",
               gap: "0.85rem",
+              transition: "box-shadow 0.15s",
             }}
           >
             <div
               style={{
-                width: 40,
-                height: 40,
+                width: 42,
+                height: 42,
                 borderRadius: 10,
                 background: s.bg,
+                border: `1px solid ${s.accent}33`,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -290,16 +300,17 @@ export default function Dashboard() {
             <div>
               <div
                 style={{
-                  fontSize: "1.35rem",
+                  fontSize: "1.55rem",
                   fontWeight: 800,
                   color: "var(--text)",
                   lineHeight: 1.1,
+                  letterSpacing: "-0.02em",
                 }}
               >
                 {s.value}
               </div>
               <div
-                style={{ fontSize: "0.75rem", color: "var(--text-2)", marginTop: 2 }}
+                style={{ fontSize: "0.73rem", fontWeight: 500, color: "var(--text-3)", marginTop: 3, textTransform: "uppercase", letterSpacing: "0.05em" }}
               >
                 {s.label}
               </div>
@@ -366,15 +377,17 @@ export default function Dashboard() {
                   boxShadow: "var(--shadow)",
                   overflow: "hidden",
                   cursor: "pointer",
-                  transition: "box-shadow 0.15s",
+                  transition: "transform 0.18s ease, box-shadow 0.18s ease",
                 }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.boxShadow =
-                    "var(--shadow-md)";
+                  const el = e.currentTarget as HTMLDivElement;
+                  el.style.boxShadow = "var(--shadow-lg)";
+                  el.style.transform = "translateY(-3px)";
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.boxShadow =
-                    "var(--shadow)";
+                  const el = e.currentTarget as HTMLDivElement;
+                  el.style.boxShadow = "var(--shadow)";
+                  el.style.transform = "translateY(0)";
                 }}
               >
                 <div
@@ -478,11 +491,11 @@ export default function Dashboard() {
               >
                 <div
                   style={{
-                    width: 8,
-                    height: 8,
+                    width: 9,
+                    height: 9,
                     borderRadius: "50%",
-                    background:
-                      activityDotColor[item.type] ?? "var(--text-3)",
+                    background: activityDotColor[item.type] ?? "var(--text-3)",
+                    boxShadow: `0 0 6px ${activityDotColor[item.type] ?? "var(--text-3)"}66`,
                     marginTop: 5,
                     flexShrink: 0,
                   }}
