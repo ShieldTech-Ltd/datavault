@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Link } from 'react-router';
 import { useWallet } from '../lib/wallet';
 import { useAccount } from './account';
 import type { EmailStatus } from './account-client';
@@ -56,6 +57,6 @@ export default function AccountSettings() {
     <GithubConnection/>
     <NotionConnection/>
     <TeamSettings/>
-    <p>Subscription plans are unavailable. This workspace uses the light dashboard theme.</p>
+    <p>This workspace uses the light dashboard theme. View subscription status, account limits and invoices in <Link to="/settings/billing">Billing</Link>.</p>
   </section>;
 }
