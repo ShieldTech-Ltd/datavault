@@ -175,6 +175,10 @@
 .dv-reference-workspace .workspace-description { font-size:11px; }
 .dv-reference-hero-metrics .dv-metrics { grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
 .dv-reference-hero-metrics .dv-metrics .dv-card { padding:12px 10px; grid-template-columns:minmax(0,1fr); gap:5px; border-radius:11px; box-shadow:var(--shadow); }
+.dv-reference-hero-metrics .dv-metrics .dv-card:nth-child(1) { border-left:3px solid #4b82d1; }
+.dv-reference-hero-metrics .dv-metrics .dv-card:nth-child(2) { border-left:3px solid #7458de; }
+.dv-reference-hero-metrics .dv-metrics .dv-card:nth-child(3) { border-left:3px solid #29916a; }
+.dv-reference-hero-metrics .dv-metrics .dv-card:nth-child(4) { border-left:3px solid #d29a32; }
 .dv-reference-hero-metrics .dv-metrics svg { display:none; }
 .dv-reference-hero-metrics .dv-metrics strong { grid-column:1; font-size:16px; line-height:1.2; white-space:normal; overflow-wrap:anywhere; }
 .dv-reference-hero-metrics .dv-metrics span { grid-column:1; font-size:11px; line-height:1.3; }
