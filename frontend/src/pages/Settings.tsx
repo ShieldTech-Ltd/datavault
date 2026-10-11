@@ -69,7 +69,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
 function Toast({ message, onDone }: { message: string; onDone: () => void }) {
   setTimeout(onDone, 2500);
   return (
-    <div style={{
+    <div className="animate-fadeIn" style={{
       position: "fixed", top: 20, right: 20,
       background: "#059669", color: "white", borderRadius: 10,
       padding: "0.65rem 1.1rem", zIndex: 1000, fontWeight: 600, fontSize: "0.85rem",

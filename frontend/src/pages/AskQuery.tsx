@@ -440,7 +440,7 @@ export default function AskQuery() {
           >
             {queryState === "loading" ? (
               <>
-                <div style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", animation: "spin 0.8s linear infinite" }} />
+                <div className="animate-spin" style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white" }} />
                 Processing…
               </>
             ) : (

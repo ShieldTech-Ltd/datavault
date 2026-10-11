@@ -369,6 +369,7 @@ export default function Dashboard() {
             {ownedCollections.map((col) => (
               <div
                 key={col.id}
+                className="card-hover"
                 onClick={() => navigate(`/collections/${col.id}`)}
                 style={{
                   background: "var(--surface)",

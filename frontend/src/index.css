@@ -174,9 +174,9 @@ button:disabled { opacity: 0.55; cursor: not-allowed; transform: none !important
 
 @media (prefers-reduced-motion: reduce) {
   .animate-fadeIn, .animate-scaleIn, .animate-spin, .animate-pulse,
-  .skeleton, .net-pulse { animation: none; }
-  .card-hover, button, input, textarea, select { transition: none; }
-  .card-hover:hover, button:active { transform: none; }
+  .skeleton, .net-pulse { animation: none !important; }
+  .card-hover, button, input, textarea, select { transition: none !important; }
+  .card-hover:hover, button:active { transform: none !important; }
 }
 
 /* ── Dynamic widget overrides ────────────────────────────────── */
