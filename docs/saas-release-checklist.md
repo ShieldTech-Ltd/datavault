@@ -29,6 +29,8 @@ Workspaces: [local acceptance](evidence/saas-workspaces-local-acceptance.md) rec
 
 ## Public deployment
 
+Selected Notion pages: [local acceptance](evidence/saas-notion-imports-local-acceptance.md) covers bounded extraction, shared credential lifecycle and cleanup review, preserving migration, and provider-disabled wallet/export/mobile states. Actual Notion integration configuration, user consent, private page import, refresh and revocation remain live gates.
+
 Approved website imports: [local acceptance](evidence/saas-website-imports-local-acceptance.md) records actual workerd fetch, private preview, reviewed staging, recovery, cancellation and wallet/mobile isolation. Exact approved domains and scheduled cleanup are operational gates. Final importer-wide and deployment checks remain open.
 
 Selected public GitHub imports: [local acceptance](evidence/saas-github-imports-local-acceptance.md) records source provenance, confirmed publication and cancellation without changing historical receipts. Remaining importer and final-release gates stay open.

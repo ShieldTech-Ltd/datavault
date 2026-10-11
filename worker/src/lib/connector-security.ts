@@ -80,12 +80,13 @@ export async function pkceChallenge(verifier: string) {
 export async function connectorFetch(
   url: string,
   init: RequestInit = {},
-  limit = 1_000_000
+  limit = 1_000_000,
+  budget?: { bytes: number; max: number }
 ): Promise<any> {
   const parsed = new URL(url);
   if (
     parsed.protocol !== 'https:' ||
-    !['github.com', 'api.github.com'].includes(parsed.hostname) ||
+    !['github.com', 'api.github.com', 'api.notion.com'].includes(parsed.hostname) ||
     parsed.username ||
     parsed.password ||
     parsed.port
@@ -100,7 +101,7 @@ export async function connectorFetch(
       signal: controller.signal,
     });
     if (!r.ok || r.status >= 300)
-      throw Error(`Provider ${r.status === 401 ? 'revoked' : 'rejected'}`);
+      throw Error(`Provider ${(r.status === 401 || r.status === 403) ? 'revoked' : 'rejected'}`);
     if (r.status === 204) return null;
     if (!r.body) throw Error('Provider body');
     const reader = r.body.getReader();
@@ -111,6 +112,7 @@ export async function connectorFetch(
         const p = await reader.read();
         if (p.done) break;
         length += p.value.byteLength;
+        if (budget) { budget.bytes += p.value.byteLength; if (budget.bytes > budget.max) throw Error("Provider size"); }
         if (length > limit) throw Error('Provider size');
         chunks.push(p.value);
       }
