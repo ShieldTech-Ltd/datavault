@@ -9,7 +9,7 @@ This checklist distinguishes implemented features from live service readiness. R
 - [x] Export contains only the signed-in account's supported records. Deletion requests accurately show pending processing.
 - [x] Collection metadata is owner-controlled; unlisted metadata is excluded from public listings and aggregates.
 - [x] Price changes require confirmed owner transactions. Historical receipts/answers retain original identity after revisions.
-- [ ] Notifications correspond to real persisted events; duplicate delivery is idempotent.
+- [x] Notifications correspond to real persisted events; duplicate delivery is idempotent.
 - [ ] Analytics and exports match recorded settlement amounts and report incomplete coverage.
 - [ ] Developer keys are scoped, hashed at rest, shown once and revocable.
 - [ ] Workspace membership is checked on every private operation, including API-key access.
@@ -19,7 +19,7 @@ This checklist distinguishes implemented features from live service readiness. R
 - [ ] Payment, answer, payout, recovery, pause and timeout refund rehearsal passes.
 - [ ] Production excludes development wallets and sample activity. Exact-head CI/security checks pass.
 
-Local evidence: [account acceptance](evidence/saas-account-local-acceptance.md), [collection management acceptance](evidence/saas-collection-local-acceptance.md). Checkmarks apply to those recorded candidates. Re-run cross-feature acceptance against the final release commit.
+Local evidence: [account acceptance](evidence/saas-account-local-acceptance.md), [collection management acceptance](evidence/saas-collection-local-acceptance.md). See also [revision acceptance](evidence/saas-revisions-local-acceptance.md) and [notification acceptance](evidence/saas-notifications-local-acceptance.md). Checkmarks apply to those recorded candidates. Re-run cross-feature acceptance against the final release commit.
 
 ## Public deployment
 

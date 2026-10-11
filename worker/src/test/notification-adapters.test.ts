@@ -59,3 +59,59 @@ it('Queue preserves current opt-out and bounds a provider batch to ten messages'
  await (worker as any).queue({messages},env);expect(messages.slice(0,10).every(m=>m.acked===1)).toBe(true);expect(messages[10].retried).toBe(1);
  }finally{store.close();}
 });
+
+for(const scenario of ['retry-backoff','active-lease','provider-disabled','provider-disabled-unqueued'] as const){
+ it(`scheduled ${scenario} email rows cannot monopolize five slots ahead of later due in-app work`,async()=>{
+  const {store,env}=await fixture();try{
+   env.NOTIFICATION_SCHEDULE_ENABLED='true';let nativeCalls=0;
+   // In-process fake binding only. No provider setup or actual emails.
+   if(!scenario.startsWith('provider-disabled'))Object.assign(env,{PUBLIC_ORIGIN:'https://vault.example',EMAIL_FROM:'fake@example.test',EMAIL_LINK_SECRET:'test-only-secret-at-least-thirty-two-bytes',EMAIL:{send:async()=>{nativeCalls++;return {messageId:'fake-private-id'};}}});
+   const statements:D1PreparedStatement[]=[],now=Date.now();
+   for(let i=1;i<=5;i++){
+    const earlyAddress='0x'+i.toString(16).padStart(40,'0'),id=`31337:${contract}:${earlyAddress}`;
+    statements.push(env.DB.prepare('INSERT INTO accounts(account_id,address,chain_id,contract_address,created_at,updated_at) VALUES (?,?,31337,?,1,1)').bind(id,earlyAddress,contract));
+    statements.push(env.DB.prepare('INSERT INTO account_email(account_id,verified_email,verified_at,email_version,notify_email,consent_version,opt_in_at,opt_in_event_id) VALUES (?,\'fake@example.test\',1,1,1,1,0,0)').bind(id));
+    statements.push(env.DB.prepare("INSERT INTO notification_events(chain_id,contract_address,event_type,source_id,recipient,collection_id,collection_name,created_at) VALUES (31337,?,'collection_registered',?,?,'c','Name',1)").bind(contract,'early-'+i,earlyAddress));
+    statements.push(env.DB.prepare("INSERT INTO notification_deliveries(account_id,event_id,state,attempts) SELECT ?,event_id,'delivered',1 FROM notification_events WHERE recipient=?").bind(id,earlyAddress));
+    if(scenario!=='provider-disabled-unqueued')statements.push(env.DB.prepare('INSERT INTO email_outbox(account_id,event_id,email_version,consent_version,state,attempts,next_retry_at,lease_token,lease_expires_at) SELECT ?,event_id,1,1,?,1,?,\'fake-lease\',? FROM notification_events WHERE recipient=?').bind(id,scenario==='active-lease'?'sending':scenario==='retry-backoff'?'retry':'pending',scenario==='retry-backoff'?now+600000:0,now+600000,earlyAddress));
+   }
+   await env.DB.batch(statements);
+   const signals:any[]=[];env.NOTIFICATIONS_QUEUE={send:async(body:any)=>{signals.push(body);}} as unknown as Queue;
+   await worker.scheduled({} as ScheduledController,env);
+   expect(signals).toEqual([{chainId:31337,contractAddress:contract,recipient:address}]);expect(nativeCalls).toBe(0);
+   delete env.NOTIFICATIONS_QUEUE;await worker.scheduled({} as ScheduledController,env);
+   expect((await env.DB.prepare('SELECT * FROM notification_inbox').all()).results).toHaveLength(1);expect(nativeCalls).toBe(0);
+  }finally{store.close();}
+ },20000);
+}
+it('scheduled provider-unavailable recovery still suppresses stale consent and dead-letters expired final leases',async()=>{
+ for(const cleanup of ['suppressed','dead_letter'] as const){
+  const {store,env,account}=await fixture();try{
+   env.NOTIFICATION_SCHEDULE_ENABLED='true';
+   await env.DB.batch([
+    env.DB.prepare("INSERT INTO notification_deliveries(account_id,event_id,state,attempts) SELECT ?,event_id,'delivered',1 FROM notification_events").bind(account),
+    env.DB.prepare('INSERT INTO account_email(account_id,verified_email,verified_at,email_version,notify_email,consent_version,opt_in_at,opt_in_event_id) VALUES (?,\'fake@example.test\',1,1,?,1,0,0)').bind(account,cleanup==='suppressed'?0:1),
+    env.DB.prepare("INSERT INTO email_outbox(account_id,event_id,email_version,consent_version,state,attempts,lease_token,lease_expires_at) SELECT ?,event_id,1,1,'sending',5,'fake-lease',? FROM notification_events").bind(account,cleanup==='suppressed'?Date.now()+600000:Date.now()-1)
+   ]);
+   await worker.scheduled({} as ScheduledController,env);
+   expect((await env.DB.prepare('SELECT state FROM email_outbox').first<any>()).state).toBe(cleanup);
+  }finally{store.close();}
+ }
+},20000);
+it('scheduled configured recovery selects due pending/retry/expired-lease and new email work',async()=>{
+ for(const state of ['pending','retry','sending','unqueued'] as const){
+  const {store,env,account}=await fixture();try{
+   let sends=0;
+   // In-process fake native binding only, never a provider call.
+   Object.assign(env,{NOTIFICATION_SCHEDULE_ENABLED:'true',PUBLIC_ORIGIN:'https://vault.example',EMAIL_FROM:'fake@example.test',EMAIL_LINK_SECRET:'test-only-secret-at-least-thirty-two-bytes',EMAIL:{send:async()=>{sends++;return {messageId:'fake-private-id'};}}});
+   const statements=[
+    env.DB.prepare("INSERT INTO notification_deliveries(account_id,event_id,state,attempts) SELECT ?,event_id,'delivered',1 FROM notification_events").bind(account),
+    env.DB.prepare('INSERT INTO account_email(account_id,verified_email,verified_at,email_version,notify_email,consent_version,opt_in_at,opt_in_event_id) VALUES (?,\'fake@example.test\',1,1,1,1,0,0)').bind(account)
+   ];
+   if(state!=='unqueued')statements.push(env.DB.prepare("INSERT INTO email_outbox(account_id,event_id,email_version,consent_version,state,attempts,next_retry_at,lease_token,lease_expires_at) SELECT ?,event_id,1,1,?,1,0,'fake-lease',0 FROM notification_events").bind(account,state));
+   await env.DB.batch(statements);await worker.scheduled({} as ScheduledController,env);
+   expect(sends).toBe(1);expect((await env.DB.prepare('SELECT state FROM email_outbox').first<any>()).state).toBe('accepted');
+   await worker.scheduled({} as ScheduledController,env);expect(sends).toBe(1);
+  }finally{store.close();}
+ }
+},20000);

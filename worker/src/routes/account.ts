@@ -1,4 +1,5 @@
 import { consumeNotifications, reconcileNotifications, inboxSelect } from '../lib/notifications';
+import { challengeEmail, emailStatus, removeEmail, setEmailConsent, verifyEmail } from '../lib/account-email';
 import { getAddress, isAddress, verifyMessage, type Hex } from 'viem';
 import { createSiweMessage, parseSiweMessage, validateSiweMessage } from 'viem/siwe';
 import type { Env } from '../lib/types';
@@ -73,6 +74,19 @@ export async function handleAccountRoute(request: Request, env: Env): Promise<Re
   }
   if (!session) return denied();
   if (method !== 'GET' && !validCsrf(request, session)) return json({ error: 'CSRF token required.' }, 403);
+  if (path === '/api/account/email' && method === 'GET') return json(await emailStatus(env,session.account));
+  if (path === '/api/account/email/challenge' && method === 'POST') {
+    const input=await body(request); if(!input)return json({error:'Invalid email request.'},400);
+    const result=await challengeEmail(request,env,session.account,input);
+    return json(result.value,result.status,result.status===429?{'Retry-After':'60'}:{});
+  }
+  if (path === '/api/account/email/verify' && method === 'POST') {
+    const input=await body(request); if(!input||!await verifyEmail(env,session.account,input))return json({error:'Email confirmation is invalid, expired or belongs to another wallet.'},400);
+    return json({status:'verified'});
+  }
+  if (path === '/api/account/email' && method === 'DELETE') {
+    await removeEmail(env,session.account.account_id);return json({status:'removed'});
+  }
   if (path === '/api/account/notifications' && method === 'GET') {
     const params = new URL(request.url).searchParams;
     const rawLimit = params.get('limit') ?? '20', rawCursor = params.get('cursor');
@@ -101,8 +115,9 @@ export async function handleAccountRoute(request: Request, env: Env): Promise<Re
       ('locale' in input && input.locale !== 'en-GB') || ('notificationPreferences' in input &&
         (!object(input.notificationPreferences) || !Object.keys(input.notificationPreferences).length || !only(input.notificationPreferences, ['inApp','email']) ||
           ('inApp' in input.notificationPreferences && typeof input.notificationPreferences.inApp !== 'boolean') ||
-          ('email' in input.notificationPreferences && input.notificationPreferences.email !== false)))) return json({ error: 'Invalid profile settings. Email requires verified-email support.' }, 400);
-    const preferences = input.notificationPreferences as { inApp?: boolean } | undefined;
+          ('email' in input.notificationPreferences && typeof input.notificationPreferences.email !== 'boolean')))) return json({ error: 'Invalid profile settings.' }, 400);
+    const preferences = input.notificationPreferences as { inApp?: boolean; email?: boolean } | undefined;
+    if(preferences?.email!==undefined&&!await setEmailConsent(env,session.account.account_id,preferences.email))return json({error:'Verify your email and configure the email provider before enabling notifications.'},400);
     await env.DB.prepare(`UPDATE accounts SET display_name = COALESCE(?,display_name), locale = COALESCE(?,locale),
       notify_in_app = COALESCE(?,notify_in_app), updated_at = ? WHERE account_id = ?`)
       .bind(input.displayName === undefined ? null : (input.displayName as string).trim(), input.locale ?? null,

@@ -120,6 +120,7 @@ export interface AccountProfile {
   displayName: string;
   locale: 'en-GB';
   notificationPreferences: { inApp: boolean; email: boolean };
+  email?: { verifiedEmail: string | null; verifiedAt: number | null };
   createdAt: number;
   updatedAt: number;
 }

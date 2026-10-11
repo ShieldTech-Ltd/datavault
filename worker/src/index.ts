@@ -1,4 +1,5 @@
 import { queueNotifications, scheduledNotifications } from './lib/notification-adapters';
+import { handleUnsubscribe } from './lib/email-unsubscribe';
 import { handleStatus } from './routes/status';
 import { handleCollectionRevisions } from "./routes/collection-revisions";
 import { handleCollectionMetadata } from './routes/collection-metadata';
@@ -90,7 +91,9 @@ export default {
         }
         let res: Response;
 
-        if ((method === "GET" && ["/api/status","/api/health"].includes(path)) || (method === "POST" && path === "/api/status/observations")) {
+        if(path==='/api/email/unsubscribe'){
+          res=await handleUnsubscribe(request,env);
+        } else if ((method === "GET" && ["/api/status","/api/health"].includes(path)) || (method === "POST" && path === "/api/status/observations")) {
           res = await handleStatus(request, env);
         } else if (path === "/api/account" || path.startsWith("/api/account/") || path.startsWith("/api/auth/")) {
           res = await handleAccountRoute(request, env);

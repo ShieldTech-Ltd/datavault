@@ -5,6 +5,7 @@ import { monadTestnet } from './lib/network';
 import { WorkspaceProvider } from './production/data';
 import { AccountProvider } from './production/account';
 import Shell from './production/Shell';
+import EmailConfirmation from './production/EmailConfirmation';
 import { DashboardPage, MarketplacePage, CollectionsPage, CollectionPageView, QueryPage, ManagePage, EarningsPage, TransactionsPage, AnalyticsPage, ApiPage, SettingsPage } from './production/Pages';
 import './app.css';
 import './production/dashboard.css';
@@ -19,7 +20,9 @@ export default function App() {
     <Route path="query" element={<QueryPage />} /><Route path="manage" element={<ManagePage />} />
     <Route path="earnings" element={<EarningsPage />} /><Route path="transactions" element={<TransactionsPage />} />
     <Route path="analytics" element={<AnalyticsPage />} /><Route path="api-access" element={<ApiPage />} />
-    <Route path="settings" element={<SettingsPage />} /><Route path="*" element={<Navigate to="/" replace />} />
+    <Route path="settings" element={<SettingsPage />} />
+    <Route path="settings/email-verify" element={<EmailConfirmation />} /><Route path="settings/email-unsubscribe" element={<EmailConfirmation unsubscribe />} />
+    <Route path="*" element={<Navigate to="/" replace />} />
   </Route></Routes></WorkspaceProvider></AccountProvider>;
   return typeof document === 'undefined'
     ? <MemoryRouter initialEntries={[`${window.location.pathname}${window.location.search ?? ''}`]}>{routes}</MemoryRouter>

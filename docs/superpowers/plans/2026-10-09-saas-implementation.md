@@ -134,7 +134,7 @@ Recommended design: changed content receives a new hash-derived collection ID th
 - [x] Persist events with D1 transitions where possible; repair missing events by reconciliation. Pending settlement never creates earnings notifications.
 - [x] Add paginated inbox, unread count and mark-read. Exclude questions/source passages from previews.
 - [x] Test duplicate delivery and crashes; one source event produces one inbox item. Add queue/outbox retries and failure visibility.
-- [ ] Add verified email, opt-in and unsubscribe before enabling email. Select/configure a provider in its own delivery PR.
+- [x] Implement verified email, opt-in and unsubscribe before enabling email. Native provider adapter is separately reviewed, disabled until privately configured and live acceptance passes.
 - [x] Record external availability checks with a published sampling window and coverage. Missing observations show unknown; one successful request is not uptime.
 
 **Gate:** cross-account inbox access is denied, duplicates are idempotent, and failed delivery never appears successful.
