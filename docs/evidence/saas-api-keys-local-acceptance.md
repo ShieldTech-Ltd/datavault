@@ -26,4 +26,6 @@ Initial browser HMR retained an old AccountClient instance, producing a missing 
 
 Clipboard interactions were not browser-tested. Source handles copy success/failure, and final cross-feature browser acceptance remains pending. Review minors: dense formatting, known SSR/optimizer/CJS and bundle warnings, additional second-collection exclusion and exact Retry-After assertions. Stale creation revocation is best effort if the original session has already logged out; reconnect and inspect/revoke stranded keys. Already claimed calls may finish after revocation. Counter cleanup is opportunistic with30daylogical read retention.
 
+Hosted follow-up: all eight PR #59 checks passed at exact head `1d1eed7bff08a281c3a498b062477cde02a39755`. Clean Linux jobs ran 220/220 Worker tests across 26 files and 29/29 frontend tests, both typechecks, final build, contract tests, guards, production dependency audit and package dry run. This resolves the earlier pending hosted gate.
+
 These are local Hardhat/Worker tests. They do not establish public deployment or final SaaS readiness.

@@ -173,11 +173,11 @@ Current confirmed collection counts remain current inventory. Settlement, failur
 **Create:** workspace access library, membership/invitation routes/tests, `TeamSettings.tsx`, workspace/audit migrations.
 **Modify:** account/session scope, metadata access, notifications and key ownership.
 
-- [ ] Define Owner (members/settings), Editor (off-chain drafts/metadata), Viewer (explicitly shared metadata).
-- [ ] Invite a wallet; require that wallet to accept a single-use invitation expiring after seven days. Prevent removing the last workspace owner.
-- [ ] Authorize every private query by current membership, not a client-supplied workspace ID alone.
-- [ ] Keep on-chain ownership/payouts unchanged. Membership cannot sign as the owner or read private buyer answers. Source-text sharing needs separate consent and capability.
-- [ ] Revoke workspace key access when membership ends; test unrelated workspaces, removed members, replayed invitations and editor restrictions.
+- [x] Define Owner (members/settings), Editor (off-chain drafts/metadata), Viewer (explicitly shared metadata).
+- [x] Invite a wallet; require that wallet to accept a single-use invitation expiring after seven days. Prevent removing the last workspace owner.
+- [x] Authorize every private query by current membership, not a client-supplied workspace ID alone.
+- [x] Keep on-chain ownership/payouts unchanged. Membership cannot sign as the owner or read private buyer answers. Source-text sharing needs separate consent and capability.
+- [x] Revoke workspace key access when membership ends; test unrelated workspaces, removed members, replayed invitations and editor restrictions.
 
 **Gate:** tenant-ID changes never expose private data. Delegated on-chain authority requires a separate smart-account or multisig design.
 

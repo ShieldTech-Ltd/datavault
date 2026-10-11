@@ -1,4 +1,6 @@
 import { handleAccountKeys } from '../lib/developer-keys';
+import { handleWorkspaces } from './workspaces';
+import { ownWorkspaces, ownInvitations } from '../lib/workspaces';
 import { consumeNotifications, reconcileNotifications, inboxSelect } from '../lib/notifications';
 import { handleSavedItems, savedItems } from '../lib/saved-items';
 import { challengeEmail, emailStatus, removeEmail, setEmailConsent, verifyEmail } from '../lib/account-email';
@@ -76,6 +78,8 @@ export async function handleAccountRoute(request: Request, env: Env): Promise<Re
   }
   if (!session) return denied();
   if (method !== 'GET' && !validCsrf(request, session)) return json({ error: 'CSRF token required.' }, 403);
+  const workspaceResponse=await handleWorkspaces(request,env,session.account);
+  if(workspaceResponse)return workspaceResponse;
   const keysResponse=await handleAccountKeys(request,env,session.account);
   if(keysResponse)return keysResponse;
   const savedResponse=await handleSavedItems(request,env,session.account);
@@ -137,7 +141,7 @@ export async function handleAccountRoute(request: Request, env: Env): Promise<Re
     const bookmarks=await savedItems(env,session.account,'bookmarks',null);
     const savedQuestions=await savedItems(env,session.account,'saved-questions',50);
     return json({ scope: 'Account profile, notification preferences, inbox metadata, bookmarks, active explicitly saved questions and pending deletion requests. Saved questions expire after 30 days. Paid answers, source content and immutable on-chain records are outside this export.',
-      deployment: { chainId, contractAddress: contract }, account: profile(session.account), deletionRequests: requests.results, notifications: inbox.results, bookmarks, savedQuestions }, 200,
+      deployment: { chainId, contractAddress: contract }, account: profile(session.account), deletionRequests: requests.results, notifications: inbox.results, bookmarks, savedQuestions, memberships: await ownWorkspaces(env,session.account.address), invitations: await ownInvitations(env,session.account.address) }, 200,
       { 'Content-Disposition': 'attachment; filename="datavault-account.json"' });
   }
   if (path === '/api/account/deletion-request' && method === 'POST') {

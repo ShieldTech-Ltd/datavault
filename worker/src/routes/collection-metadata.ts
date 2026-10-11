@@ -8,6 +8,7 @@ import { getCollectionRow } from "../lib/d1";
 import { getOnChainCollection } from "../lib/policy";
 import { rpcMatchesConfiguredChain } from "../lib/chain-identity";
 import { isValidBytes32 } from "../lib/validation";
+import {membership,sharedCollection,workspaceId} from '../lib/workspaces';
 export const categories = [
   "General",
   "Technology",
@@ -46,6 +47,8 @@ export async function handleCollectionMetadata(
   if (!session) return json({ error: "Sign in to your account" }, 401);
   if (!trustedAccountOrigin(req, env) || !validCsrf(req, session))
     return json({ error: "Invalid origin or CSRF token" }, 403);
+  const params=new URL(req.url).searchParams,workspace=params.get('workspaceId');
+  if([...params.keys()].some(k=>k!=='workspaceId')||params.getAll('workspaceId').length>1||(workspace!==null&&!workspaceId(workspace)))return json({error:'Invalid metadata scope'},400);
   const text = await req.text();
   if (new TextEncoder().encode(text).length > 12000)
     return json({ error: "Metadata too large" }, 413);
@@ -73,21 +76,22 @@ export async function handleCollectionMetadata(
   const row = await getCollectionRow(id, env);
   if (!row || row.status !== "confirmed")
     return json({ error: "Collection not found" }, 404);
-  if (row.owner_address.toLowerCase() !== session.account.address)
+  let sharedOwner:string|undefined;
+  if(workspace!==null){const member=await membership(env,workspace,session.account.address);if(!member||member.role==='Viewer')return json({error:'Owner or Editor membership required'},403);const shared=await sharedCollection(env,workspace,id);if(shared.status!==200)return json({error:shared.status===503?'Chain unavailable':'Valid shared metadata grant required'},shared.status);sharedOwner=shared.grantor;}
+  if (workspace===null && row.owner_address.toLowerCase() !== session.account.address)
     return json({ error: "Owner required" }, 403);
-  if (!(await rpcMatchesConfiguredChain(env)))
-    return json({ error: "Chain unavailable" }, 503);
   let chain;
   try {
+    if (!(await rpcMatchesConfiguredChain(env))) return json({ error: "Chain unavailable" }, 503);
     chain = await getOnChainCollection(id as `0x${string}`, env);
   } catch {
     return json({ error: "Chain unavailable" }, 503);
   }
   if (!chain) return json({ error: "Chain unavailable" }, 503);
-  if (chain.owner.toLowerCase() !== session.account.address)
+  if (chain.owner.toLowerCase() !== (sharedOwner??session.account.address))
     return json({ error: "Owner required" }, 403);
   const value = await env.DB.prepare(
-    `INSERT INTO collection_metadata(chain_id,contract_address,collection_id,description,category,visibility,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(chain_id,contract_address,collection_id) DO UPDATE SET
+    `INSERT INTO collection_metadata(chain_id,contract_address,collection_id,description,category,visibility,updated_at) SELECT ?,?,?,?,?,?,? WHERE ? IS NULL OR EXISTS(SELECT 1 FROM workspace_grants g JOIN workspaces w ON w.id=g.workspace_id AND w.active=1 JOIN workspace_members issuer ON issuer.workspace_id=g.workspace_id AND issuer.address=g.grantor AND issuer.role='Owner' JOIN workspace_members editor ON editor.workspace_id=g.workspace_id AND editor.address=? AND editor.role IN ('Owner','Editor') WHERE g.workspace_id=? AND g.collection_id=? AND g.grantor=?) ON CONFLICT(chain_id,contract_address,collection_id) DO UPDATE SET
       description=CASE WHEN ? THEN excluded.description ELSE collection_metadata.description END,
       category=CASE WHEN ? THEN excluded.category ELSE collection_metadata.category END,
       visibility=CASE WHEN ? THEN excluded.visibility ELSE collection_metadata.visibility END,
@@ -102,10 +106,11 @@ export async function handleCollectionMetadata(
       body.category ?? "General",
       body.visibility ?? "public",
       Date.now(),
+      workspace,session.account.address,workspace,id,sharedOwner??null,
       "description" in body ? 1 : 0,
       "category" in body ? 1 : 0,
       "visibility" in body ? 1 : 0
     )
     .first();
-  return json(value);
+  return value?json(value):json({error:'Workspace authorization ended'},403);
 }

@@ -144,3 +144,9 @@
 .dv-saved-items{list-style:none;margin:16px 0;padding:0}.dv-saved-items li{padding:16px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere}
 .dv-saved-question{display:flex;flex-direction:column;gap:10px;margin:12px 0}.dv-saved-question label{display:flex;align-items:start;gap:8px}.dv-saved-question input[type=checkbox]{width:auto;flex:none;margin-top:3px}
 @media(max-width:600px){.dv-analytics-controls{align-items:stretch}.dv-analytics-controls label{width:100%}.dv-analytics-controls .dv-button{width:100%;box-sizing:border-box}.dv-saved-question .dv-button{width:100%;box-sizing:border-box}}
+.dv-team-settings { min-width:0; max-width:100%; overflow-wrap:anywhere; border-top:1px solid var(--border); margin-top:24px; padding-top:12px; }
+.dv-team-settings article { min-width:0; max-width:100%; margin:12px 0; }
+.dv-team-settings .dv-input,.dv-team-settings textarea,.dv-team-settings select { min-width:0; max-width:100%; width:100%; box-sizing:border-box; }
+.dv-team-settings .dv-button { max-width:calc(100% - 8px); white-space:normal; overflow-wrap:anywhere; }
+.dv-team-member { border-bottom:1px solid var(--border); padding-bottom:12px; }
+.dv-api-key-form select { min-width:0; max-width:100%; }
