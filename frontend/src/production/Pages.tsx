@@ -1,3 +1,4 @@
+import { ApiKeys } from './ApiKeys';
 import CollectionVersions from "./CollectionVersions";
 import { AnalyticsControls, DailyCharts } from './AnalyticsControls';
 import { BookmarkButton, SavedItems } from './SavedItems';
@@ -92,7 +93,7 @@ export function AnalyticsPage() {
   </>;
 }
 export function ApiPage() {
-  return <><Heading title="Signed API access" description="The current API authorizes paid actions and private activity reads with wallet signatures." /><div className="dv-two-columns"><section className="dv-card dv-panel"><ShieldCheck size={32} /><h2>Wallet authorization</h2><p>Owner and buyer activity reads, query execution and answer recovery use EIP-191 signed messages bound to the deployment and request purpose.</p><p>Send <code>x-signature</code> and <code>x-timestamp</code> headers. Public catalogue and receipt endpoints do not require a wallet signature.</p><a className="dv-button secondary" href="https://github.com/ShieldTech-Ltd/datavault/blob/master/docs/api-contract.md" target="_blank" rel="noreferrer">Read the API contract <ArrowSquareOut size={16} /></a></section><section className="dv-card dv-panel"><h2>API key management unavailable</h2><p>DataVault does not currently issue API keys, scopes or developer plans. No key is generated or stored by this page.</p><p>Use the published wallet-signature protocol for supported integrations.</p></section></div></>;
+  return <ApiKeys/>;
 }
 export function SettingsPage() {
   const { primaryWallet, correctNetwork } = useWallet();

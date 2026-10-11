@@ -1,3 +1,4 @@
+import { handleAccountKeys } from '../lib/developer-keys';
 import { consumeNotifications, reconcileNotifications, inboxSelect } from '../lib/notifications';
 import { handleSavedItems, savedItems } from '../lib/saved-items';
 import { challengeEmail, emailStatus, removeEmail, setEmailConsent, verifyEmail } from '../lib/account-email';
@@ -75,6 +76,8 @@ export async function handleAccountRoute(request: Request, env: Env): Promise<Re
   }
   if (!session) return denied();
   if (method !== 'GET' && !validCsrf(request, session)) return json({ error: 'CSRF token required.' }, 403);
+  const keysResponse=await handleAccountKeys(request,env,session.account);
+  if(keysResponse)return keysResponse;
   const savedResponse=await handleSavedItems(request,env,session.account);
   if(savedResponse)return savedResponse;
   if (path === '/api/account/email' && method === 'GET') return json(await emailStatus(env,session.account));

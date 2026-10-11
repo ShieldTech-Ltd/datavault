@@ -3,9 +3,12 @@ import { test } from 'node:test';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { createServer } from 'vite';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+const cacheDir=join(tmpdir(),'datavault-production-dashboard-'+process.pid);
 
 test('dashboard deep links expose real task states instead of sample business records', async () => {
-  const vite = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
+  const vite = await createServer({ cacheDir, optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
   try {
     const { default: App } = await vite.ssrLoadModule('/src/App.tsx');
     const { WalletProvider } = await vite.ssrLoadModule('/src/lib/wallet.tsx');
@@ -13,7 +16,7 @@ test('dashboard deep links expose real task states instead of sample business re
       ['/', 'Your Knowledge'],
       ['/collections', 'Your collections'], ['/marketplace', 'Knowledge marketplace'],
       ['/earnings', 'Owner earnings'], ['/transactions', 'Your paid requests'],
-      ['/analytics', 'Recorded analytics'], ['/api-access', 'Signed API access'],
+      ['/analytics', 'Recorded analytics'], ['/api-access', 'Developer API keys'],
       ['/settings', 'Workspace settings'], ['/collections/0x' + 'ab'.repeat(32), 'Collection details'],
     ];
     for (const [pathname, heading] of routes) {
@@ -26,7 +29,7 @@ test('dashboard deep links expose real task states instead of sample business re
 });
 
 test('API failure cannot masquerade as an empty successful workspace', async () => {
-  const vite = await createServer({ optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
+  const vite = await createServer({ cacheDir, optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true }, appType: 'custom', logLevel: 'silent' });
   const originalFetch = globalThis.fetch;
   try {
     const { apiJson } = await vite.ssrLoadModule('/src/production/api.ts');

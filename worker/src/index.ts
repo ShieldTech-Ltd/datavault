@@ -1,3 +1,4 @@
+import { handleDeveloperCollections } from './lib/developer-keys';
 import { queueNotifications, scheduledNotifications } from './lib/notification-adapters';
 import { handleUnsubscribe } from './lib/email-unsubscribe';
 import { handleStatus } from './routes/status';
@@ -91,7 +92,9 @@ export default {
         }
         let res: Response;
 
-        if(path==='/api/email/unsubscribe'){
+        if(method==='GET'&&path==='/api/developer/collections'){
+          res=await handleDeveloperCollections(request,env);
+        } else if(path==='/api/email/unsubscribe'){
           res=await handleUnsubscribe(request,env);
         } else if ((method === "GET" && ["/api/status","/api/health"].includes(path)) || (method === "POST" && path === "/api/status/observations")) {
           res = await handleStatus(request, env);

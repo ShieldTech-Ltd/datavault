@@ -159,11 +159,11 @@ Current confirmed collection counts remain current inventory. Settlement, failur
 **Create:** API-key library/routes/tests, `ApiKeys.tsx`, hashed-key/usage migrations.
 **Modify:** API Access, rate limits and API documentation.
 
-- [ ] Start with `collections:read` restricted to explicitly allowed owned metadata. Exclude raw sources, buyer answers, publishing, settlements, refunds and administrative writes.
-- [ ] Generate 256-bit random secrets; store digest/display prefix only. Initially permit five active keys per account.
-- [ ] Add authenticated creation/list/revocation, verify scope per request and never log Authorization headers. List responses never return secrets.
-- [ ] Record accepted calls and rate-limit failures separately; enforce configured limits with 429/Retry-After. Revocation applies on the next request.
-- [ ] Test revoked/expired keys, missing scope, wrong account/collection and concurrent limits.
+- [x] Start with `collections:read` restricted to explicitly allowed owned metadata. Exclude raw sources, buyer answers, publishing, settlements, refunds and administrative writes.
+- [x] Generate 256-bit random secrets; store digest/display prefix only. Initially permit five active keys per account.
+- [x] Add authenticated creation/list/revocation, verify scope per request and never log Authorization headers. List responses never return secrets.
+- [x] Record accepted calls and rate-limit failures separately; enforce configured limits with 429/Retry-After. Revocation applies on the next request.
+- [x] Test revoked/expired keys, missing scope, wrong account/collection and concurrent limits.
 
 **Gate:** keys cannot bypass escrow or buyer signatures. Headless paid-query SDK support needs a separate design.
 

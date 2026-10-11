@@ -30,4 +30,6 @@ Migration `0015_saved_items.sql` applied six commands to populated local D1 with
 
 Concurrent SSR tests shared the running Vite optimizer cache and caused a development dependency 504. New tests isolate their cache. Root restarted only Vite using its direct CLI and `--force`, preserving Worker, chain, model, D1 and R2, then completed browser checks. Older SSR cache sharing remains a final workflow review item. Compressed JSX and the 1,027.51kB main chunk warning remain maintenance/performance items for final review.
 
+Hosted follow-up: the first clean CI failed one frontend fixture because it depended on the ignored local contract configuration. Test-only fix `25f2a1` defines its own isolated deployment and synchronizes on actual signing/fetch entry, retaining the wallet/window assertions. Scoped review approved it. All eight PR #58 checks passed at that exact head: clean Linux frontend 28/28 tests and final build, Worker 214/214 tests, contracts, guards, production dependency audit and package dry run. The earlier pending hosted gate is resolved. Barrier timeout polish remains a final workflow review item.
+
 These local Hardhat, D1/R2 and model-stub results do not prove real network settlement, public deployment, provider delivery or final cross-feature acceptance.
