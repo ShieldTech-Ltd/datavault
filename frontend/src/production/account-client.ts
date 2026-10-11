@@ -17,6 +17,15 @@ function validImportJob(value:unknown,maxPath:number,website=false):value is Git
     (v.error===null||['GitHub import failed. Check public repository, ref and selected text paths, then retry.','GitHub import failed. Check repository access, ref and selected text paths, then retry.','Import failed after the final attempt. Start a new import.',...(website?['Website import failed. Check approved hosts, public DNS, page size and content type. Use the final URL when a page redirects.']:[])].includes(v.error)) && Number.isSafeInteger(v.createdAt) && Number.isSafeInteger(v.expiresAt));
 }
 export type SavedItem={id:number;collectionId:string;collectionName:string;createdAt:number;question?:string;expiresAt?:number};
+export type BillingLimits={activeKeys:number;ownedWorkspaces:number;workspaceMembers:number;importsPerDay:number;savedQuestions:number;uploadBytes:number};
+export type BillingData={available:boolean;mode?:'test';plan:'free'|'pro';limits:BillingLimits;offeredLimits?:BillingLimits;price?:{amount:number;currency:string;interval:string;intervalCount:number};subscription?:{status:string;periodEnd:number;cancelAtPeriodEnd:boolean;fresh:boolean}|null;portalAvailable?:boolean;invoices:{id:string;amount:number;currency:string;status:string;createdAt:number;url:string}[];error?:string};
+function billingLink(value:unknown,host:string){try{if(typeof value!=='string'||value.length>4096)return false;const u=new URL(value);return u.protocol==='https:'&&u.hostname===host&&!u.port&&!u.username&&!u.password;}catch{return false;}}
+function validBilling(value:unknown):value is BillingData{
+ const v=value as BillingData|null;
+ const caps=(limits:unknown)=>{const l=limits as BillingLimits|null;return Boolean(l&&['activeKeys','ownedWorkspaces','workspaceMembers','importsPerDay','savedQuestions','uploadBytes'].every(k=>Number.isSafeInteger(l[k as keyof BillingLimits])&&l[k as keyof BillingLimits]>0&&l[k as keyof BillingLimits]<=2097152));};
+ const money=(amount:number,currency:string)=>Number.isSafeInteger(amount)&&amount>=0&&/^[a-z]{3}$/.test(currency);
+ return Boolean(v&&typeof v.available==='boolean'&&['free','pro'].includes(v.plan)&&caps(v.limits)&&(!v.offeredLimits||caps(v.offeredLimits))&&(!v.available||(v.mode==='test'&&v.price&&money(v.price.amount,v.price.currency)&&['day','week','month','year'].includes(v.price.interval)&&Number.isSafeInteger(v.price.intervalCount)&&v.price.intervalCount>=1))&&(!v.subscription||(typeof v.subscription.status==='string'&&v.subscription.status.length<80&&Number.isSafeInteger(v.subscription.periodEnd)&&typeof v.subscription.cancelAtPeriodEnd==='boolean'&&typeof v.subscription.fresh==='boolean'))&&Array.isArray(v.invoices)&&v.invoices.length<=20&&v.invoices.every(i=>/^in_[A-Za-z0-9]+$/.test(i.id)&&money(i.amount,i.currency)&&Number.isSafeInteger(i.createdAt)&&typeof i.status==='string'&&i.status.length<40&&billingLink(i.url,'invoice.stripe.com')));
+}
 export type SavedPage={items:SavedItem[];nextCursor:string|null};
 export type EmailStatus = { providerConfigured: boolean; verifiedEmail: string | null; verifiedAt: number | null; pendingEmail: string | null; status: string; resendAfter: number };
 export type ApiKey = {id:string;name:string;workspaceId?:string|null;displayPrefix:string;scopes:string[];collectionIds:string[];collections?:{id:string;name:string}[];createdAt:number;expiresAt:number;revokedAt:number|null;status:'active'|'expired'|'revoked'};
@@ -62,9 +71,11 @@ export class AccountClient {
     if(!response.ok){
       let reason:unknown;try{reason=(await response.json() as {error?:unknown}).error;}catch{/* Never expose untrusted service text. */}
       const known:Record<string,string>={
+        'Owned workspace limit reached. Review billing or existing Owner roles.':'The owned workspace limit was reached. Review Billing and existing Owner roles.',
+        'Keep at least one Owner; review the owned workspace limit in billing.':'Keep at least one Owner. Review Billing for the target account owned workspace limit.',
         'Keep at least one Owner; maximum 5 owned workspaces per wallet':'Appoint another Owner before leaving, removing yourself or changing your Owner role. Each wallet can own at most 5 workspaces.',
         'Maximum 5 owned workspaces':'This wallet has reached the limit of 5 owned workspaces. Appoint another Owner and transfer your Owner role before creating another.',
-        'Workspace membership limit':'This workspace has reached 50 members, or this wallet already owns 5 workspaces. Ask an Owner to review membership and the invitation role.',
+        'Workspace membership limit':'A workspace seat or owned workspace limit was reached. Review billing, membership and the invitation role.',
         'Already a member':'This wallet is already a workspace member. Change its role through Members instead of inviting it again.',
         'Pending invitation exists or maximum 50 pending invitations':'A pending invitation already exists for this wallet, or the workspace has 50 pending invitations. Review and revoke unused invitations before retrying.',
         'Invitation already consumed':'This invitation was already accepted and your membership has ended. Ask a current Owner for a new invitation.',
@@ -277,6 +288,14 @@ export class AccountClient {
     });
   }
   async apiKeys(){return this.operation(async()=>this.json<{keys:ApiKey[]}>('/api/account/api-keys'));}
+  async billing(){return this.operation(async()=>{const data=await this.json<unknown>('/api/account/billing');if(!validBilling(data))throw Error('Invalid billing response.');return data;},false);}
+  async billingAction(action:'checkout'|'portal'){
+    return this.operation(async session=>{
+      const result=await this.json<{url:string;status?:string}>(`/api/account/billing/${action}`,{method:'POST',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:'{}'});
+      if(!billingLink(result.url,action==='checkout'?'checkout.stripe.com':'billing.stripe.com')||(action==='checkout'&&result.status!=='pending'))throw Error('Invalid billing redirect.');
+      return result;
+    });
+  }
   async teams(){return this.operation(async()=>({...(await this.workspaceJson<{workspaces:TeamWorkspace[]}>('/api/account/workspaces')),...(await this.workspaceJson<{invitations:TeamInvitation[]}>('/api/account/invitations'))}),false);}
   async createWorkspace(name:string){return this.operation(async session=>this.workspaceJson<{workspace:TeamWorkspace}>('/api/account/workspaces',{method:'POST',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify({name})}));}
   async workspaceRequest<T>(path:string,method='GET',input?:unknown){return this.operation(async session=>this.workspaceJson<T>('/api/workspaces/'+path,{method,...(method==='GET'?{}:{headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(input??{})})}),method!=='GET');}
@@ -287,7 +306,7 @@ export class AccountClient {
     return this.operation(async session=>{
       const generation=this.generation,address=session.account.address;
       const response=await this.response('/api/account/api-keys',{method:'POST',headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(input)});
-      if(!response.ok)throw new Error(response.status===409?'Maximum 5 active keys. Revoke a key or wait for expiry.':response.status===400?'Check the name, collection selection, scope and expiry.':response.status===503?'Chain verification is unavailable. Retry when the deployment is reachable.':response.status===401||response.status===403?'Account or current collection ownership authorization was rejected. Sign in and reload your owned collections.':'Key creation failed. Retry.');
+      if(!response.ok)throw new Error(response.status===409?'Active key limit reached. Revoke a key, wait for expiry or review billing.':response.status===400?'Check the name, collection selection, scope and expiry.':response.status===503?'Chain verification is unavailable. Retry when the deployment is reachable.':response.status===401||response.status===403?'Account or current collection ownership authorization was rejected. Sign in and reload your owned collections.':'Key creation failed. Retry.');
       const result=await response.json() as {key:ApiKey;secret:string};
       if(!this.current(generation,address)){
         // A wallet switch may have already logged out. Still attempt revocation with
