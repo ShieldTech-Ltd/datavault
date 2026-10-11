@@ -31,6 +31,8 @@ Workspaces: [local acceptance](evidence/saas-workspaces-local-acceptance.md) rec
 
 Selected public GitHub imports: [local acceptance](evidence/saas-github-imports-local-acceptance.md) records source provenance, confirmed publication and cancellation without changing historical receipts. Remaining importer and final-release gates stay open.
 
+Private GitHub: [local implementation acceptance](evidence/saas-github-auth-local-acceptance.md) covers connector state, protected credentials, race fixes and unconfigured UI. Live App installation, OAuth consent and private-provider acceptance remain required before advertising availability.
+
 - [ ] Intended Cloudflare account and public domain are recorded.
 - [ ] D1/R2 resources, migrations, Worker configuration and secrets are configured privately.
 - [ ] Deployed contract/operator and frontend manifest agree with the real network.

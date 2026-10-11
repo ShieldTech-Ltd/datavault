@@ -2,6 +2,7 @@ import type { AccountProfile, AccountSessionResponse } from '../../../shared/api
 type WalletClient = { getChainId(): Promise<number>; signMessage(input: { message: string }): Promise<string> };
 export type AccountWallet = { address: string; getWalletClient(): Promise<WalletClient> };
 export type AccountState = { session: AccountSessionResponse | null; loading: boolean; error: string };
+export type GithubConnectionStatus={providerConfigured:boolean;id:string|null;status:'disconnected'|'pending'|'connected'|'needs_reconnect';login:string|null;repositories:{id:number;name:string;installationId:number}[];revocationPending:boolean;authorizeUrl?:string};
 export type GithubImportJob={id:string;repository:string;ref:string;paths:string[];commitSha:string|null;status:'queued'|'running'|'review_ready'|'failed'|'cancelled'|'expired';attempts:number;contentDigest:string|null;error:string|null;createdAt:number;expiresAt:number};
 function validGithubJob(value:unknown):value is GithubImportJob {
   const v=value as GithubImportJob|null;
@@ -172,6 +173,15 @@ export class AccountClient {
       : 'GitHub import service is unavailable. Please retry later.';
     // Status-based messages never forward provider, credential or internal response text.
     throw Error(message);
+  }
+  async githubConnector(path='' as ''|'/connect'|'/confirm',method='GET' as 'GET'|'POST'|'DELETE') {
+    return this.operation(async session=>{
+      const value=await this.json<GithubConnectionStatus>('/api/account/connectors/github'+path,{method,...(method==='GET'?{}:{headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:'{}'})});
+      if(path==='/connect'){
+        const url=new URL(value.authorizeUrl??'');if(url.origin+url.pathname!=='https://github.com/login/oauth/authorize'||url.username||url.password||url.hash)throw Error('Invalid GitHub authorization response.');
+      }else if(typeof value.providerConfigured!=='boolean'||!['disconnected','pending','connected','needs_reconnect'].includes(value.status)||!Array.isArray(value.repositories)||value.repositories.length>100||!value.repositories.every(r=>Number.isSafeInteger(r.id)&&typeof r.name==='string'&&r.name.length<=140&&Number.isSafeInteger(r.installationId))||(value.id!==null&&!/^[a-f0-9]{64}$/.test(value.id)))throw Error('Invalid GitHub connection response.');
+      return value;
+    },false);
   }
   async githubImport(path='',method='GET',body?:unknown) {
     if(path && !/^[a-f0-9]{64}(?:\/(?:cancel|run))?$/.test(path))return null;
