@@ -61,24 +61,27 @@ export async function handleBilling(request: Request, env: Env, account: Account
       if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length) throw 0;
     } catch { return json({ error: 'Billing accepts only an empty JSON object.' }, 400); }
     if (!config) return json({ error: 'Subscriptions are unavailable. Wallet query payments continue.' }, 503);
+    let row=await billingAccount(env,account.account_id),token:string|undefined;
     try {
       const stripe = stripeClient(env);
       if (path.endsWith('/portal')) {
-        const row = await env.DB.prepare('SELECT customer_id FROM billing_accounts WHERE account_id=?').bind(account.account_id).first<BillingRow>();
         if (!row?.customer_id) return json({ error: 'No billing account exists yet.' }, 409);
+        token=await claim(env,row);
         const portal = await stripe.billingPortal.sessions.create({ customer: row.customer_id, return_url: config.origin + '/settings/billing' });
         const url = providerLink(portal.url, 'billing.stripe.com');
         if (!url) throw Error('Billing portal unavailable');
         return json({ url });
       }
+      if(row)token=await claim(env,row);
       await providerPrice(env);
       const customerId = await customer(env, account);
-      let row=(await billingAccount(env,account.account_id))!;
-      const token=await claim(env,row);
-      try{
+      row=(await billingAccount(env,account.account_id))!;
+      if(!token)token=await claim(env,row);
       // The lease may be acquired after another checkout committed. Re-read its durable state under the lease.
       row=(await billingAccount(env,account.account_id))!;
-      const snapshot=await authoritative(env,row);
+      const snapshot=await authoritative(env,row),verified=Date.now();
+      const updated=await snapshotUpdate(env,row.account_id,token,snapshot,verified).run();
+      if(updated.meta.changes!==1)throw Error('Billing reconciliation lease expired');
       if(!['none','canceled','incomplete_expired'].includes(snapshot.status))return json({error:'An existing subscription must be managed in the billing portal.'},409);
       const existing=providerLink(row.checkout_url,'checkout.stripe.com');
       if(existing&&row.checkout_expires>Date.now())return json({status:'pending',url:existing});
@@ -94,8 +97,12 @@ export async function handleBilling(request: Request, env: Env, account: Account
       const saved=await env.DB.prepare('UPDATE billing_accounts SET checkout_id=?,checkout_url=?,checkout_expires=? WHERE account_id=? AND lease_token=? AND lease_until>?').bind(session.id,url,session.expires_at*1000,row.account_id,token,Date.now()).run();
       if(saved.meta.changes!==1)throw Error('Billing checkout lease expired');
       return json({ status: 'pending', url });
-      }finally{await release(env,row.account_id,token);}
-    } catch { return json({ error: 'Billing provider unavailable. Please retry.' }, 503); }
+    } catch {
+      if(row){
+        if(token)await env.DB.prepare('UPDATE billing_accounts SET verified_at=0 WHERE account_id=? AND lease_token=? AND lease_until>?').bind(row.account_id,token,Date.now()).run();
+      }
+      return json({ error: 'Billing provider unavailable. Please retry.' }, 503);
+    }finally{if(row&&token)await release(env,row.account_id,token);}
   }
   return json({ error: 'Not found' }, 404);
 }

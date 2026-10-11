@@ -13,7 +13,7 @@ afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();store.close();});
 it('keeps wallet payments independent while subscriptions are unconfigured',async()=>{const response=await call();expect(response.status).toBe(200);expect(await response.json()).toMatchObject({available:false,plan:'free',limits:{activeKeys:5,ownedWorkspaces:5,workspaceMembers:50,importsPerDay:20,savedQuestions:50,uploadBytes:2097152},invoices:[]});expect((await call('account/billing/checkout','POST',{})).status).toBe(503);});
 it('does not accept a browser redirect or client supplied billing ownership',async()=>{expect((await call('account/billing/checkout','POST',{customer:'cus_other',price:'price_free',returnUrl:'https://evil.example'})).status).toBe(400);const response=await call('account/billing?checkout=success');expect(await response.json()).toMatchObject({plan:'free'});});
 
-import {billingConfig,FREE_LIMITS} from '../lib/entitlements';
+import {accountQuotaSql,billingConfig,FREE_LIMITS} from '../lib/entitlements';
 const caps={...FREE_LIMITS,activeKeys:8,ownedWorkspaces:8,workspaceMembers:60,savedQuestions:60,importsPerDay:30};
 function configure(){Object.assign(env,{BILLING_MODE:'test',STRIPE_SECRET_KEY:'sk_test_'+'a'.repeat(24),STRIPE_WEBHOOK_SECRET:'whsec_'+'b'.repeat(24),STRIPE_PRICE_ID:'price_test',PUBLIC_ORIGIN:'https://vault.example',BILLING_LIMITS:JSON.stringify(caps)});}
 it('requires explicit bounded limits, trusted origin, test keys and fixed upload ceiling',()=>{configure();expect(billingConfig(env)?.caps).toEqual(caps);for(const change of [{BILLING_MODE:'live'},{STRIPE_SECRET_KEY:'sk_live_'+'a'.repeat(24)},{BILLING_LIMITS:JSON.stringify({...caps,uploadBytes:4194304})},{BILLING_LIMITS:JSON.stringify({...caps,importsPerDay:Infinity})},{PUBLIC_ORIGIN:'https://vault.example/other'}]){configure();Object.assign(env,change);expect(billingConfig(env)).toBeNull();}});
@@ -143,6 +143,13 @@ it('bounds webhook requests independently of other JSON routes',async()=>{
  expect((await webhook(event('evt_large',{padding:'x'.repeat(9000)}))).status).toBe(200);
  expect((await webhook(event('evt_oversize',{padding:'x'.repeat(65536)}))).status).toBe(413);
 });
+it('fails closed for new usage immediately after the exact freshness window',async()=>{
+ await boundCustomer();provider();expect((await webhook(event())).status).toBe(200);
+ await env.DB.prepare('UPDATE billing_accounts SET verified_at=999100001,period_end=2000000000000').run();
+ // Freeze only the SQLite clock primitives: now is 1,000,000.5 seconds and evidence is 900,499 ms old.
+ const sql=accountQuotaSql(env,'savedQuestions','a').replaceAll("strftime('%s','now')",'1000000').replaceAll("julianday('now')",'(2440587.5+1000000.5/86400)');
+ expect(await env.DB.prepare(`SELECT ${sql} AS cap`).first()).toEqual({cap:50});
+});
 it('refreshes stale billing evidence from the current provider and fails closed on provider errors',async()=>{
  await boundCustomer();provider();expect((await webhook(event())).status).toBe(200);
  await env.DB.prepare('UPDATE billing_accounts SET verified_at=0').run();
@@ -169,7 +176,7 @@ it('rechecks pending checkout state after a delayed concurrent customer lease cl
  const firstDone=new Promise<void>(resolve=>{finishFirst=resolve;});
  const bothClaims=new Promise<void>(resolve=>{bothEntered=resolve;});
  const base=env.DB;
- env.DB={...base,prepare(sql:string){const stmt=base.prepare(sql);if(sql.startsWith('UPDATE billing_accounts SET lease_token=?')){const run=stmt.run;stmt.run=(async()=>{if(++claims===1)await bothClaims;else{bothEntered();await firstDone;}return run();}) as typeof stmt.run;}return stmt;}} as D1Database;
+ env.DB={...base,prepare(sql:string){const stmt=base.prepare(sql);if(sql.startsWith('UPDATE billing_accounts SET lease_token=?')){const run=stmt.run;stmt.run=(async()=>{if(++claims===1)await bothClaims;else{bothEntered();await firstDone;}return run();}) as typeof stmt.run;}if(sql.startsWith('UPDATE billing_accounts SET lease_token=NULL')){const run=stmt.run;stmt.run=(async()=>{const result=await run();finishFirst();return result;}) as typeof stmt.run;}return stmt;}} as D1Database;
  vi.stubGlobal('fetch',vi.fn(async(input)=>{const path=new URL(String(input)).pathname;
   if(path.startsWith('/v1/prices/'))return Response.json({id:'price_test',active:true,livemode:false,type:'recurring',currency:'usd',unit_amount:1234,recurring:{interval:'month',interval_count:1,usage_type:'licensed'}});
   if(path==='/v1/customers')return Response.json({id:'cus_test',livemode:false});
@@ -177,7 +184,7 @@ it('rechecks pending checkout state after a delayed concurrent customer lease cl
   if(path==='/v1/checkout/sessions'){count++;return Response.json({id:'cs_test_1',customer:'cus_test',livemode:false,url:'https://checkout.stripe.com/c/pay/test',expires_at:Math.floor(Date.now()/1000)+3600});}
   throw Error('unexpected');
  }));
- const first=call('account/billing/checkout','POST',{}).finally(finishFirst);
+ const first=call('account/billing/checkout','POST',{});
  const second=call('account/billing/checkout','POST',{});
  expect((await first).status).toBe(200);expect((await second).status).toBe(200);expect(count).toBe(1);
 });
@@ -206,4 +213,65 @@ it('uses creator seat limits while keeping another Owner invoices private',async
  expect((await call(`workspaces/${w}/members`)).status).toBe(200);
  const privateBilling=await worker.fetch(new Request('https://vault.example/api/account/billing',{headers:{Cookie:'dv_session='+'2'.repeat(64)}}),env);
  expect(await privateBilling.json()).toMatchObject({plan:'free',invoices:[]});
+});
+
+it('persists authoritative downgrade before rejecting checkout',async()=>{
+ await boundCustomer();provider();expect((await webhook(event())).status).toBe(200);
+ provider(subscription('past_due'));
+ expect((await call('account/billing/checkout','POST',{})).status).toBe(409);
+ const row=await env.DB.prepare('SELECT * FROM billing_accounts WHERE account_id=?').bind('a').first<any>();
+ expect(row.status).toBe('past_due');
+});
+it('invalidates cached grant on checkout price provider failure',async()=>{
+ await boundCustomer();provider();expect((await webhook(event())).status).toBe(200);
+ vi.stubGlobal('fetch',vi.fn(async()=>{throw Error('provider unavailable');}));
+ expect((await call('account/billing/checkout','POST',{})).status).toBe(503);
+ const row=await env.DB.prepare('SELECT * FROM billing_accounts WHERE account_id=?').bind('a').first<any>();
+ expect(row.verified_at).toBe(0);
+});
+
+it('persists no-subscription evidence before reusing a pending checkout',async()=>{
+ await boundCustomer();provider();expect((await webhook(event())).status).toBe(200);
+ await env.DB.prepare('UPDATE billing_accounts SET checkout_url=?,checkout_expires=?').bind('https://checkout.stripe.com/c/pay/existing',Date.now()+60000).run();
+ provider();const network=vi.mocked(fetch),original=network.getMockImplementation()!;
+ network.mockImplementation(async(input,init)=>new URL(String(input)).pathname==='/v1/subscriptions'?Response.json({data:[],has_more:false}):original(input,init));
+ expect(await (await call('account/billing/checkout','POST',{})).json()).toMatchObject({status:'pending'});
+ expect(store.sqlite.prepare('SELECT status,period_end FROM billing_accounts').all()).toEqual([{status:'none',period_end:0}]);
+ expect(await env.DB.prepare(`SELECT ${accountQuotaSql(env,'savedQuestions','a')} AS cap`).first()).toEqual({cap:50});
+});
+it.each(['subscriptions','checkout/sessions','billing_portal/sessions'])('invalidates paid evidence on provider failure at %s',async(failure)=>{
+ await boundCustomer();provider();expect((await webhook(event())).status).toBe(200);
+ provider();const network=vi.mocked(fetch),original=network.getMockImplementation()!;
+ network.mockImplementation(async(input,init)=>{
+  const path=new URL(String(input)).pathname;
+  if(path==='/v1/'+failure)throw Error('provider unavailable');
+  if(path==='/v1/subscriptions')return Response.json({data:[],has_more:false});
+  return original(input,init);
+ });
+ expect((await call('account/billing/'+(failure==='billing_portal/sessions'?'portal':'checkout'),'POST',{})).status).toBe(503);
+ expect(store.sqlite.prepare('SELECT verified_at FROM billing_accounts').all()).toEqual([{verified_at:0}]);
+ expect(await env.DB.prepare(`SELECT ${accountQuotaSql(env,'savedQuestions','a')} AS cap`).first()).toEqual({cap:50});
+});
+it.each(['checkout','portal'])('fences failed %s provider calls from newer evidence',async(action)=>{
+ await boundCustomer();provider();expect((await webhook(event())).status).toBe(200);
+ const newer=Date.now()+1;
+ vi.stubGlobal('fetch',vi.fn(async()=>{
+  await env.DB.prepare("UPDATE billing_accounts SET lease_token='new-owner',lease_until=?,verified_at=?").bind(Date.now()+30000,newer).run();
+  throw Error('old provider failure');
+ }));
+ expect((await call('account/billing/'+action,'POST',{})).status).toBe(503);
+ expect(store.sqlite.prepare('SELECT lease_token,verified_at FROM billing_accounts').all()).toEqual([{lease_token:'new-owner',verified_at:newer}]);
+});
+it.each([
+ {age:899999,period:1000000501,cap:60},
+ {age:900000,period:1000000501,cap:50},
+ {age:900499,period:1000000501,cap:50},
+ {age:-1000,period:1000000501,cap:60},
+ {age:-1001,period:1000000501,cap:50},
+ {age:0,period:1000000500,cap:50},
+])('uses precise quota evidence boundaries $age and period $period',async({age,period,cap})=>{
+ await boundCustomer();provider();expect((await webhook(event())).status).toBe(200);
+ await env.DB.prepare('UPDATE billing_accounts SET verified_at=?,period_end=?').bind(1000000500-age,period).run();
+ const sql=accountQuotaSql(env,'savedQuestions','a').replaceAll("julianday('now')",'(2440587.5+1000000.5/86400)');
+ expect(await env.DB.prepare(`SELECT ${sql} AS cap`).first()).toEqual({cap});
 });

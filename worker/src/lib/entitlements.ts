@@ -28,7 +28,7 @@ export function currentEntitlements(env:Env,row:BillingAccount|null,now=Date.now
 // All interpolated values are validated configuration numbers or fixed-schema identifiers.
 export function quotaLimitSql(env:Env,key:keyof Limits,accountSql:string){
  const config=billingConfig(env);if(!config)return String(FREE_LIMITS[key]);
- const now="CAST(strftime('%s','now') AS INTEGER)*1000";
+ const now="CAST(ROUND((julianday('now')-2440587.5)*86400000) AS INTEGER)";
  const same=(Object.keys(FREE_LIMITS) as (keyof Limits)[]).map(k=>`json_extract(b.limits_json,'$.${k}')=${config.caps[k]}`).join(' AND ');
  return `COALESCE((SELECT CASE WHEN b.mode='test' AND b.price_id='${config.price}' AND b.status IN ('active','trialing') AND b.period_end>${now} AND b.verified_at>${now}-900000 AND b.verified_at<=${now}+1000 AND json_valid(b.limits_json) AND ${same} THEN ${config.caps[key]} ELSE ${FREE_LIMITS[key]} END FROM billing_accounts b WHERE b.account_id=${accountSql}),${FREE_LIMITS[key]})`;
 }

@@ -36,9 +36,9 @@ CREATE VIEW billing_current_limits AS SELECT account_id,
  json_extract(limits_json,'$.ownedWorkspaces') AS owned_workspaces,
  json_extract(limits_json,'$.workspaceMembers') AS workspace_members
  FROM billing_accounts WHERE mode='test' AND status IN ('active','trialing')
- AND period_end>CAST(strftime('%s','now') AS INTEGER)*1000
- AND verified_at>CAST(strftime('%s','now') AS INTEGER)*1000-900000
- AND verified_at<=CAST(strftime('%s','now') AS INTEGER)*1000+1000
+ AND period_end>CAST(ROUND((julianday('now')-2440587.5)*86400000) AS INTEGER)
+ AND verified_at>CAST(ROUND((julianday('now')-2440587.5)*86400000) AS INTEGER)-900000
+ AND verified_at<=CAST(ROUND((julianday('now')-2440587.5)*86400000) AS INTEGER)+1000
  AND json_valid(limits_json)
  AND json_extract(limits_json,'$.ownedWorkspaces') BETWEEN 5 AND 100
  AND json_extract(limits_json,'$.workspaceMembers') BETWEEN 50 AND 500;

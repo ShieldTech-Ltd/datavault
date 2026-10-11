@@ -20,3 +20,21 @@ it('upgrades populated 0022 with creator ownership and preserves existing privat
   expect(store.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
  }finally{store.close();}
 });
+
+it('enforces millisecond freshness and period boundaries in migrated workspace triggers',()=>{
+ const store=sqliteD1('0022_notion_imports.sql');
+ try{
+  store.migrate(readFileSync('migrations/0023_billing.sql','utf8').replaceAll("julianday('now')",'(2440587.5+1000000.5/86400)'));
+  store.sqlite.prepare("INSERT INTO accounts(account_id,address,chain_id,contract_address,created_at,updated_at) VALUES('a','owner',10143,'contract',1,1)").all();
+  store.sqlite.prepare("INSERT INTO billing_accounts(account_id,status,period_end,verified_at,limits_json) VALUES('a','active',1000000501,999100501,?)").all(JSON.stringify({ownedWorkspaces:8,workspaceMembers:60}));
+  store.sqlite.prepare("INSERT INTO workspaces(id,chain_id,contract_address,name,created_at,billing_account_id) VALUES('w',10143,'contract','Team',1,'a')").all();
+  store.sqlite.prepare("WITH RECURSIVE n(x) AS (VALUES(0) UNION ALL SELECT x+1 FROM n WHERE x<49) INSERT INTO workspace_members(workspace_id,address,role,joined_at) SELECT 'w','member'||x,'Viewer',1 FROM n").all();
+  const insert=()=>store.sqlite.prepare("INSERT INTO workspace_members(workspace_id,address,role,joined_at) VALUES('w','extra','Viewer',1)").all();
+  for(const [age,period,allowed] of [[899999,1000000501,true],[900000,1000000501,false],[900499,1000000501,false],[-1000,1000000501,true],[-1001,1000000501,false],[0,1000000500,false]] as const){
+   store.sqlite.prepare("UPDATE billing_accounts SET verified_at=?,period_end=?").all(1000000500-age,period);
+   if(allowed){expect(insert).not.toThrow();store.sqlite.prepare("DELETE FROM workspace_members WHERE address='extra'").all();}
+   else expect(insert).toThrow('workspace member limit');
+  }
+  expect(store.sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+ }finally{store.close();}
+});
