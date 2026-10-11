@@ -7,7 +7,10 @@ const cacheDir=join(tmpdir(),'datavault-analytics-tests-'+process.pid);
 test('inventory labels distinguish current collection inventory from exact selected activity window',async()=>{
  const vite=await createServer({cacheDir,optimizeDeps:{noDiscovery:true},server:{middlewareMode:true},appType:'custom',logLevel:'silent'});
  try{const {Metrics}=await vite.ssrLoadModule('/src/production/Views.tsx'),{selectedWindowLabel}=await vite.ssrLoadModule('/src/production/api.ts');const data={confirmedCollections:9,paidQueries:0,periodDays:2,recordedRevenueWei:'0',revenueCoverage:{knownAmounts:0,settledQueries:0},windowStart:'2026-09-01T00:00:00.000Z',windowEnd:'2026-09-03T00:00:00.000Z'};
- const html=renderToString(React.createElement(Metrics,{data}));assert.match(html,/Current confirmed collections/);assert.match(html,/Current public inventory in this deployment/);assert.equal(selectedWindowLabel(data),'Selected window: 2026-09-01 to 2026-09-03 UTC (exclusive end)');
+ const html=renderToString(React.createElement(Metrics,{data}));assert.match(html,/Confirmed collections/);assert.match(html,/Public inventory, current deployment/);assert.match(html,/2(?:<!-- -->)? UTC days selected/);assert.match(html,/Exact recorded settlements/);
+ const ownerHtml=renderToString(React.createElement(Metrics,{data:{...data,ownerAddress:'0x1234'}}));assert.match(ownerHtml,/Owned inventory, incl\. unlisted/);
+ const partialHtml=renderToString(React.createElement(Metrics,{data:{...data,revenueCoverage:{knownAmounts:0,settledQueries:1}}}));assert.match(partialHtml,/Older records have missing amounts/);
+ assert.equal(selectedWindowLabel(data),'Selected window: 2026-09-01 to 2026-09-03 UTC (exclusive end)');
  }finally{await vite.close();}
 });
 import React from 'react';
