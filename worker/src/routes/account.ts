@@ -1,3 +1,4 @@
+import { consumeNotifications, reconcileNotifications, inboxSelect } from '../lib/notifications';
 import { getAddress, isAddress, verifyMessage, type Hex } from 'viem';
 import { createSiweMessage, parseSiweMessage, validateSiweMessage } from 'viem/siwe';
 import type { Env } from '../lib/types';
@@ -72,6 +73,26 @@ export async function handleAccountRoute(request: Request, env: Env): Promise<Re
   }
   if (!session) return denied();
   if (method !== 'GET' && !validCsrf(request, session)) return json({ error: 'CSRF token required.' }, 403);
+  if (path === '/api/account/notifications' && method === 'GET') {
+    const params = new URL(request.url).searchParams;
+    const rawLimit = params.get('limit') ?? '20', rawCursor = params.get('cursor');
+    if (!/^[1-9][0-9]*$/.test(rawLimit) || Number(rawLimit)>50 || (rawCursor !== null && (!/^[1-9][0-9]*$/.test(rawCursor) || !Number.isSafeInteger(Number(rawCursor))))) return json({error:'Invalid pagination'},400);
+    await reconcileNotifications(env);
+    await consumeNotifications(env,session.account);
+    const limit=Number(rawLimit), cursor=rawCursor===null?Number.MAX_SAFE_INTEGER:Number(rawCursor);
+    const rows=await env.DB.prepare(`${inboxSelect} WHERE i.account_id=? AND e.event_id<? ORDER BY e.event_id DESC LIMIT ?`).bind(session.account.account_id,cursor,limit+1).all<any>();
+    const count=await env.DB.prepare('SELECT COUNT(*) AS n FROM notification_inbox WHERE account_id=? AND read_at IS NULL').bind(session.account.account_id).first<{n:number}>();
+    const items=rows.results.slice(0,limit);
+    return json({items,unreadCount:count!.n,nextCursor:rows.results.length>limit?String(items.at(-1).id):null});
+  }
+  if (/^\/api\/account\/notifications\/[^/]+$/.test(path) && method === 'PATCH') {
+    const id=path.split('/').at(-1)!,input=await body(request);
+    if(!/^[1-9][0-9]*$/.test(id) || !Number.isSafeInteger(Number(id)) || !input || !only(input,['read']) || input.read!==true) return json({error:'Invalid notification update'},400);
+    const exists=await env.DB.prepare('SELECT event_id FROM notification_inbox WHERE account_id=? AND event_id=?').bind(session.account.account_id,Number(id)).first();
+    if(!exists)return json({error:'Notification not found'},404);
+    await env.DB.prepare('UPDATE notification_inbox SET read_at=COALESCE(read_at,?) WHERE account_id=? AND event_id=?').bind(Date.now(),session.account.account_id,Number(id)).run();
+    return json({read:true});
+  }
   if (path === '/api/account' && method === 'GET') return json({ account: profile(session.account), csrfToken: session.csrfToken, expiresAt: new Date(session.expiresAt).toISOString() });
   if (path === '/api/account' && method === 'PATCH') {
     const input = await body(request);
@@ -91,8 +112,9 @@ export async function handleAccountRoute(request: Request, env: Env): Promise<Re
   if (path === '/api/account/export' && method === 'GET') {
     const requests = await env.DB.prepare('SELECT request_id AS requestId, status, created_at AS createdAt FROM account_deletion_requests WHERE account_id = ? ORDER BY created_at')
       .bind(session.account.account_id).all();
-    return json({ scope: 'Account profile, notification preferences and pending deletion requests only. Paid answers, source content and immutable on-chain records are outside this export.',
-      deployment: { chainId, contractAddress: contract }, account: profile(session.account), deletionRequests: requests.results }, 200,
+    const inbox = await env.DB.prepare(`${inboxSelect} WHERE i.account_id=? ORDER BY e.event_id DESC`).bind(session.account.account_id).all();
+    return json({ scope: 'Account profile, notification preferences, inbox metadata and pending deletion requests only. Paid answers, source content and immutable on-chain records are outside this export.',
+      deployment: { chainId, contractAddress: contract }, account: profile(session.account), deletionRequests: requests.results, notifications: inbox.results }, 200,
       { 'Content-Disposition': 'attachment; filename="datavault-account.json"' });
   }
   if (path === '/api/account/deletion-request' && method === 'POST') {

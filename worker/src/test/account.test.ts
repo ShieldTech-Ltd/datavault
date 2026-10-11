@@ -140,3 +140,34 @@ it('bounds challenge creation with the per-IP auth quota', async () => {
   expect(rejected.status).toBe(429); expect(rejected.headers.get('Retry-After')).toBe('60');
   expect(store.sqlite.prepare('SELECT * FROM account_nonces').all()).toHaveLength(10);
 });
+
+it('serves a session-private inbox and idempotently marks only owned entries', async () => {
+ const signed=await login();
+ await env.DB.prepare(`INSERT INTO notification_events(chain_id,contract_address,event_type,source_id,recipient,collection_id,collection_name,created_at) VALUES (10143,?,'collection_registered','tx',?,'c','Name',1)`).bind(env.CONTRACT_ADDRESS,alice.address.toLowerCase()).run();
+ const response=await call('account/notifications','GET',undefined,signed.cookie);
+ expect(response.status).toBe(200);
+ const inbox=await response.json() as any;
+ expect(inbox.items).toHaveLength(1);expect(inbox.unreadCount).toBe(1);
+ expect((await call('account/notifications')).status).toBe(401);
+ const other=await login(bob);
+ expect((await call(`account/notifications/${inbox.items[0].id}`,'PATCH',{read:true},other.cookie,other.csrfToken)).status).toBe(404);
+ expect((await call(`account/notifications/${inbox.items[0].id}`,'PATCH',{read:true},signed.cookie)).status).toBe(403);
+ expect((await call(`account/notifications/${inbox.items[0].id}`,'PATCH',{read:true,extra:true},signed.cookie,signed.csrfToken)).status).toBe(400);
+ for(let i=0;i<2;i++)expect((await call(`account/notifications/${inbox.items[0].id}`,'PATCH',{read:true},signed.cookie,signed.csrfToken)).status).toBe(200);
+ expect((await (await call('account/notifications','GET',undefined,signed.cookie)).json() as any).unreadCount).toBe(0);
+});
+it('suppresses disabled delivery permanently and preserves stable pagination', async () => {
+ const signed=await login();
+ await call('account','PATCH',{notificationPreferences:{inApp:false}},signed.cookie,signed.csrfToken);
+ for(let i=0;i<3;i++)await env.DB.prepare(`INSERT INTO notification_events(chain_id,contract_address,event_type,source_id,recipient,collection_id,collection_name,created_at) VALUES (10143,?,'collection_registered',?,?,'c','Name',1)`).bind(env.CONTRACT_ADDRESS,'tx'+i,alice.address.toLowerCase()).run();
+ // Enable without first reading the inbox: disabled events must remain suppressed.
+ await call('account','PATCH',{notificationPreferences:{inApp:true}},signed.cookie,signed.csrfToken);
+ expect((await (await call('account/notifications','GET',undefined,signed.cookie)).json() as any).items).toEqual([]);
+ expect((await env.DB.prepare("SELECT * FROM notification_deliveries WHERE state='suppressed'").all()).results).toHaveLength(3);
+ for(let i=3;i<6;i++)await env.DB.prepare(`INSERT INTO notification_events(chain_id,contract_address,event_type,source_id,recipient,collection_id,collection_name,created_at) VALUES (10143,?,'collection_registered',?,?,'c','Name',1)`).bind(env.CONTRACT_ADDRESS,'tx'+i,alice.address.toLowerCase()).run();
+ const page=await (await call('account/notifications?limit=2','GET',undefined,signed.cookie)).json() as any;
+ expect(page.items).toHaveLength(2);
+ const next=await (await call(`account/notifications?limit=2&cursor=${page.nextCursor}`,'GET',undefined,signed.cookie)).json() as any;
+ expect(next.items).toHaveLength(1);expect(next.items[0].id).toBeLessThan(page.items[1].id);
+ expect((await call('account/notifications?limit=51','GET',undefined,signed.cookie)).status).toBe(400);
+});

@@ -130,12 +130,12 @@ Recommended design: changed content receives a new hash-derived collection ID th
 **Create:** event/outbox library, notification/status routes, queue consumer/tests, `NotificationInbox.tsx`, migrations for events/inbox/preferences.
 **Modify:** confirmed registration/settlement/reconciliation transitions, Worker bindings/router, Settings and hero metrics.
 
-- [ ] Emit confirmed-registration/settlement and actual failure events using unique deployment/event/request-or-transaction keys.
-- [ ] Persist events with D1 transitions where possible; repair missing events by reconciliation. Pending settlement never creates earnings notifications.
-- [ ] Add paginated inbox, unread count and mark-read. Exclude questions/source passages from previews.
-- [ ] Test duplicate delivery and crashes; one source event produces one inbox item. Add queue/outbox retries and failure visibility.
+- [x] Emit confirmed-registration/settlement and actual failure events using unique deployment/event/request-or-transaction keys.
+- [x] Persist events with D1 transitions where possible; repair missing events by reconciliation. Pending settlement never creates earnings notifications.
+- [x] Add paginated inbox, unread count and mark-read. Exclude questions/source passages from previews.
+- [x] Test duplicate delivery and crashes; one source event produces one inbox item. Add queue/outbox retries and failure visibility.
 - [ ] Add verified email, opt-in and unsubscribe before enabling email. Select/configure a provider in its own delivery PR.
-- [ ] Record external availability checks with a published sampling window and coverage. Missing observations show unknown; one successful request is not uptime.
+- [x] Record external availability checks with a published sampling window and coverage. Missing observations show unknown; one successful request is not uptime.
 
 **Gate:** cross-account inbox access is denied, duplicates are idempotent, and failed delivery never appears successful.
 

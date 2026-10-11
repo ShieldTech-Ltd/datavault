@@ -1,3 +1,4 @@
+import ServiceStatus from './ServiceStatus';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { ArrowRight, Stack, Wallet, ChatCircleText, ShieldCheck } from './icons';
@@ -29,7 +30,7 @@ export function Metrics({ data, uptime = false }: { data: Analytics; uptime?: bo
     <div className="dv-card"><Stack size={24} /><span>Confirmed collections</span><strong>{data.confirmedCollections}</strong><small>{data.ownerAddress ? 'Owned collections, including unlisted' : 'Public collections in this deployment'}</small></div>
     <div className="dv-card"><ChatCircleText size={24} /><span>Settled queries</span><strong>{data.paidQueries}</strong><small>Last {data.periodDays} days</small></div>
     <div className="dv-card"><Wallet size={24} /><span>Recorded owner revenue</span><strong>{revenueLabel(data)}</strong><small>{complete ? 'Exact for recorded settlements' : 'Older records have missing amounts'}</small></div>
-    {uptime && <div className="dv-card"><ShieldCheck size={24}/><span>Uptime</span><strong>Unavailable</strong><small>No uptime monitor</small></div>}
+    {uptime && <ServiceStatus />}
   </div>;
 }
 export function coverFor(name: string) {

@@ -1,7 +1,9 @@
+import { queueNotifications, scheduledNotifications } from './lib/notification-adapters';
+import { handleStatus } from './routes/status';
 import { handleCollectionRevisions } from "./routes/collection-revisions";
 import { handleCollectionMetadata } from './routes/collection-metadata';
 import { handleAccountRoute } from "./routes/account";
-import type { Env } from "./lib/types";
+import type { Env, NotificationWork } from "./lib/types";
 import {
   handleRegisterCollection,
   handleConfirmCollection,
@@ -33,6 +35,12 @@ import { handleBuyerHistory } from "./routes/buyer-history";
 import { checkRateLimit, callerIdentity, routeRateBucket } from "./lib/ratelimit";
 
 export default {
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    await scheduledNotifications(env);
+  },
+  async queue(batch: MessageBatch<NotificationWork>, env: Env): Promise<void> {
+    await queueNotifications(batch, env);
+  },
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
@@ -82,7 +90,9 @@ export default {
         }
         let res: Response;
 
-        if (path === "/api/account" || path.startsWith("/api/account/") || path.startsWith("/api/auth/")) {
+        if ((method === "GET" && ["/api/status","/api/health"].includes(path)) || (method === "POST" && path === "/api/status/observations")) {
+          res = await handleStatus(request, env);
+        } else if (path === "/api/account" || path.startsWith("/api/account/") || path.startsWith("/api/auth/")) {
           res = await handleAccountRoute(request, env);
         } else if (method === "GET" && path === "/api/marketplace/analytics") {
           res = await handleMarketplaceAnalytics(env);
