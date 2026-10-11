@@ -6,6 +6,7 @@ import { createServer } from "vite";
 
 test("production deep links open the paid query and owner workspaces", async () => {
   const vite = await createServer({
+    optimizeDeps: { noDiscovery: true },
     server: { middlewareMode: true },
     appType: "custom",
     logLevel: "silent",

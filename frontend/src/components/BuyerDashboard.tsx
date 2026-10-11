@@ -4,6 +4,9 @@ import { encodeFunctionData, formatEther, keccak256, toBytes } from "viem";
 import { DATAVAULT_ABI, CONTRACT_ADDRESS, viemClient } from "@/lib/contract";
 import { transactionExplorerUrl } from "@/lib/network";
 import { verifyAnswerAnchor } from "@/lib/provenance";
+import type { Collection } from '../production/api';
+import { ArrowRight, ChatCircleText, ShieldCheck, Copy, ShareNetwork, CheckCircle } from '../production/icons';
+import PaymentProgress from '../production/PaymentProgress';
 import {
   buyerHistoryMessage,
   executionMessage,
@@ -143,8 +146,16 @@ async function sha256Hex(value: string): Promise<string> {
 
 export default function BuyerDashboard({
   selectedCollection,
+  selectedRequest,
+  dashboard = false,
+  collections,
+  onSettled,
 }: {
   selectedCollection?: string | null;
+  selectedRequest?: string | null;
+  dashboard?: boolean;
+  collections?: Collection[];
+  onSettled?: () => void;
 }) {
   const { primaryWallet } = useWallet();
   const address = primaryWallet?.address ?? "";
@@ -191,6 +202,9 @@ export default function BuyerDashboard({
   useEffect(() => {
     if (selectedCollection) changeCollection(selectedCollection);
   }, [selectedCollection]);
+  useEffect(() => {
+    if (dashboard && !collectionId && collections?.length) changeCollection(collections.find(item => item.queryAvailable)?.collectionId ?? collections[0].collectionId);
+  }, [dashboard, collections, collectionId]);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -370,7 +384,7 @@ export default function BuyerDashboard({
       responseDigest: result.responseDigest ?? "",
     });
     remember({ ...request, outcome: "settled" });
-    setStep("done");
+    setStep("done"); onSettled?.();
   }
 
   async function resumeOpenRequest() {
@@ -393,6 +407,8 @@ export default function BuyerDashboard({
 
   async function recover(request: SavedRequest) {
     setCurrent(request);
+    setCollectionId(request.collectionId);
+    setQuote(null);
     setMessage("");
     setAnswer(null);
     await loadRefundTime(request);
@@ -413,11 +429,37 @@ export default function BuyerDashboard({
         responseDigest: result.responseDigest,
       });
       remember({ ...request, outcome: "settled" });
-      setStep("done");
+      setStep("done"); onSettled?.();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
       setStep("failed");
     }
+  }
+
+  async function recoverLinkedRequest() {
+    if (!selectedRequest || !/^0x[0-9a-fA-F]{64}$/.test(selectedRequest)) {
+      setMessage('A valid request ID is required.'); return;
+    }
+    try {
+      if (!address || !CONTRACT_ADDRESS) throw new Error('Connect the buyer wallet first.');
+      const response = await fetch(`/api/queries/${selectedRequest}/receipt`);
+      if (!response.ok) throw new Error('This recorded request is unavailable.');
+      const receipt = await response.json();
+      const bytes32 = /^0x[0-9a-fA-F]{64}$/;
+      if (receipt.requestId?.toLowerCase() !== selectedRequest.toLowerCase()
+        || receipt.buyerAddress?.toLowerCase() !== address.toLowerCase()
+        || receipt.contractAddress?.toLowerCase() !== CONTRACT_ADDRESS.toLowerCase()
+        || receipt.chainId !== CHAIN_ID || !bytes32.test(receipt.collectionId)
+        || !bytes32.test(receipt.openTxHash) || !Number.isFinite(receipt.createdAt)) {
+        throw new Error('This receipt does not match your wallet and deployment.');
+      }
+      const request: SavedRequest = { requestId: receipt.requestId, collectionId: receipt.collectionId,
+        openTxHash: receipt.openTxHash, buyerAddress: address, openedAt: receipt.createdAt, outcome: receipt.outcome };
+      setCollectionId(request.collectionId);
+      remember(request);
+      if (request.outcome === 'settled') await recover(request);
+      else { await loadRefundTime(request); setStep('settlement_pending'); setMessage('Recorded payment selected. Check settlement or refund when eligible.'); }
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'Recovery is unavailable.'); }
   }
 
   async function syncHistory() {
@@ -603,6 +645,14 @@ export default function BuyerDashboard({
     answer && answer.buyerAddress.toLowerCase() === address.toLowerCase()
       ? answer
       : null;
+  async function copyAnswer() {
+    if (!visibleAnswer) return;
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(visibleAnswer.answer);
+      setMessage('Answer copied.');
+    } catch { setMessage('Copy is unavailable. Select the answer text instead.'); }
+  }
   useEffect(() => {
     if (!visibleAnswer) {
       setAnchorStatus("idle");
@@ -625,18 +675,15 @@ export default function BuyerDashboard({
       >
         <div className="workspace-card-header">
           <div>
-            <span className="workspace-icon" aria-hidden="true">
-              Q
-            </span>
-            <strong id="query-heading">Query workspace</strong>
+            <span className="workspace-icon" aria-hidden="true">{dashboard ? '02' : <ChatCircleText size={19}/>}</span>
+            <strong id="query-heading">{dashboard ? 'Ask a Question' : 'Query workspace'}</strong>
           </div>
-          <span className="workspace-caption">Buyer flow</span>
+          {!dashboard && <span className="workspace-caption">Buyer flow</span>}
         </div>
         <p className="workspace-description">
-          Ask a private collection. You review the live price before a wallet
-          payment.
+          {dashboard ? 'Select a collection, review its price, and get a cited answer.' : 'Ask a private collection. You review the live price before a wallet payment.'}
         </p>
-        {demo && (
+        {demo && !dashboard && (
           <div className="workspace-demo">
             <div>
               <strong>{demo.collectionName}</strong>
@@ -645,13 +692,13 @@ export default function BuyerDashboard({
             <span>{formatEther(BigInt(demo.priceWei))} test MON</span>
           </div>
         )}
-        {!demo && (
+        {!demo && !dashboard && (
           <p className="workspace-muted">
             The guided sample collection will appear after it is registered and
             confirmed on Monad.
           </p>
         )}
-        {demo && (
+        {demo && !dashboard && (
           <div className="workspace-suggestions">
             <span>Suggested questions</span>
             {SAMPLE_QUESTIONS.map((sample) => (
@@ -669,19 +716,20 @@ export default function BuyerDashboard({
           </div>
         )}
         <form onSubmit={prepare} className="workspace-form">
-          <label htmlFor="collection-id">Collection ID</label>
-          <input
+          <label htmlFor="collection-id">{dashboard ? 'Select Collection' : 'Collection ID'}</label>
+          {dashboard && collections?.length ? <select id="collection-id" value={collectionId} disabled={busy} onChange={event => changeCollection(event.target.value)}>{collections.map(item => <option key={item.collectionId} value={item.collectionId}>{item.name}{item.active ? '' : ' (Paused)'}</option>)}</select> : <input
             id="collection-id"
             value={collectionId}
             onChange={(event) => changeCollection(event.target.value)}
             placeholder="Choose a collection below or paste its ID"
             required
             disabled={busy}
-          />
+          />}
+          {dashboard && collections?.find(item => item.collectionId === collectionId) && <div className="dv-query-live-price"><strong>{formatEther(BigInt(collections.find(item => item.collectionId === collectionId)!.priceWei))} MON per query</strong><span>{collections.find(item => item.collectionId === collectionId)!.queryAvailable ? 'Available' : 'Unavailable'}</span></div>}
           <label htmlFor="query-question">Your question</label>
           <textarea
             id="query-question"
-            rows={4}
+            rows={dashboard ? 3 : 4}
             value={question}
             onChange={(event) => changeQuestion(event.target.value)}
             placeholder="Ask a question about the collection"
@@ -699,7 +747,7 @@ export default function BuyerDashboard({
             className="workspace-pay-button"
           >
             {step === "quoting" ? "Checking price..." : "Review current price"}{" "}
-            <span aria-hidden="true">&#8594;</span>
+            <ArrowRight size={17} aria-hidden="true"/>
           </button>
           {!CONTRACT_ADDRESS && (
             <p className="workspace-muted">
@@ -727,7 +775,7 @@ export default function BuyerDashboard({
               className="workspace-pay-button"
             >
               {primaryWallet ? "Sign and pay" : "Connect wallet to pay"}{" "}
-              <span aria-hidden="true">&#8594;</span>
+              <ArrowRight size={17} aria-hidden="true"/>
             </button>
           </div>
         )}
@@ -812,6 +860,50 @@ export default function BuyerDashboard({
               </button>
             </div>
           )}
+        {dashboard && (quote || current) && <PaymentProgress step={step} opened={Boolean(current)}/>}
+        {(visibleRequests.length > 0 || primaryWallet) && (
+          <div className="workspace-history">
+            <h3>Your recent requests</h3>
+            {selectedRequest && <button type="button" disabled={!primaryWallet} onClick={() => void recoverLinkedRequest()}>Recover linked request</button>}
+            {primaryWallet && CONTRACT_ADDRESS && (
+              <button
+                type="button"
+                onClick={() => void syncHistory()}
+                disabled={historyStatus === "loading"}
+              >
+                {historyStatus === "loading"
+                  ? "Loading..."
+                  : "Sync from account"}
+              </button>
+            )}
+            {historyMessage && <p role="status">{historyMessage}</p>}
+            {visibleRequests.map((request) => (
+              <div key={request.requestId}>
+                <span>
+                  <strong>{request.outcome}</strong>{" "}
+                  {request.requestId.slice(0, 12)}...
+                </span>
+                <div>
+                  <button type="button" onClick={() => recover(request)}>
+                    Recover answer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setCurrent(request);
+                      setCollectionId(request.collectionId);
+                      setQuote(null);
+                      await loadRefundTime(request);
+                      setStep("settlement_pending");
+                    }}
+                  >
+                    Check or refund
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
       <aside
         className="workspace-card proof-card"
@@ -819,21 +911,20 @@ export default function BuyerDashboard({
       >
         <div className="workspace-card-header">
           <div>
-            <span className="proof-icon" aria-hidden="true">
-              P
-            </span>
-            <strong id="proof-heading">Proof of provenance</strong>
+            <span className="proof-icon" aria-hidden="true">{dashboard ? '03' : <ShieldCheck size={19}/>}</span>
+            <strong id="proof-heading">{dashboard ? 'AI Answer + Sources' : 'Proof of provenance'}</strong>
           </div>
-          <span
+          {dashboard ? <div className="dv-answer-actions"><button type="button" disabled={!visibleAnswer} onClick={() => void copyAnswer()}><Copy size={13}/>Copy</button><button type="button" disabled={!visibleAnswer || typeof navigator === 'undefined' || typeof navigator.share !== 'function'} onClick={() => { if (visibleAnswer) void navigator.share({ title: 'DataVault cited answer', text: visibleAnswer.answer }).catch(() => setMessage('Sharing was not completed.')); }}><ShareNetwork size={13}/>Share</button></div> : <span
             className={
               visibleAnswer ? "workspace-status settled" : "workspace-status"
             }
           >
             {visibleAnswer ? "Settled" : "Waiting"}
-          </span>
+          </span>}
         </div>
         {visibleAnswer ? (
           <>
+            {dashboard && <div className="dv-answer-success"><CheckCircle size={20} weight="fill"/>Answer generated and settled</div>}
             <div className="proof-answer">
               <span>Answer</span>
               <p>{visibleAnswer.answer}</p>
@@ -916,7 +1007,7 @@ export default function BuyerDashboard({
         ) : (
           <div className="proof-empty">
             <div className="proof-empty-symbol" aria-hidden="true">
-              P
+              <ShieldCheck size={32}/>
             </div>
             <h3>Your verified answer appears here</h3>
             <p>
@@ -924,48 +1015,6 @@ export default function BuyerDashboard({
               after an actual paid query settles. No sample receipt is presented
               as a real transaction.
             </p>
-          </div>
-        )}
-        {(visibleRequests.length > 0 || primaryWallet) && (
-          <div className="workspace-history">
-            <h3>Your recent requests</h3>
-            {primaryWallet && CONTRACT_ADDRESS && (
-              <button
-                type="button"
-                onClick={() => void syncHistory()}
-                disabled={historyStatus === "loading"}
-              >
-                {historyStatus === "loading"
-                  ? "Loading..."
-                  : "Sync from account"}
-              </button>
-            )}
-            {historyMessage && <p role="status">{historyMessage}</p>}
-            {visibleRequests.map((request) => (
-              <div key={request.requestId}>
-                <span>
-                  <strong>{request.outcome}</strong>{" "}
-                  {request.requestId.slice(0, 12)}...
-                </span>
-                <div>
-                  <button type="button" onClick={() => recover(request)}>
-                    Recover answer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setCurrent(request);
-                      setCollectionId(request.collectionId);
-                      setQuote(null);
-                      await loadRefundTime(request);
-                      setStep("settlement_pending");
-                    }}
-                  >
-                    Check or refund
-                  </button>
-                </div>
-              </div>
-            ))}
           </div>
         )}
       </aside>

@@ -9,6 +9,7 @@ import {
   toBytes,
 } from "viem";
 import { registrationMessage } from "../../../shared/api";
+import { CloudArrowUp, FileText, Globe, GithubLogo } from '../production/icons';
 
 const MONAD_CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID) || 10143;
 const NETWORK_LABEL =
@@ -71,12 +72,21 @@ interface OnChainPolicy {
 export default function OwnerDashboard({
   selectedCollection,
   onForget,
+  onChanged,
 }: {
   selectedCollection?: string | null;
   onForget?: () => void;
+  onChanged?: () => void;
 }) {
   const { primaryWallet } = useWallet();
   const [file, setFile] = useState<File | null>(null);
+  const [inputMode, setInputMode] = useState<'file' | 'text'>('file');
+  const [textName, setTextName] = useState('Knowledge collection');
+  const [sourceText, setSourceText] = useState('');
+  function updateSourceText(name: string, text: string) {
+    setTextName(name); setSourceText(text);
+    setFile(text.trim() && name.trim() ? new File([text], `${name.trim().replace(/[\\/]/g, '_')}.md`, { type: 'text/markdown' }) : null);
+  }
   const [priceEth, setPriceEth] = useState("0.001");
   const [step, setStep] = useState<Step>("idle");
   const [statusMsg, setStatusMsg] = useState("");
@@ -279,6 +289,7 @@ export default function OwnerDashboard({
     storePending(null);
     setStep("done");
     setStatusMsg(`Registered and confirmed. Tx: ${registration.txHash}`);
+    onChanged?.();
   }
 
   async function resumeConfirmation() {
@@ -351,6 +362,7 @@ export default function OwnerDashboard({
         args: [policy.collectionId as `0x${string}`],
       })) as [string, string, bigint, number, boolean];
       setPolicy({ ...policy, active: col[4], policyVersion: col[3] });
+      onChanged?.();
       setStatusMsg(`Policy updated. Tx: ${txHash}`);
     } catch (err: unknown) {
       setStatusMsg(
@@ -412,16 +424,21 @@ export default function OwnerDashboard({
 
       {!policy && !loadingPolicy && !pending && (
         <form onSubmit={handleRegister} style={styles.form}>
-          <label style={styles.label}>
-            Knowledge collection (Markdown file)
+          <div style={styles.label}>
+            <div className="dv-upload-tabs" aria-label="Collection source"><button type="button" aria-pressed={inputMode === 'file'} onClick={() => { setInputMode('file'); setFile(null); }}><FileText size={16}/> Upload Files</button><button type="button" disabled title="Website imports unavailable"><Globe size={15}/> Website</button><button type="button" disabled title="Notion imports unavailable">Notion</button><button type="button" disabled title="GitHub imports unavailable"><GithubLogo size={15}/> GitHub</button><button type="button" aria-pressed={inputMode === 'text'} onClick={() => { setInputMode('text'); updateSourceText(textName, sourceText); }}>Text</button></div>
+            {inputMode === 'text' ? <div className="dv-source-text"><label>Collection name<input value={textName} maxLength={80} required onChange={event => updateSourceText(event.target.value, sourceText)}/></label><label>Knowledge text<textarea value={sourceText} maxLength={512000} required rows={8} placeholder="Paste your Markdown knowledge here" onChange={event => updateSourceText(textName, event.target.value)}/></label><small>Saved privately through the same Markdown upload flow.</small></div> : <label className="dv-upload-dropzone" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); setFile(event.dataTransfer.files?.[0] ?? null); }}><CloudArrowUp size={46} weight="duotone"/><strong>Drag & drop your file here</strong><small>Markdown or TXT (max 500 KB)</small>
+            <span className="dv-file-label">Knowledge collection (Markdown file)</span>
             <input
               type="file"
+              aria-label="Knowledge collection (Markdown file)"
               accept=".md,.txt"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              required
+              required={!file}
               style={styles.input}
             />
-          </label>
+            {file && <span className="dv-upload-selected"><FileText size={19}/><span>{file.name}</span><small>{(file.size / 1024).toFixed(1)} KB</small></span>}
+            </label>}
+          </div>
 
           <label style={styles.label}>
             Price per query (MON)

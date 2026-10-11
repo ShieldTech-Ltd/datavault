@@ -1,0 +1,13 @@
+# Production dashboard integration
+
+Approved scope: the user requested execution of the verified four-stage frontend plan on 9 October 2026.
+
+The production app adopts the full dashboard's sidebar, header, cards and professional artwork. Its routes are Dashboard, My Collections, Collection Detail, Marketplace, Ask Query, Earnings, Transactions, Analytics, API Access and Settings, with `/manage` retained for publishing and policy controls. The local contributor preview remains separated from production.
+
+Public views load verified collections and marketplace analytics from the Worker. An explicit wallet-signed workspace load retrieves owner collections, owner analytics and buyer request metadata. Account data resets when the wallet or deployment identity changes. Loading, disconnected, empty and unavailable are separate states. No mock collection, transaction, API key, notification or revenue is a production fallback.
+
+The existing BuyerDashboard and OwnerDashboard retain signing, escrow, provenance, recovery and refunds. Query links select real collection IDs; owner management links select owned collections. Transactions link to authenticated recovery and public receipts. Earnings describe direct owner settlement. Analytics display only the actual 30-day response and its coverage. Unsupported API keys, withdrawals, upgrades, invitations, content replacement and server profile controls are absent or explicitly unavailable. The selected light theme is used throughout the production workspace.
+
+The selected visual target is C:\Users\tamim\Downloads\DataVault Light Dashboard Interface.png. Its full-width navigation, globe hero, narrow sidebar and three-panel workflow take precedence over the earlier generic dashboard direction. Reference-guided raster assets are generated individually; existing collection artwork is copied selectively. Collection artwork is decorative and never claims to represent private uploaded content. The interface must fit desktop and mobile widths, support keyboard navigation and reduced motion, and have no horizontal page overflow.
+
+Validation includes meaningful route and API boundary regressions, frontend build, Worker and contract suites, SQL invariants and package dry run. Then exercise the running local Worker, D1, R2, contract and model stub, followed by a browser wallet journey. The deployment candidate must record its commit and resource identity. Public acceptance uses the deployment runbook and a real model on Monad testnet before video recording. Missing external credentials or browser access are named gates, never replaced with success claims.
