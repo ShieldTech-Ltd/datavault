@@ -5,8 +5,10 @@ export interface Collection {
   registrationTxHash: string | null; paidQueries: number; priceWei: string;
   policyVersion: number; active: boolean; queryAvailable: boolean;
   chainId: number; contractAddress: string;
+  currentCollectionId?: string; newerUnlistedRevision?: boolean;
   description?: string; category?: string; visibility?: "public" | "unlisted";
 }
+export interface RevisionHistory { originalCollectionId?:string; currentCollectionId?:string; newerUnlistedRevision?:boolean; versions:{collectionId:string;name:string;ordinal:number;registrationTxHash:string|null}[]; nextCursor:number|null }
 export interface CollectionPage { collections: Collection[]; hasMore: boolean; limit: number; offset: number }
 export interface Activity {
   requestId: string; collectionId: string; collectionName: string; buyerAddress: string;
@@ -39,6 +41,7 @@ function validatePayload(path: string, value: any): boolean {
   const page = (v: any) => v && typeof v.hasMore === 'boolean' && count(v.offset) && count(v.limit) && v.limit > 0;
   const route = path.split('?')[0];
   if (route === '/api/collections' || route === '/api/owner/collections') return page(value) && Array.isArray(value.collections) && value.collections.every(collection);
+  if (/^\/api\/collections\/0x[0-9a-fA-F]{64}\/revisions$/.test(route)) return value && (value.originalCollectionId===undefined || hash(value.originalCollectionId)) && (value.currentCollectionId===undefined || hash(value.currentCollectionId)) && (value.nextCursor===null || count(value.nextCursor)) && Array.isArray(value.versions) && value.versions.length<=50 && value.versions.every((v:any)=>hash(v.collectionId)&&typeof v.name==='string'&&count(v.ordinal)&&v.ordinal>0);
   if (/^\/api\/collections\/0x/.test(route)) return collection(value);
   if (route === '/api/marketplace/analytics' || route === '/api/owner/analytics') return value && count(value.periodDays)
     && count(value.confirmedCollections) && count(value.paidQueries) && (value.recordedRevenueWei === null || amount(value.recordedRevenueWei))

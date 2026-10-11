@@ -1,6 +1,8 @@
+import CollectionVersions from "../production/CollectionVersions";
+import { assertRevisionWallet } from "../production/collection-revisions";
 import CollectionEditor from '../production/CollectionEditor';
 import { updateCollectionPrice } from '../production/collection-policy';
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useWallet } from "@/lib/wallet";
 import { DATAVAULT_ABI, CONTRACT_ADDRESS, viemClient } from "@/lib/contract";
 import {
@@ -27,11 +29,13 @@ interface PendingRegistration {
   txHash: string;
   ownerAddress: string;
   name: string;
+  revisionParent?: string;
 }
 
 function readPending(ownerAddress: string): PendingRegistration | null {
   try {
-    const raw = localStorage.getItem(PENDING_KEY);
+    const scopedKey = `${PENDING_KEY}:${ownerAddress.toLowerCase()}`;
+    const raw = localStorage.getItem(scopedKey) ?? localStorage.getItem(PENDING_KEY);
     if (!raw || raw.length > 2_000) return null;
     const item: unknown = JSON.parse(raw);
     if (!item || typeof item !== "object") return null;
@@ -39,17 +43,28 @@ function readPending(ownerAddress: string): PendingRegistration | null {
     if (!HASH_RE.test(value.collectionId ?? "") ||
         !HASH_RE.test(value.txHash ?? "") ||
         value.ownerAddress?.toLowerCase() !== ownerAddress.toLowerCase() ||
-        typeof value.name !== "string") return null;
+        typeof value.name !== "string" ||
+        (value.revisionParent !== undefined && !HASH_RE.test(value.revisionParent))) return null;
+    // Preserve pre-existing deployment-scoped records for their matching owner.
+    if (!localStorage.getItem(scopedKey)) {
+      localStorage.setItem(scopedKey, raw);
+      localStorage.removeItem(PENDING_KEY);
+    }
     return value as PendingRegistration;
   } catch {
     return null;
   }
 }
 
-function storePending(value: PendingRegistration | null) {
+function storePending(value: PendingRegistration | null, ownerAddress = value?.ownerAddress ?? "") {
+  if (!ownerAddress) return;
   try {
-    if (value) localStorage.setItem(PENDING_KEY, JSON.stringify(value));
-    else localStorage.removeItem(PENDING_KEY);
+    const scopedKey = `${PENDING_KEY}:${ownerAddress.toLowerCase()}`;
+    if (value) localStorage.setItem(scopedKey, JSON.stringify(value));
+    else localStorage.removeItem(scopedKey);
+    const legacy = localStorage.getItem(PENDING_KEY);
+    if (legacy && JSON.parse(legacy).ownerAddress?.toLowerCase() === ownerAddress.toLowerCase())
+      localStorage.removeItem(PENDING_KEY);
   } catch {
     // Recovery still works in the current tab when storage is unavailable.
   }
@@ -75,12 +90,16 @@ export default function OwnerDashboard({
   selectedCollection,
   onForget,
   onChanged,
+  revisionParent,
+  onConfirmed,
 }: {
+  revisionParent?: string;
+  onConfirmed?: (collectionId: string) => Promise<void>;
   selectedCollection?: string | null;
   onForget?: () => void;
   onChanged?: () => void;
 }) {
-  const { primaryWallet } = useWallet();
+  const { primaryWallet, correctNetwork } = useWallet();
   const [file, setFile] = useState<File | null>(null);
   const [inputMode, setInputMode] = useState<'file' | 'text'>('file');
   const [textName, setTextName] = useState('Knowledge collection');
@@ -103,6 +122,17 @@ export default function OwnerDashboard({
 
   const contractReady = Boolean(CONTRACT_ADDRESS);
   const walletAddress = primaryWallet?.address ?? "";
+  const walletIdentity=`${walletAddress}:${correctNetwork}`;
+  const walletEpoch=useRef({identity:walletIdentity,generation:0});
+  if(walletEpoch.current.identity!==walletIdentity) walletEpoch.current={identity:walletIdentity,generation:walletEpoch.current.generation+1};
+  const generation=walletEpoch.current.generation;
+  const alive=useRef(true); useEffect(()=>{alive.current=true;return ()=>{alive.current=false;};},[]);
+  const current=()=>alive.current && walletEpoch.current.generation===generation;
+  async function guardWallet(owner=walletAddress) {
+    if(!primaryWallet) throw Error("Connect the publishing owner wallet.");
+    const wallet=await primaryWallet.getWalletClient();
+    await assertRevisionWallet(wallet,owner,MONAD_CHAIN_ID,current);
+  }
 
   useEffect(() => {
     setPending(walletAddress ? readPending(walletAddress) : null);
@@ -112,6 +142,7 @@ export default function OwnerDashboard({
   useEffect(() => {
     setPolicy(null);
     setLoadingPolicy(false);
+    if (revisionParent) return;
     let savedId = selectedCollection;
     if (!savedId) {
       try { savedId = localStorage.getItem(STORAGE_KEY); } catch { savedId = null; }
@@ -149,7 +180,7 @@ export default function OwnerDashboard({
     return () => {
       active = false;
     };
-  }, [walletAddress, contractReady, selectedCollection]);
+  }, [walletAddress, contractReady, selectedCollection, revisionParent]);
 
   async function checkNetwork(): Promise<boolean> {
     if (!primaryWallet) return false;
@@ -182,6 +213,7 @@ export default function OwnerDashboard({
     try {
       if (!(await checkNetwork())) return;
       const walletClient = await primaryWallet.getWalletClient();
+      await guardWallet();
       const contentHash = keccak256(toBytes(await file.text()));
       const priceWei = parseEther(priceEth);
       const timestamp = Date.now();
@@ -195,6 +227,7 @@ export default function OwnerDashboard({
           timestamp
         ),
       });
+      await guardWallet();
       const formData = new FormData();
       formData.append("file", file);
       formData.append("priceWei", priceWei.toString());
@@ -214,9 +247,16 @@ export default function OwnerDashboard({
         txCalldata: string;
       };
 
+      await guardWallet();
       setStep("awaiting_wallet");
       setStatusMsg("Sign the registration transaction in your wallet...");
 
+      const registrationInput = {
+        collectionId,
+        ownerAddress: walletAddress,
+        name: file.name.replace(/\.md$/i, ""),
+        ...(revisionParent ? { revisionParent } : {}),
+      };
       let txHash: string;
       try {
         txHash = await walletClient.sendTransaction({
@@ -230,18 +270,17 @@ export default function OwnerDashboard({
         );
       }
 
+      const registration = { ...registrationInput, txHash };
+      // Broadcast is irreversible. Save the original owner's tuple even when
+      // a wallet switch or unmount has made this UI operation stale.
+      storePending(registration);
+      await guardWallet();
       setStep("awaiting_confirm");
       setStatusMsg("Waiting for on-chain confirmation...");
-      const registration = {
-        collectionId,
-        txHash,
-        ownerAddress: walletAddress,
-        name: file.name.replace(/\.md$/i, ""),
-      };
       setPending(registration);
-      storePending(registration);
       await confirmPending(registration);
     } catch (err: unknown) {
+      if (!current()) return;
       setStep("error");
       setStatusMsg(err instanceof Error ? err.message : String(err));
     }
@@ -251,13 +290,17 @@ export default function OwnerDashboard({
     if (!CONTRACT_ADDRESS || !primaryWallet ||
         registration.ownerAddress.toLowerCase() !== primaryWallet.address.toLowerCase())
       throw new Error("Connect the wallet that registered this collection.");
+    if (revisionParent && registration.revisionParent && revisionParent !== registration.revisionParent)
+      throw new Error(`Open the original revision parent ${registration.revisionParent} to resume this registration.`);
+    await guardWallet(registration.ownerAddress);
     setStep("awaiting_confirm");
     const receipt = await viemClient.waitForTransactionReceipt({
       hash: registration.txHash as `0x${string}`,
     });
+    await guardWallet(registration.ownerAddress);
     if (receipt.status !== "success") {
       setPending(null);
-      storePending(null);
+      storePending(null, registration.ownerAddress);
       throw new Error("Registration transaction reverted. No collection was registered.");
     }
     const confirmRes = await fetch(
@@ -271,6 +314,7 @@ export default function OwnerDashboard({
         }),
       }
     );
+    await guardWallet(registration.ownerAddress);
     if (!confirmRes.ok) throw new Error(await confirmRes.text());
     const col = (await viemClient.readContract({
       address: CONTRACT_ADDRESS,
@@ -278,8 +322,15 @@ export default function OwnerDashboard({
       functionName: "getCollection",
       args: [registration.collectionId as `0x${string}`],
     })) as [string, string, bigint, number, boolean];
+    await guardWallet(registration.ownerAddress);
     if (col[0].toLowerCase() !== registration.ownerAddress.toLowerCase())
       throw new Error("Confirmed collection owner does not match this wallet.");
+    if (revisionParent) {
+      setPending(null);storePending(null, registration.ownerAddress);setStep("done");
+      setStatusMsg(`New public collection confirmed: ${registration.collectionId}`);
+      await onConfirmed?.(registration.collectionId);
+      return;
+    }
     try { localStorage.setItem(STORAGE_KEY, registration.collectionId); } catch {}
     setPolicy({
       collectionId: registration.collectionId,
@@ -289,9 +340,9 @@ export default function OwnerDashboard({
       collectionName: registration.name,
     });
     setPending(null);
-    storePending(null);
+    storePending(null, registration.ownerAddress);
     setStep("done");
-    setStatusMsg(`Registered and confirmed. Tx: ${registration.txHash}`);
+    setStatusMsg(`Registered and confirmed. Tx: ${registration.txHash}${registration.revisionParent ? `. Revision parent: ${registration.revisionParent}. Open /manage?collection=${registration.revisionParent} and link confirmed collection ${registration.collectionId}.` : ""}`);
     onChanged?.();
   }
 
@@ -429,18 +480,19 @@ export default function OwnerDashboard({
           <strong>Registration needs confirmation</strong>
           <p>Transaction: {pending.txHash}</p>
           <p>Collection: {pending.collectionId}</p>
+          {pending.revisionParent && <p>Revision parent: <a href={`/manage?collection=${pending.revisionParent}`}>{pending.revisionParent}</a></p>}
           <button type="button" onClick={() => void resumeConfirmation()}
             disabled={isLoading} style={styles.button}>
             {isLoading ? "Checking registration..." : "Resume confirmation"}
           </button>
-          <button type="button" onClick={() => { setPending(null); storePending(null); }}
+          <button type="button" onClick={() => { setPending(null); storePending(null, pending.ownerAddress); }}
             disabled={isLoading} style={{ ...styles.linkButton, marginLeft: "0.75rem" }}>
             Clear local record
           </button>
         </div>
       )}
 
-      {!policy && !loadingPolicy && !pending && (
+      {!policy && !loadingPolicy && !pending && step !== "done" && (
         <form onSubmit={handleRegister} style={styles.form}>
           <div style={styles.label}>
             <div className="dv-upload-tabs" aria-label="Collection source"><button type="button" aria-pressed={inputMode === 'file'} onClick={() => { setInputMode('file'); setFile(null); }}><FileText size={16}/> Upload Files</button><button type="button" disabled title="Website imports unavailable"><Globe size={15}/> Website</button><button type="button" disabled title="Notion imports unavailable">Notion</button><button type="button" disabled title="GitHub imports unavailable"><GithubLogo size={15}/> GitHub</button><button type="button" aria-pressed={inputMode === 'text'} onClick={() => { setInputMode('text'); updateSourceText(textName, sourceText); }}>Text</button></div>
@@ -507,7 +559,7 @@ export default function OwnerDashboard({
             disabled={isLoading || !file || !disclosureAccepted}
             style={styles.button}
           >
-            {isLoading ? stepLabel(step) : "Register Collection"}
+            {isLoading ? stepLabel(step) : revisionParent ? "Publish new public revision" : "Register Collection"}
           </button>
 
           {step === "awaiting_wallet" && (
@@ -589,6 +641,7 @@ export default function OwnerDashboard({
             <p>Price and pause changes advance the policy version and can invalidate outstanding quotes and requests under the current policy rules.</p>
           </form>
           <CollectionEditor collectionId={policy.collectionId} onChanged={onChanged} />
+          <CollectionVersions collectionId={policy.collectionId} ownerAddress={walletAddress} publish />
           <div
             style={{
               display: "flex",
@@ -616,8 +669,7 @@ export default function OwnerDashboard({
           <p
             style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "1rem" }}
           >
-            Document replacement is unavailable while policy versioning is being
-            completed.
+            Changed content is published as a new immutable revision.
           </p>
         </div>
       )}

@@ -4,11 +4,11 @@ This checklist distinguishes implemented features from live service readiness. R
 
 ## Local implementation
 
-- [ ] Account sign-in rejects replay, another origin, wrong deployment and expired challenges.
-- [ ] Profile/preferences persist across navigation and reload. Wallet changes clear private state.
-- [ ] Export contains only the signed-in account's supported records. Deletion requests accurately show pending processing.
-- [ ] Collection metadata is owner-controlled; unlisted metadata is excluded from public listings and aggregates.
-- [ ] Price changes require confirmed owner transactions. Historical receipts/answers retain original identity after revisions.
+- [x] Account sign-in rejects replay, another origin, wrong deployment and expired challenges.
+- [x] Profile/preferences persist across navigation and reload. Wallet changes clear private state.
+- [x] Export contains only the signed-in account's supported records. Deletion requests accurately show pending processing.
+- [x] Collection metadata is owner-controlled; unlisted metadata is excluded from public listings and aggregates.
+- [x] Price changes require confirmed owner transactions. Historical receipts/answers retain original identity after revisions.
 - [ ] Notifications correspond to real persisted events; duplicate delivery is idempotent.
 - [ ] Analytics and exports match recorded settlement amounts and report incomplete coverage.
 - [ ] Developer keys are scoped, hashed at rest, shown once and revocable.
@@ -18,6 +18,8 @@ This checklist distinguishes implemented features from live service readiness. R
 - [ ] Desktop and mobile browser journeys pass with two accounts.
 - [ ] Payment, answer, payout, recovery, pause and timeout refund rehearsal passes.
 - [ ] Production excludes development wallets and sample activity. Exact-head CI/security checks pass.
+
+Local evidence: [account acceptance](evidence/saas-account-local-acceptance.md), [collection management acceptance](evidence/saas-collection-local-acceptance.md). Checkmarks apply to those recorded candidates. Re-run cross-feature acceptance against the final release commit.
 
 ## Public deployment
 
