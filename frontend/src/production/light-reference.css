@@ -64,6 +64,10 @@
 .dv-source-text label { display:grid; gap:6px; }
 .dv-source-text textarea { min-height:175px; }
 .dv-source-text small { font-size:9px; color:var(--text-2); }
+.dv-website-import { grid-template-columns:minmax(0,1fr); }
+.dv-website-import label,.dv-website-import section { min-width:0; }
+.dv-website-import input,.dv-website-import select,.dv-website-import textarea,.dv-website-import .dv-button { box-sizing:border-box; min-width:0; max-width:100%; }
+.dv-website-import .dv-button { white-space:normal; overflow-wrap:anywhere; }
 .dv-upload-dropzone { display:flex; flex-direction:column; align-items:center; text-align:center; gap:5px; padding:22px 12px 14px; min-height:235px; border:1px dashed #a59aff; border-radius:11px; background:#fafaff; cursor:pointer; }
 .dv-upload-dropzone>svg { color:#8464ff; margin:1px 0 4px; }
 .dv-upload-dropzone>strong { font-size:12px; font-weight:500; }

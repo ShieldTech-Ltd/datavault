@@ -29,6 +29,8 @@ Workspaces: [local acceptance](evidence/saas-workspaces-local-acceptance.md) rec
 
 ## Public deployment
 
+Approved website imports: [local acceptance](evidence/saas-website-imports-local-acceptance.md) records actual workerd fetch, private preview, reviewed staging, recovery, cancellation and wallet/mobile isolation. Exact approved domains and scheduled cleanup are operational gates. Final importer-wide and deployment checks remain open.
+
 Selected public GitHub imports: [local acceptance](evidence/saas-github-imports-local-acceptance.md) records source provenance, confirmed publication and cancellation without changing historical receipts. Remaining importer and final-release gates stay open.
 
 Private GitHub: [local implementation acceptance](evidence/saas-github-auth-local-acceptance.md) covers connector state, protected credentials, race fixes and unconfigured UI. Live App installation, OAuth consent and private-provider acceptance remain required before advertising availability.

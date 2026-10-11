@@ -193,7 +193,7 @@ Private GitHub implementation is locally accepted at `012ebb0`, including encryp
 
 - [ ] Preview extracted content and attribution before publishing; require rights/provider consent. Importing content does not certify permission.
 - [ ] Use narrow GitHub/Notion authorization, selected content, protected OAuth state, server-side tokens and disconnect support.
-- [ ] For website fetches, allow HTTPS only; reject private/local/reserved targets after DNS resolution and every redirect. Cap pages, bytes and duration.
+- [x] For website fetches, allow HTTPS only; reject private/local/reserved targets after DNS resolution and every redirect. Cap pages, bytes and duration. Locally accepted at `4e2d27d`; exact operator-approved hosts required, DNS checks do not pin connections. See [website evidence](../../evidence/saas-website-imports-local-acceptance.md).
 - [ ] Validate file signatures/MIME and decompressed size. Reject malformed/encrypted unsupported files, never execute embedded content, and defer OCR to its own feature.
 - [ ] Normalize to immutable Markdown registration; jobs are idempotent/retryable/cancellable and temporary assets have a retention policy.
 - [ ] Test provider failures, duplicate queue delivery, redirected internal targets, hostile/oversized files and interrupted jobs.
