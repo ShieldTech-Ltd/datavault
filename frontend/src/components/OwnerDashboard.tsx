@@ -1,3 +1,5 @@
+import {useOptionalAccount} from '../production/account';
+import GithubImport from '../production/GithubImport';
 import CollectionVersions from "../production/CollectionVersions";
 import { assertRevisionWallet } from "../production/collection-revisions";
 import CollectionEditor from '../production/CollectionEditor';
@@ -100,10 +102,14 @@ export default function OwnerDashboard({
   onChanged?: () => void;
 }) {
   const { primaryWallet, correctNetwork } = useWallet();
+  const accountContext=useOptionalAccount();
+  const accountState=accountContext?.state;
+  const importedSource=useRef(false);
   const [file, setFile] = useState<File | null>(null);
-  const [inputMode, setInputMode] = useState<'file' | 'text'>('file');
+  const [inputMode, setInputMode] = useState<'file' | 'text' | 'github'>('file');
   const [textName, setTextName] = useState('Knowledge collection');
   const [sourceText, setSourceText] = useState('');
+  useEffect(()=>{if(!accountState?.session && importedSource.current){setFile(null);setSourceText('');setDisclosureAccepted(false);importedSource.current=false;}},[accountState?.session]);
   function updateSourceText(name: string, text: string) {
     setTextName(name); setSourceText(text);
     setFile(text.trim() && name.trim() ? new File([text], `${name.trim().replace(/[\\/]/g, '_')}.md`, { type: 'text/markdown' }) : null);
@@ -495,8 +501,8 @@ export default function OwnerDashboard({
       {!policy && !loadingPolicy && !pending && step !== "done" && (
         <form onSubmit={handleRegister} style={styles.form}>
           <div style={styles.label}>
-            <div className="dv-upload-tabs" aria-label="Collection source"><button type="button" aria-pressed={inputMode === 'file'} onClick={() => { setInputMode('file'); setFile(null); }}><FileText size={16}/> Upload Files</button><button type="button" disabled title="Website imports unavailable"><Globe size={15}/> Website</button><button type="button" disabled title="Notion imports unavailable">Notion</button><button type="button" disabled title="GitHub imports unavailable"><GithubLogo size={15}/> GitHub</button><button type="button" aria-pressed={inputMode === 'text'} onClick={() => { setInputMode('text'); updateSourceText(textName, sourceText); }}>Text</button></div>
-            {inputMode === 'text' ? <div className="dv-source-text"><label>Collection name<input value={textName} maxLength={80} required onChange={event => updateSourceText(event.target.value, sourceText)}/></label><label>Knowledge text<textarea value={sourceText} maxLength={512000} required rows={8} placeholder="Paste your Markdown knowledge here" onChange={event => updateSourceText(textName, event.target.value)}/></label><small>Saved privately through the same Markdown upload flow.</small></div> : <label className="dv-upload-dropzone" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); setFile(event.dataTransfer.files?.[0] ?? null); }}><CloudArrowUp size={46} weight="duotone"/><strong>Drag & drop your file here</strong><small>Markdown or TXT (max 500 KB)</small>
+            <div className="dv-upload-tabs" aria-label="Collection source"><button type="button" aria-pressed={inputMode === 'file'} onClick={() => { setInputMode('file'); setFile(null); }}><FileText size={16}/> Upload Files</button><button type="button" disabled title="Website imports unavailable"><Globe size={15}/> Website</button><button type="button" disabled title="Notion imports unavailable">Notion</button><button type="button" disabled={!accountContext} title={accountContext ? 'Import selected public files' : 'Account imports are available in the dashboard'} aria-pressed={inputMode === 'github'} onClick={() => { setInputMode('github'); setFile(null); }}><GithubLogo size={15}/> GitHub</button><button type="button" aria-pressed={inputMode === 'text'} onClick={() => { setInputMode('text'); updateSourceText(textName, sourceText); }}>Text</button></div>
+            {inputMode === 'github' ? <GithubImport onInvalidated={() => setFile(null)} onReviewed={(name, text) => { importedSource.current=true; setInputMode('text'); updateSourceText(name, text); setDisclosureAccepted(false); }}/> : inputMode === 'text' ? <div className="dv-source-text"><label>Collection name<input value={textName} maxLength={80} required onChange={event => updateSourceText(event.target.value, sourceText)}/></label><label>Knowledge text<textarea value={sourceText} maxLength={512000} required rows={8} placeholder="Paste your Markdown knowledge here" onChange={event => updateSourceText(textName, event.target.value)}/></label><small>Saved privately through the same Markdown upload flow.</small></div> : <label className="dv-upload-dropzone" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); setFile(event.dataTransfer.files?.[0] ?? null); }}><CloudArrowUp size={46} weight="duotone"/><strong>Drag & drop your file here</strong><small>Markdown or TXT (max 500 KB)</small>
             <span className="dv-file-label">Knowledge collection (Markdown file)</span>
             <input
               type="file"

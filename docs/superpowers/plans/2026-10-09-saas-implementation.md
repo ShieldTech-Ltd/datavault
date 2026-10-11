@@ -184,6 +184,8 @@ Current confirmed collection counts remain current inventory. Settlement, failur
 ## Phase 7: Imports and background ingestion
 
 Ship one importer per PR: selected GitHub files, selected website pages, selected Notion pages, then PDF/DOCX selectable-text extraction.
+
+Progress: selected public GitHub imports are locally accepted at `0ebc779`, including preview, signed publication, cancellation and wallet isolation. See [evidence](../../evidence/saas-github-imports-local-acceptance.md). Private authorization and remaining adapters are pending, so phase-wide checkboxes remain open. Import admission is one in-flight job and 20 jobs per rolling day per account across enabled providers.
 **Create:** provider adapters under `worker/src/imports/`, import-job routes/queue consumer/tests, source/job migrations and import wizard.
 **Modify:** upload tabs, private R2 ingestion and Worker bindings.
 
