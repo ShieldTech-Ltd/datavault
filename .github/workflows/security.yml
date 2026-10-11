@@ -43,9 +43,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - name: Test chain and contract verification
-        run: node --test scripts/lib/*.test.mjs
+          node-version: 22
+      - name: Test release verification and service monitoring
+        run: node --test scripts/lib/*.test.mjs scripts/*.test.mjs
 
   dependencies:
     name: Production dependency audit
@@ -57,7 +57,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Audit contracts and Worker production packages
         run: |
           npm audit --package-lock-only --omit=dev --audit-level=high
