@@ -1,4 +1,5 @@
 import { consumeNotifications, reconcileNotifications, inboxSelect } from '../lib/notifications';
+import { handleSavedItems, savedItems } from '../lib/saved-items';
 import { challengeEmail, emailStatus, removeEmail, setEmailConsent, verifyEmail } from '../lib/account-email';
 import { getAddress, isAddress, verifyMessage, type Hex } from 'viem';
 import { createSiweMessage, parseSiweMessage, validateSiweMessage } from 'viem/siwe';
@@ -74,6 +75,8 @@ export async function handleAccountRoute(request: Request, env: Env): Promise<Re
   }
   if (!session) return denied();
   if (method !== 'GET' && !validCsrf(request, session)) return json({ error: 'CSRF token required.' }, 403);
+  const savedResponse=await handleSavedItems(request,env,session.account);
+  if(savedResponse)return savedResponse;
   if (path === '/api/account/email' && method === 'GET') return json(await emailStatus(env,session.account));
   if (path === '/api/account/email/challenge' && method === 'POST') {
     const input=await body(request); if(!input)return json({error:'Invalid email request.'},400);
@@ -128,8 +131,10 @@ export async function handleAccountRoute(request: Request, env: Env): Promise<Re
     const requests = await env.DB.prepare('SELECT request_id AS requestId, status, created_at AS createdAt FROM account_deletion_requests WHERE account_id = ? ORDER BY created_at')
       .bind(session.account.account_id).all();
     const inbox = await env.DB.prepare(`${inboxSelect} WHERE i.account_id=? ORDER BY e.event_id DESC`).bind(session.account.account_id).all();
-    return json({ scope: 'Account profile, notification preferences, inbox metadata and pending deletion requests only. Paid answers, source content and immutable on-chain records are outside this export.',
-      deployment: { chainId, contractAddress: contract }, account: profile(session.account), deletionRequests: requests.results, notifications: inbox.results }, 200,
+    const bookmarks=await savedItems(env,session.account,'bookmarks',null);
+    const savedQuestions=await savedItems(env,session.account,'saved-questions',50);
+    return json({ scope: 'Account profile, notification preferences, inbox metadata, bookmarks, active explicitly saved questions and pending deletion requests. Saved questions expire after 30 days. Paid answers, source content and immutable on-chain records are outside this export.',
+      deployment: { chainId, contractAddress: contract }, account: profile(session.account), deletionRequests: requests.results, notifications: inbox.results, bookmarks, savedQuestions }, 200,
       { 'Content-Disposition': 'attachment; filename="datavault-account.json"' });
   }
   if (path === '/api/account/deletion-request' && method === 'POST') {

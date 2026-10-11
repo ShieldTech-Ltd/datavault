@@ -145,11 +145,13 @@ Recommended design: changed content receives a new hash-derived collection ID th
 **Modify:** analytics/history routes and tests, production API types and Analytics page.
 **Create:** saved-item routes/tests/components and migration.
 
-- [ ] Add UTC date ranges up to 90 days, daily buckets and stable pagination. Replace silent aggregate truncation at the current 10,000-row bound with exact supported aggregation or visible incomplete coverage.
-- [ ] Separate recorded MON revenue, failure/refund status and data coverage. Do not infer answer confidence from settlement.
-- [ ] Add private owner CSV export with formula-injection protection; exact wei totals must match the same scoped date range.
-- [ ] Save bookmarks without question text. Require explicit opt-in for saved questions and provide deletion/export with defined retention.
-- [ ] Test UTC boundaries, missing historical amounts, large datasets, opt-out and cross-wallet isolation.
+- [x] Add UTC date ranges up to 90 days, daily buckets and stable pagination. Replace silent aggregate truncation at the current 10,000-row bound with exact supported aggregation or visible incomplete coverage.
+- [x] Separate recorded MON revenue, failure/refund status and data coverage. Do not infer answer confidence from settlement.
+- [x] Add private owner CSV export with formula-injection protection; exact wei totals must match the same scoped date range.
+- [x] Save bookmarks without question text. Require explicit opt-in for saved questions and provide deletion/export with defined retention.
+- [x] Test UTC boundaries, missing historical amounts, large datasets, opt-out and cross-wallet isolation.
+
+Current confirmed collection counts remain current inventory. Settlement, failure, refund, revenue, ranking, daily and CSV activity share the selected UTC window; registrations in that period would be a separate metric.
 
 ## Phase 5: Developer keys and usage
 

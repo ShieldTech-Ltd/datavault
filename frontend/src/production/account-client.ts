@@ -2,6 +2,8 @@ import type { AccountProfile, AccountSessionResponse } from '../../../shared/api
 type WalletClient = { getChainId(): Promise<number>; signMessage(input: { message: string }): Promise<string> };
 export type AccountWallet = { address: string; getWalletClient(): Promise<WalletClient> };
 export type AccountState = { session: AccountSessionResponse | null; loading: boolean; error: string };
+export type SavedItem={id:number;collectionId:string;collectionName:string;createdAt:number;question?:string;expiresAt?:number};
+export type SavedPage={items:SavedItem[];nextCursor:string|null};
 export type EmailStatus = { providerConfigured: boolean; verifiedEmail: string | null; verifiedAt: number | null; pendingEmail: string | null; status: string; resendAfter: number };
 function validSession(value: unknown): value is AccountSessionResponse {
   const v = value as AccountSessionResponse | null;
@@ -129,6 +131,18 @@ export class AccountClient {
       if (!response.ok || !response.headers.get('Content-Type')?.includes('application/json')) throw new Error('Account export unavailable.');
       return response.blob();
     });
+  }
+  async savedItems(kind:'bookmarks'|'saved-questions',cursor?:string):Promise<SavedPage|null> {
+    return this.operation(async()=>this.json<SavedPage>(`/api/account/${kind}?limit=20${cursor?'&cursor='+encodeURIComponent(cursor):''}`));
+  }
+  async saveQuestion(collectionId:string,question:string,optIn:boolean) {
+    if(!optIn)return null;
+    return this.savedMutation('saved-questions','POST',{collectionId,question,optIn:true});
+  }
+  async bookmark(collectionId:string){return this.savedMutation('bookmarks','POST',{collectionId});}
+  async deleteSaved(kind:'bookmarks'|'saved-questions',id:number){return this.savedMutation(`${kind}/${id}`,'DELETE',{});}
+  private async savedMutation(path:string,method:string,input:unknown){
+    return this.operation(async session=>this.json(`/api/account/${path}`,{method,headers:{'Content-Type':'application/json','x-csrf-token':session.csrfToken},body:JSON.stringify(input)}));
   }
   async emailStatus(): Promise<EmailStatus | null> {
     return this.operation(async () => this.json<EmailStatus>('/api/account/email'));
