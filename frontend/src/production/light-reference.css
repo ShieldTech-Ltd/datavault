@@ -166,3 +166,27 @@
   .dv-reference-topbar .dv-notifications { position: static; }
   .dv-reference-topbar .dv-notification-popover { left: 14px; right: 14px; width: auto; }
 }
+
+/* Refine the approved light reference without changing its workflow or artwork. */
+.dv-light-reference { --border:#e5e7f0; --text-2:#525d76; --shadow:0 2px 8px rgb(25 35 70 / 3%); }
+.dv-light-reference .dv-button.secondary { background:#fff; color:var(--text); border-color:var(--border); }
+.dv-reference-workspace .workspace-card,.dv-reference-register { box-shadow:var(--shadow); }
+.dv-reference-panel-heading p { font-size:11px; }
+.dv-reference-workspace .workspace-description { font-size:11px; }
+.dv-reference-hero-metrics .dv-metrics { grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.dv-reference-hero-metrics .dv-metrics .dv-card { padding:12px 10px; grid-template-columns:minmax(0,1fr); gap:5px; border-radius:11px; box-shadow:var(--shadow); }
+.dv-reference-hero-metrics .dv-metrics svg { display:none; }
+.dv-reference-hero-metrics .dv-metrics strong { grid-column:1; font-size:16px; line-height:1.2; white-space:normal; overflow-wrap:anywhere; }
+.dv-reference-hero-metrics .dv-metrics span { grid-column:1; font-size:11px; line-height:1.3; }
+.dv-reference-hero-metrics .dv-metrics small { grid-column:1; font-size:10px; line-height:1.4; }
+.dv-light-reference .dv-button:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.dv-light-reference .dv-button.secondary:hover:not(:disabled) { background:var(--accent-bg); border-color:var(--accent-bdr); }
+@media(max-width:700px) {
+  .dv-reference-hero-metrics .dv-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .dv-reference-hero-metrics .dv-metrics .dv-card { display:grid; grid-template-columns:minmax(0,1fr); padding:12px; gap:4px; }
+  .dv-reference-hero-metrics .dv-metrics strong,.dv-reference-hero-metrics .dv-metrics span,.dv-reference-hero-metrics .dv-metrics small { grid-column:1; }
+  .dv-reference-hero-metrics .dv-metrics small { display:block; }
+  .dv-reference-hero-metrics .dv-metrics strong { font-size:16px; }
+}
+
+@media(min-width:701px) and (max-width:950px) { .dv-reference-hero-metrics .dv-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } }
