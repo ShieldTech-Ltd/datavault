@@ -2,7 +2,7 @@ name: Security
 
 on:
   pull_request:
-    branches: [master, main, feat/demo-readiness-ritik]
+    branches: [master, main, feat/demo-readiness-ritik, 'codex/**']
   push:
     branches: [master, main]
 

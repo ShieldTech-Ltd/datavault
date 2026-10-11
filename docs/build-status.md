@@ -1,6 +1,14 @@
 # DataVault build status
 
-Updated 9 October 2026 for draft PR #51. This is source and local verification evidence, not a deployment claim. PRs #48, #49, and #50 are merged on GitHub.
+Updated 9 October 2026. This is source and local verification evidence, not a deployment claim. PR #51 is merged. The dashboard candidate in PR #52 is open at `f9966d2bef2cb7c0cc3b2e57322d9eba9bcde2c3`; its eight CI/Security checks passed. New SaaS implementation is isolated on `codex/saas-accounts` based on that candidate, without merging or changing PR #52.
+
+## Current production dashboard and SaaS work
+
+The candidate follows the selected DataVault Light Dashboard Interface. All production routes use real backend responses or explicit disconnected, empty, error and unavailable states. Signed owner collections, owner earnings, buyer history, public analytics, collection details and request recovery have been checked locally in the browser. See [local acceptance](evidence/production-dashboard-local-acceptance.md) for exact transaction evidence and limitations.
+
+The SaaS roadmap is in [the implementation plan](superpowers/plans/2026-10-09-saas-implementation.md). Account sessions, profiles and persistent settings are the first feature phase. Subsequent phases cover collection metadata and immutable revisions, notifications/status, richer analytics, developer keys, teams, imports and billing. A planned feature is not an implemented feature.
+
+The earlier dated checks below remain historical evidence. They do not replace verification of the current feature branch or real public acceptance.
 
 ## Implemented in source
 
@@ -14,7 +22,7 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 - Owner registration now records a pending transaction for resuming Worker confirmation after a browser interruption. A manual ID and transaction fallback covers lost browser storage. Confirmation retries must match the recorded owner and transaction and cannot overwrite a confirmed D1 row.
 - The reference dashboard layout has a live collection catalogue, search by collection name, verified query workspace, provenance receipt, and recorded marketplace and owner analytics. It has no team invitation or permission system. It does not store question text for a saved-query list or emit a numerical answer-confidence score.
 - The production hero describes paid queries on Monad and receipt review. The contract does not issue a legal content licence or certify that an answer is factually correct.
-- The ten-page contributor dashboard merged through PR #50 uses local sample state. It is available only under `/preview` in local development. The production entry point remains the API-connected app. The preview is not evidence of implemented API keys, balances, settings, or activity.
+- The ten-page contributor dashboard merged through PR #50 uses local sample state and is restricted to local development. PR #52 integrates the full selected visual design into the API-connected production app. Contributor preview activity is not evidence of implemented API keys, balances, settings, or activity.
 - The production buyer and owner workspaces remount on wallet account changes, clearing in-flight view state from the previous account. The local rehearsal network is labelled as a local chain in the wallet switch control.
 - Direct `/query` and `/manage` links open the real buyer and owner workspaces. Browser back and forward restore those views, and CI checks their initial rendered content.
 - Content replacement is disabled in the public API and UI because the former path did not advance on-chain policy version.
@@ -38,7 +46,7 @@ Updated 9 October 2026 for draft PR #51. This is source and local verification e
 
 ## Gates before public deployment
 
-- Review PR #51 after CI and source readiness checks, then merge it as source integration when its backend, database migrations, security controls, and frontend integration are ready. Configure the deployed candidate from the merge commit and run the full live end-to-end gate before calling the product or demo ready. Local rehearsal is not live proof.
+- PR #51 is merged. Review PR #52 and each subsequent feature against its exact head before source integration. Record the selected deployed candidate and run the full live end-to-end gate before calling the product or demo ready. Local rehearsal is not live proof.
 - Confirm the three production dependency audits remain clear in CI. The injected wallet replacement removed the vulnerable Dynamic dependency tree. The wallet now offers a Monad network switch, but still needs a live browser regression check.
 - Verify a real injected-wallet connection, signed registration, signed payment, private R2 and D1 access, actual model response, and owner payout on the configured Monad network.
 - Add real Cloudflare D1 and R2 resource identifiers, a deployed contract, Worker secrets, public site origin, and a confirmed sample collection. The tracked Wrangler configuration still contains a placeholder database ID.

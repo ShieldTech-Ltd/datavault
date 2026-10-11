@@ -5,6 +5,8 @@ import type { Env } from "./types";
 // Limits are intentionally generous for a live demo but prevent abuse.
 const WINDOW_SECONDS = 60;
 const LIMITS: Record<string, number> = {
+  auth: 10,
+  account: 20,
   execute:  10, // model calls are expensive
   register:  5,
   catalogue: 30,
@@ -15,6 +17,8 @@ const LIMITS: Record<string, number> = {
 };
 
 export function routeRateBucket(method: string, path: string): string | null {
+  if (method === "POST" && path.startsWith("/api/auth/")) return "auth";
+  if ((method === "POST" || method === "PATCH") && (path === "/api/account" || path.startsWith("/api/account/"))) return "account";
   if (method === "GET" && (
     path === "/api/demo" ||
     path === "/api/marketplace/analytics" ||

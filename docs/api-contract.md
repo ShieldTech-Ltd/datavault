@@ -13,7 +13,7 @@ The production API and frontend share one Cloudflare Worker origin. Source conte
 - `GET /api/queries/:id/receipt` is public and excludes answer text and source passages.
 - `GET /api/buyer/queries` requires a current signature from the buyer wallet before listing that wallet's recorded request metadata.
 
-All signatures use EIP-191 personal signing. Send `x-signature` and `x-timestamp` headers. The timestamp is Unix milliseconds within five minutes of server time. CORS is a browser control, not authorization.
+The payment and activity signatures above use EIP-191 personal signing. Send `x-signature` and `x-timestamp` headers. The timestamp is Unix milliseconds within five minutes of server time. CORS is a browser control, not authorization.
 
 ## Public demo and quote
 
@@ -60,4 +60,30 @@ The public receipt contains request and collection IDs, buyer address, chain and
 
 ## Limits and errors
 
-Uploads are limited to 512000 document bytes with at most 16 KB of multipart overhead. Other POST bodies are limited to 8 KB before parsing. Questions are limited to 500 characters and prices to 10 MON. Registration and execution use an atomic per-IP fixed-window quota. Expected errors include 400 for malformed input, 401 for missing or expired signature, 403 for wrong buyer or paused policy, 404 for absent resources, 409 for transaction or policy mismatch, 413 for oversized requests, 429 for rate limits, and 503 for incomplete deployment configuration.
+Uploads are limited to 512000 document bytes with at most 16 KB of multipart overhead. Other POST and PATCH bodies are limited to 8 KB before parsing. Questions are limited to 500 characters and prices to 10 MON. Registration and execution use an atomic per-IP fixed-window quota. Expected errors include 400 for malformed input, 401 for missing or expired signature, 403 for wrong buyer or paused policy, 404 for absent resources, 409 for transaction or policy mismatch, 413 for oversized requests, 429 for rate limits, and 503 for incomplete deployment configuration.
+
+## Wallet account sessions and settings
+
+Account sessions authorize profile metadata only. They do not authorize owner activity reads, source content, paid execution, answer recovery, settlement, refunds or on-chain ownership. Those routes retain their existing wallet signatures and receipt checks.
+
+| Route | Request | Response |
+| --- | --- | --- |
+| `POST /api/auth/challenge` | `{address}` | `{message, nonce, expiresAt}` |
+| `POST /api/auth/verify` | `{message, signature}` | `{account, csrfToken, expiresAt}` and session cookie |
+| `POST /api/auth/logout` | No body, authenticated CSRF header | 204 and cleared session cookie |
+| `GET /api/account` | Session cookie | `{account, csrfToken, expiresAt}` |
+| `PATCH /api/account` | Partial `{displayName, locale, notificationPreferences}` | `{account}` |
+| `GET /api/account/export` | Session cookie | JSON attachment |
+| `POST /api/account/deletion-request` | `{}` with CSRF header | `{requestId, status: "pending"}` |
+
+Challenge and verification require an exact same-origin `Origin`. Standard SIWE messages bind the wallet, origin, five-minute expiration, configured chain and `urn:datavault:<chainId>:<lowercase contract>` resource. Verification accepts only the exact issued message, a matching browser challenge cookie and an EOA personal-sign signature. Contract-wallet verification is unsupported. Guarded SQL consumes each nonce once, including concurrent verification requests. Expired nonces and sessions are removed opportunistically when challenges are issued.
+
+The random opaque 256-bit session cookie is `HttpOnly; Secure; SameSite=Lax; Path=/`, expires after 24 hours and has no Domain attribute. D1 stores its SHA-256 digest, not the cookie token. Accounts and sessions are scoped to wallet, chain and contract. Public HTTP is rejected. Non-Secure HTTP cookies and a loopback Vite proxy origin are permitted only on exact `localhost` or `127.0.0.1` deployments configured for local chain 31337. Public `ALLOWED_ORIGINS` entries do not permit cross-origin cookie account mutations; credentialed cross-origin CORS is not enabled.
+
+Every authenticated mutation requires the exact session `x-csrf-token` and a trusted origin. Logout requires origin even when the session has expired; a valid active session additionally requires its CSRF token. All API responses use `Cache-Control: no-store`. Auth operations have a per-IP quota of 10 per minute and account mutations 20 per minute. POST and PATCH JSON bodies are bounded to 8 KB before parsing.
+
+`account` contains lowercase `address`, `displayName` (at most 80 characters, no control characters), `locale` (currently `en-GB`), `notificationPreferences: {inApp, email}`, and millisecond `createdAt`/`updatedAt`. Unknown fields, address edits and unsupported locales are rejected. In-app preferences default true but no notification inbox is implemented yet. Email defaults false and cannot be enabled until verified-email support exists. CSRF tokens are response metadata and are excluded from profile exports.
+
+The export includes only the current deployment's own profile, notification preferences and pending deletion requests. It excludes cookie tokens, keys, source content, questions, paid answers, other wallets and immutable on-chain records. A deletion request is idempotent while pending. It is stored for later processing, does not delete anything and makes no completed-deletion promise. Private source/paid-answer retention and destructive processing must be defined in a separate phase; on-chain records are immutable.
+
+The Settings page restores a matching session without prompting the wallet. Sign-in prompts only after the user clicks the button. Wallet/network changes hide the old profile immediately, fence delayed responses and revoke the previous session where possible. Session tokens remain in HttpOnly cookies and are never saved to browser storage. Sign-out errors are visible and can be retried.

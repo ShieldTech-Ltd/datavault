@@ -1,3 +1,4 @@
+import { handleAccountRoute } from "./routes/account";
 import type { Env } from "./lib/types";
 import {
   handleRegisterCollection,
@@ -79,7 +80,9 @@ export default {
         }
         let res: Response;
 
-        if (method === "GET" && path === "/api/marketplace/analytics") {
+        if (path === "/api/account" || path.startsWith("/api/account/") || path.startsWith("/api/auth/")) {
+          res = await handleAccountRoute(request, env);
+        } else if (method === "GET" && path === "/api/marketplace/analytics") {
           res = await handleMarketplaceAnalytics(env);
         } else if (method === "GET" && path === "/api/owner/analytics") {
           res = await handleOwnerAnalytics(request, env);
