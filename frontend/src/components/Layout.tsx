@@ -213,7 +213,7 @@ export default function Layout() {
               <span style={{ fontSize: "0.8rem" }} aria-hidden="true">🔬</span>
               <span style={{ flex: 1 }}>
                 <strong style={{ color: "var(--accent)" }}>Preview mode</strong>
-                {" — "}sample data only. No real uploads, payments, or API keys.
+                {": "}sample data only. No real uploads, payments, or API keys.
                 {" "}<Link to="/query" style={{ color: "var(--accent)", fontWeight: 600 }}>Try the live query flow</Link>
                 {" or "}<Link to="/manage" style={{ color: "var(--accent)", fontWeight: 600 }}>manage a collection</Link>.
               </span>

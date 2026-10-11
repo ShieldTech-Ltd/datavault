@@ -21,7 +21,7 @@ The content hash in the ID pins the citation to the exact document version used 
 ## Passage ID versioning
 
 Passage IDs take the form `{contentHash}:{chunkId}` where:
-- `contentHash` is the `keccak256` of the collection document at the time of retrieval
+- `contentHash` is the `keccak256` of the document in the confirmed collection record. The Worker checks the bytes fetched from private R2 against that hash before sending passages to the model or recovering cited text.
 - `chunkId` is `chunk-N` where N is the zero-based index of a chunk capped at 600 words and 4,000 characters
 
 The splitter normalizes whitespace and splits long tokens at Unicode character boundaries. A short nonempty document still produces a passage. An unchanged content hash must continue to use this splitter so stored passage IDs reconstruct the same text.
@@ -58,7 +58,7 @@ Passage content is wrapped in `<passage id="...">` XML tags in the model prompt.
 
 ## Response digest
 
-The receipt records `responseDigest = "sha256:" + sha256(answerText)`. This allows independent verification that the stored answer text matches the digest in the receipt. The digest covers exactly the answer bytes returned to the buyer.
+The receipt records `responseDigest = "sha256:" + sha256(answerText)`. The settlement transaction emits the same 32-byte digest in `QuerySettled`. The buyer view checks the answer text, receipt digest, and on-chain event. The digest covers exactly the answer bytes returned to the buyer; it does not establish factual correctness.
 
 ## Limitations
 

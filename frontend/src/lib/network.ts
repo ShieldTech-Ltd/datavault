@@ -11,14 +11,27 @@ interface EvmNetwork {
   vanityName: string;
 }
 
+const configuredChainId = Number(import.meta.env.VITE_CHAIN_ID) || 10143;
+const configuredName = configuredChainId === 31337 ? "Local test chain" : "Monad Testnet";
+
 export const monadTestnet: EvmNetwork = {
   blockExplorerUrls: ["https://testnet.monadexplorer.com"],
-  chainId: Number(import.meta.env.VITE_CHAIN_ID) || 10143,
-  chainName: "Monad Testnet",
+  chainId: configuredChainId,
+  chainName: configuredName,
   iconUrls: [],
-  name: "Monad Testnet",
+  name: configuredName,
   nativeCurrency: { decimals: 18, name: "MON", symbol: "MON" },
-  networkId: Number(import.meta.env.VITE_CHAIN_ID) || 10143,
+  networkId: configuredChainId,
   rpcUrls: [import.meta.env.VITE_CHAIN_RPC_URL || "https://testnet-rpc.monad.xyz"],
-  vanityName: "Monad Testnet",
+  vanityName: configuredName,
 };
+
+export function transactionExplorerUrl(hash: string | null): string | null {
+  if (
+    monadTestnet.chainId !== 10143 ||
+    !hash ||
+    !/^0x[0-9a-fA-F]{64}$/.test(hash)
+  )
+    return null;
+  return `${monadTestnet.blockExplorerUrls[0]}/tx/${hash}`;
+}

@@ -6,7 +6,7 @@ export const DATAVAULT_ABI = parseAbi([
   "function updateOperator(bytes32 collectionId, address newOperator) external",
   "function updatePolicy(bytes32 collectionId, uint256 price, bool active) external",
   "function openQuery(bytes32 requestId, bytes32 collectionId) external payable",
-  "function settleQuery(bytes32 requestId) external",
+  "function settleQuery(bytes32 requestId, bytes32 answerDigest) external",
   "function refundExpired(bytes32 requestId) external",
   "function getCollection(bytes32 collectionId) external view returns (address,address,uint256,uint32,bool)",
   "function getQuery(bytes32 requestId) external view returns (bytes32,address,uint256,uint32,uint64,uint8)",
@@ -15,7 +15,7 @@ export const DATAVAULT_ABI = parseAbi([
   "event OperatorUpdated(bytes32 indexed collectionId, address indexed newOperator)",
   "event PolicyUpdated(bytes32 indexed collectionId, uint256 price, bool active, uint32 policyVersion)",
   "event QueryOpened(bytes32 indexed requestId, bytes32 indexed collectionId, address indexed buyer, uint256 amount)",
-  "event QuerySettled(bytes32 indexed requestId, address indexed owner)",
+  "event QuerySettled(bytes32 indexed requestId, address indexed owner, bytes32 answerDigest)",
   "event QueryRefunded(bytes32 indexed requestId, address indexed buyer)",
 ]);
 

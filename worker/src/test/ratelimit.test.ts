@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { MockD1Database, makeEnv } from "./helpers";
-import { checkRateLimit, callerIdentity } from "../lib/ratelimit";
+import { checkRateLimit, callerIdentity, routeRateBucket } from "../lib/ratelimit";
+import worker from "../index";
 
 describe("checkRateLimit", () => {
   let db: MockD1Database;
@@ -48,6 +49,39 @@ describe("checkRateLimit", () => {
     }
     const result = await checkRateLimit("2.2.2.2", "execute", env as never);
     expect(result.allowed).toBe(true);
+  });
+
+  it("limits RPC-heavy quote and registration-confirmation calls", () => {
+    expect(routeRateBucket("POST", "/api/queries/prepare")).toBe("quote");
+    expect(routeRateBucket("POST", `/api/collections/${"a".repeat(64)}/confirm`)).toBe("confirm");
+    expect(routeRateBucket("POST", `/api/queries/${"a".repeat(64)}/reconcile`)).toBe("reconcile");
+    expect(routeRateBucket("GET", "/api/demo")).toBe("catalogue");
+    expect(routeRateBucket("GET", `/api/queries/${"a".repeat(64)}/answer`)).toBe("catalogue");
+    expect(routeRateBucket("GET", `/api/queries/${"a".repeat(64)}/receipt`)).toBe("catalogue");
+    expect(routeRateBucket("POST", "/api/queries/execute")).toBeNull();
+    expect(routeRateBucket("POST", "/api/collections")).toBeNull();
+  });
+
+  it("rejects excess quote requests independently of paid execution", async () => {
+    for (let i = 0; i < 30; i++) {
+      expect((await checkRateLimit("1.2.3.4", "quote", env as never)).allowed).toBe(true);
+    }
+    expect((await checkRateLimit("1.2.3.4", "quote", env as never)).allowed).toBe(false);
+    expect((await checkRateLimit("1.2.3.4", "execute", env as never)).allowed).toBe(true);
+  });
+
+  it("returns 429 before handling an excess public quote", async () => {
+    for (let i = 0; i < 30; i++) {
+      const response = await worker.fetch(new Request("https://demo.example/api/queries/prepare", {
+        method: "POST", body: "{}", headers: { "CF-Connecting-IP": "203.0.113.8" },
+      }), env as never);
+      expect(response.status).toBe(503);
+    }
+    const response = await worker.fetch(new Request("https://demo.example/api/queries/prepare", {
+      method: "POST", body: "{}", headers: { "CF-Connecting-IP": "203.0.113.8" },
+    }), env as never);
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("60");
   });
 });
 

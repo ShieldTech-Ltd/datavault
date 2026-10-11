@@ -14,6 +14,7 @@ import { verifyRegistrationReceipt } from "../lib/chain-receipts";
 import { registrationMessage } from "../../../shared/api";
 import { paidServiceConfigured } from "../lib/config";
 import { rpcMatchesConfiguredChain } from "../lib/chain-identity";
+import { collectionIdFor } from "../lib/collection-id";
 
 // Staging collections expire after 30 minutes if the owner never confirms the tx.
 const STAGING_EXPIRY_MS = 30 * 60 * 1000;
@@ -61,8 +62,8 @@ export async function handleRegisterCollection(req: Request, env: Env): Promise<
     return new Response("Monad RPC chain does not match this deployment.", { status: 503 });
   }
 
-  // Derive the collection ID from the signed owner and content hash.
-  const collectionId = keccak256(toBytes(`${ownerAddress}:${contentHash}`));
+  const collectionId = collectionIdFor(Number(env.CHAIN_ID), env.CONTRACT_ADDRESS,
+    ownerAddress, contentHash);
 
   const existing = await getCollectionRow(collectionId, env);
   if (existing && existing.status !== "orphaned" &&
@@ -122,9 +123,13 @@ export async function handleConfirmCollection(
   const col = await getCollectionRow(collectionId, env);
   if (!col) return new Response("Collection not found", { status: 404 });
   if (col.status === "confirmed") {
-    return new Response(JSON.stringify({ ok: true, alreadyConfirmed: true }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    if (col.owner_address === (body.ownerAddress as string).toLowerCase() &&
+        col.confirmed_tx?.toLowerCase() === (body.txHash as string).toLowerCase()) {
+      return new Response(JSON.stringify({ ok: true, alreadyConfirmed: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("Confirmed registration does not match this owner and transaction.", { status: 409 });
   }
   if (col.status === "orphaned") return error400("Staging window expired. Please register again.");
 
@@ -148,7 +153,18 @@ export async function handleConfirmCollection(
     return new Response("Registration transaction is unconfirmed or does not match this collection.", { status: 409 });
   }
 
-  await confirmCollection(collectionId, body.txHash as string, env);
+  const confirmed = await confirmCollection(collectionId, body.txHash as string, env);
+  if (!confirmed) {
+    const latest = await getCollectionRow(collectionId, env);
+    if (latest?.status === "confirmed" &&
+        latest.owner_address === (body.ownerAddress as string).toLowerCase() &&
+        latest.confirmed_tx?.toLowerCase() === (body.txHash as string).toLowerCase()) {
+      return new Response(JSON.stringify({ ok: true, alreadyConfirmed: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("Registration state changed during confirmation.", { status: 409 });
+  }
 
   return new Response(
     JSON.stringify({ ok: true, collectionId, status: "confirmed" }),

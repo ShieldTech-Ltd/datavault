@@ -2,7 +2,7 @@
 
 Paid, controlled AI access to private knowledge collections.
 
-An owner uploads a private Markdown document, sets a per-query price, and registers policy on Monad testnet. A buyer signs a Monad transaction placing payment in escrow. The Cloudflare Worker verifies payment and current policy, retrieves relevant passages from private R2 storage, calls a real AI model, returns a cited answer, and settles escrow to the owner. The owner can pause access at any time.
+An owner uploads a private Markdown document, sets a per-query price, and registers policy on Monad testnet. A buyer signs a Monad transaction placing payment in escrow. The Cloudflare Worker verifies payment and current policy, retrieves relevant passages from private R2 storage, calls a real AI model, records a cited answer, settles escrow to the owner, and returns the answer after settlement confirmation. The owner can pause access at any time.
 
 **Hackathon:** Monad Metropolis  
 **Track:** Trust, Identity and AI Infrastructure  
@@ -35,12 +35,12 @@ contracts/          Solidity contract and Hardhat tests
 frontend/           React + Vite + TypeScript UI
   src/
     lib/            Injected wallet context, Monad network, viem contract client
-    components/     ConnectButton, OwnerDashboard, BuyerDashboard
+    components/     Wallet, owner, buyer, and marketplace views
 worker/             Cloudflare Worker API
   src/
     lib/            policy.ts, model.ts, r2.ts, d1.ts, types.ts
-    routes/         collections.ts, queries.ts
-    test/           94 Vitest unit tests (validation, D1 state machine, rate limit, route auth)
+    routes/         collections, queries, catalogue, and analytics
+    test/           Worker unit and route tests
   migrations/       D1 SQL schema
 scripts/            Hardhat deploy script
 demo/               Team-authored UK Practical Guide (sample knowledge collection)
@@ -97,7 +97,7 @@ cd worker
 npx wrangler d1 create datavault-db
 ```
 
-Copy the returned `database_id` into `worker/wrangler.toml`.
+For a public deployment, copy `worker/wrangler.toml` to the ignored `worker/wrangler.deploy.toml` and place the returned `database_id` there. Local Wrangler development uses its simulated D1 binding without a remote ID.
 
 Apply the schema locally:
 
@@ -132,16 +132,20 @@ cd frontend && npm run dev
 
 Open http://localhost:5173.
 
+For UI and UX review without a wallet, open `http://localhost:5173/demo.html` while Vite is running. This local preview has sample owner and buyer states only. It makes no API, model, wallet, or Monad calls and is excluded from the production build. Use the main app and live acceptance checklist to verify real payments and answers.
+
 ---
 
 ## Build and deploy to Cloudflare
+
+Complete [the deployment runbook](docs/deployment.md), including the release configuration checks and real resource bindings, before this command.
 
 ```sh
 # Build the frontend
 npm run build:frontend
 
 # Deploy the Worker (serves the built frontend as static assets)
-cd worker && npm run deploy
+cd worker && npx wrangler deploy --config wrangler.deploy.toml
 ```
 
 ---
@@ -161,13 +165,15 @@ npm run typecheck:worker
 # Smart contract tests (20 Hardhat tests)
 npm run test:contracts
 
-# Worker unit tests (94 Vitest tests, no live chain or model calls)
+# Worker unit tests (no live chain or model calls)
 cd worker && npm test
 ```
 
 Contract tests cover: registerCollection, updatePolicy, openQuery, settleQuery, refundExpired, operator model, replay protection, timeout refund.
 
-Worker tests cover: input validation, D1 state machine transitions, rate limiting, route auth and access control. See `docs/testing.md` for full scope and live gate documentation.
+Worker tests cover: input validation, D1 state machine transitions, rate limiting, route auth and access control, catalogue filtering, and settlement analytics. See `docs/testing.md` for full scope and live gate documentation.
+
+For a local paid-flow integration rehearsal using a Hardhat chain, Wrangler D1/R2, and an HTTPS model stub, follow [the local rehearsal steps](docs/testing.md#local-paid-flow-rehearsal) and run `npm run rehearse:local`. It does not replace Monad testnet acceptance testing.
 
 ---
 
@@ -189,23 +195,23 @@ Worker tests cover: input validation, D1 state machine transitions, rate limitin
 | `MONAD_RPC_URL` | Monad RPC endpoint |
 | `SETTLEMENT_PRIVATE_KEY` | Key used by Worker to call settleQuery |
 | `MODEL_API_KEY` | AI model provider key |
-| `MODEL_PROVIDER` | `openai` or `kimi` |
-| `MODEL_API_BASE` | API base URL (default: OpenAI) |
-| `MODEL_NAME` | Model name (default: gpt-4o-mini) |
+| `MODEL_PROVIDER` | `openai` or `kimi`; both use an OpenAI-compatible chat-completions endpoint |
+| `MODEL_API_BASE` | HTTPS API base URL (default: OpenAI); required for `kimi` |
+| `MODEL_NAME` | Model name (default: gpt-4o-mini); required for `kimi` |
 
 ---
 
 ## Ownership
 
-**Tanvir:** Solidity contracts, Worker API, R2 and D1, payment state machine, security checks, AI model integration.  
-**Ritik:** React frontend, injected wallet connection, owner and buyer UX, demo video editing.
+**Tanvir:** Solidity contracts, core Worker API, R2 and D1 payment state machine, and AI model integration.  
+**Ritik:** React frontend, wallet and owner/buyer UX, marketplace and analytics routes, local integration rehearsal, and demo preparation.
 
 ---
 
 ## Current release and submission status
 
-The source implements the owner and buyer flows, but a public deployment and live paid-query evidence have not yet been recorded. Use [the deployment runbook](docs/deployment.md) for the current release gates, [the security controls](docs/security.md) for credential and CI requirements, and [the API contract](docs/api-contract.md) for the buyer authorization protocol. The sample collection appears in the guided buyer view only after an actual owner registration has been confirmed and `DEMO_COLLECTION_ID` is configured. Content replacement is disabled until it can advance on-chain policy version.
+The source implements owner and buyer flows, plus a marketplace dashboard backed by verified collection metadata and recorded settlement data, and signed buyer request-history sync for answer recovery across devices. A public deployment and live paid-query evidence have not yet been recorded. Use [the deployment runbook](docs/deployment.md) for the current release gates, [the security controls](docs/security.md) for credential and CI requirements, and [the API contract](docs/api-contract.md) for the buyer authorization protocol. The sample collection appears in the guided buyer view only after an actual owner registration has been confirmed and `DEMO_COLLECTION_ID` is configured. Content replacement is disabled until it can advance on-chain policy version.
 
-The repository is licensed under [MIT](LICENSE). External libraries include Hardhat and viem for contract development and chain access, React and Vite for the browser app, and Cloudflare Workers, R2, D1, and Wrangler for hosting and storage. Their package names and versions are recorded in the root, frontend, and worker package manifests and lockfiles. The team-authored sample guide is in `demo/` and must be fact-checked before public use. Any separately sourced assets or code must be attributed here before submission.
+The repository is licensed under [MIT](LICENSE). External libraries include Hardhat and viem for contract development and chain access, React and Vite for the browser app, and Cloudflare Workers, R2, D1, and Wrangler for hosting and storage. Their package names and versions are recorded in the root, frontend, and worker package manifests and lockfiles. The team-authored sample guide is in `demo/`, links to official guidance, and still needs human review and user feedback before public use. Any separately sourced assets or code must be attributed here before submission.
 
 AI coding tools were used to help write and revise parts of this project, including the demo readiness changes. Contributors remain responsible for reviewing, testing, and verifying the submitted code and claims. A hash records content integrity within this service. It does not establish copyright ownership, prevent external AI systems from using content, or erase answers already delivered.

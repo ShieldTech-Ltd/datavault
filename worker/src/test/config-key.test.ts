@@ -26,5 +26,11 @@ describe("settlement key release guard", () => {
     const env = makeEnv({ CONTRACT_ADDRESS: `0x${"aa".repeat(20)}`, SETTLEMENT_PRIVATE_KEY: key });
     expect(paidServiceConfigured(env as never)).toBe(true);
     expect(paidServiceConfigured({ ...env, MODEL_API_KEY: "" } as never)).toBe(false);
+    expect(paidServiceConfigured({ ...env, MODEL_API_BASE: "http://model.example/v1" } as never)).toBe(false);
+    expect(paidServiceConfigured({ ...env, MODEL_API_BASE: "https://model.example/v1?key=secret" } as never)).toBe(false);
+    expect(paidServiceConfigured({ ...env, MODEL_API_BASE: "https://model.example/v1" } as never)).toBe(true);
+    expect(paidServiceConfigured({ ...env, MODEL_PROVIDER: "kimi" } as never)).toBe(false);
+    expect(paidServiceConfigured({ ...env, MODEL_PROVIDER: "kimi", MODEL_API_BASE: "https://model.example/v1", MODEL_NAME: "test-model" } as never)).toBe(true);
+    expect(paidServiceConfigured({ ...env, MODEL_PROVIDER: "unknown" } as never)).toBe(false);
   });
 });

@@ -22,7 +22,7 @@ pragma solidity ^0.8.24;
  * settlement (Worker's key) without sharing private keys.
  *
  * State machine per request:
- *   Open -> Settled  (answer delivered, payment released to owner)
+ *   Open -> Settled  (answer digest recorded, payment released to owner)
  *   Open -> Refunded (timeout elapsed, payment returned to buyer)
  */
 contract DataVault {
@@ -84,7 +84,7 @@ contract DataVault {
         address indexed buyer,
         uint256 amount
     );
-    event QuerySettled(bytes32 indexed requestId, address indexed owner);
+    event QuerySettled(bytes32 indexed requestId, address indexed owner, bytes32 answerDigest);
     event QueryRefunded(bytes32 indexed requestId, address indexed buyer);
 
     // ─────────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ contract DataVault {
 
     /**
      * Register a new collection.
-     * collectionId: derived off-chain as keccak256(ownerAddress + contentHash).
+     * collectionId: derived off-chain from chain, contract, owner, and content hash.
      * operator:     the Worker's settlement wallet address. Must not be address(0).
      *               Payment always goes to msg.sender (the owner), never to the operator.
      */
@@ -182,18 +182,21 @@ contract DataVault {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Operator: settle after successful answer delivery
+    // Operator: settle before releasing a recorded answer
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Called by the Worker (operator) after delivering a cited answer.
+     * Called by the Worker (operator) after recording a cited answer and
+     * before returning it to the buyer. The buyer can recover the answer
+     * after settlement if the Worker exits before delivery.
      * Only the registered operator may call this.
      * Payment is always released to the collection owner, never to the operator.
      */
-    function settleQuery(bytes32 requestId) external {
+    function settleQuery(bytes32 requestId, bytes32 answerDigest) external {
         Query storage q = queries[requestId];
         require(q.buyer != address(0), "unknown request");
         require(q.state == QueryState.Open, "already finalised");
+        require(answerDigest != bytes32(0), "answer digest required");
 
         Collection storage col = collections[q.collectionId];
         require(col.operator == msg.sender, "not authorized operator");
@@ -203,7 +206,7 @@ contract DataVault {
         (bool ok, ) = col.owner.call{value: q.amount}("");
         require(ok, "transfer failed");
 
-        emit QuerySettled(requestId, col.owner);
+        emit QuerySettled(requestId, col.owner, answerDigest);
     }
 
     // ─────────────────────────────────────────────────────────────

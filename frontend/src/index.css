@@ -172,5 +172,12 @@ button:disabled { opacity: 0.55; cursor: not-allowed; transform: none !important
   animation: netPulse 2s ease-out infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn, .animate-scaleIn, .animate-spin, .animate-pulse,
+  .skeleton, .net-pulse { animation: none; }
+  .card-hover, button, input, textarea, select { transition: none; }
+  .card-hover:hover, button:active { transform: none; }
+}
+
 /* ── Dynamic widget overrides ────────────────────────────────── */
 [data-testid="dynamic-widget-card"] { box-shadow: none !important; }

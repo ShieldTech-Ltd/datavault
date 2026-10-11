@@ -52,4 +52,23 @@ describe("model credential transport", () => {
       } as Env)).rejects.toThrow(/response is too large/);
     } finally { globalThis.fetch = originalFetch; }
   });
+
+  it("rejects a citation to a passage trimmed from the model context", async () => {
+    const originalFetch = globalThis.fetch;
+    let sent = "";
+    globalThis.fetch = vi.fn(async (_url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      sent = String(init?.body ?? "");
+      return new Response(JSON.stringify({ choices: [{ message: {
+        content: "Claim [Passage chunk-13].",
+      } }] }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      const passages = Array.from({ length: 14 }, () => "evidence ".repeat(300));
+      const passageIds = passages.map((_, i) => `chunk-${i}`);
+      await expect(callModel("Question?", passages, passageIds, {
+        MODEL_API_KEY: "private-test-key",
+      } as Env)).rejects.toThrow(/unknown passage IDs/);
+      expect(sent).not.toContain('<passage id="chunk-13">');
+    } finally { globalThis.fetch = originalFetch; }
+  });
 });

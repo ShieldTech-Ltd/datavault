@@ -223,7 +223,7 @@ export default function Earnings() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0.4rem 0.75rem", background: "var(--green-bg)", border: "1px solid rgba(22,163,74,0.2)", borderRadius: 8 }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--green)", display: "inline-block" }} />
-          <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--green-text)" }}>Live on Monad Testnet</span>
+          <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--green-text)" }}>Sample earnings preview</span>
         </div>
       </div>
 

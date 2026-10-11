@@ -7,7 +7,7 @@
 3. The owner sends the registration transaction. `POST /api/collections/:id/confirm` verifies a successful matching transaction and the on-chain owner before setting D1 status to `confirmed`.
 4. Only a confirmed D1 row with active on-chain policy can receive quotes and paid queries.
 
-The collection ID is `keccak256(ownerAddress + ":" + contentHash)`. A signature proves control of the owner wallet. It does not prove copyright or permission to publish content. A staging row can be replaced atomically after 30 minutes if registration has not been confirmed. The 30-minute threshold does not invalidate an on-chain registration or prevent its later confirmation. Orphaned R2 objects can be cleaned up later.
+For new registrations, the collection ID is `keccak256("datavault-collection-v2:<chainId>:<lowercase contract>:<lowercase owner>:<lowercase contentHash>")`. This keeps the same document distinct across contract redeployments while preserving deterministic IDs within a deployment. Previously registered collection IDs remain valid. A signature proves control of the owner wallet. It does not prove copyright or permission to publish content. A staging row can be replaced atomically after 30 minutes if registration has not been confirmed. The 30-minute threshold does not invalidate an on-chain registration or prevent its later confirmation. Orphaned R2 objects can be cleaned up later.
 
 ## Content replacement
 

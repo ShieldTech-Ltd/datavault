@@ -125,8 +125,8 @@ export async function buildRegisterCalldata(
   return encodeFunctionData({ abi, functionName: "registerCollection", args: [collectionId, priceWei, operator] });
 }
 
-export async function buildSettleCalldata(requestId: `0x${string}`): Promise<`0x${string}`> {
+export async function buildSettleCalldata(requestId: `0x${string}`, answerDigest: `0x${string}`): Promise<`0x${string}`> {
   const { encodeFunctionData } = await import("viem");
-  const abi = parseAbi(["function settleQuery(bytes32 requestId) external"]);
-  return encodeFunctionData({ abi, functionName: "settleQuery", args: [requestId] });
+  const abi = parseAbi(["function settleQuery(bytes32 requestId, bytes32 answerDigest) external"]);
+  return encodeFunctionData({ abi, functionName: "settleQuery", args: [requestId, answerDigest] });
 }

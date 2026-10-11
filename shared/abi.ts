@@ -36,7 +36,7 @@ export const DATAVAULT_ABI = [
     "type": "function"
   },
   {
-    "inputs": [{ "name": "requestId", "type": "bytes32" }],
+    "inputs": [{ "name": "requestId", "type": "bytes32" }, { "name": "answerDigest", "type": "bytes32" }],
     "name": "settleQuery",
     "outputs": [],
     "stateMutability": "nonpayable",
@@ -129,7 +129,8 @@ export const DATAVAULT_ABI = [
     "anonymous": false,
     "inputs": [
       { "indexed": true, "name": "requestId", "type": "bytes32" },
-      { "indexed": true, "name": "owner", "type": "address" }
+      { "indexed": true, "name": "owner", "type": "address" },
+      { "indexed": false, "name": "answerDigest", "type": "bytes32" }
     ],
     "name": "QuerySettled",
     "type": "event"
