@@ -60,13 +60,33 @@ export default function CollectionDetail() {
 
   if (!col) {
     return (
-      <div style={{ padding: "2rem", color: "var(--text)" }}>
-        <p style={{ color: "var(--text-2)" }}>Collection not found.</p>
+      <div style={{
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        minHeight: 320, gap: "1rem", color: "var(--text)",
+      }}>
+        <div style={{
+          width: 60, height: 60, borderRadius: "50%",
+          background: "var(--surface-3)", border: "1px solid var(--border)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="1.5">
+            <rect x="2" y="2" width="9" height="9" rx="1.5"/><rect x="13" y="2" width="9" height="9" rx="1.5"/>
+            <rect x="2" y="13" width="9" height="9" rx="1.5"/><rect x="13" y="13" width="9" height="9" rx="1.5"/>
+          </svg>
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontWeight: 700, fontSize: "1rem", marginBottom: 6 }}>Collection not found</div>
+          <div style={{ fontSize: "0.85rem", color: "var(--text-2)" }}>This collection may have been removed or the ID is invalid.</div>
+        </div>
         <button
           onClick={() => navigate("/collections")}
-          style={{ marginTop: "1rem", cursor: "pointer", color: "var(--accent)", background: "none", border: "none" }}
+          style={{
+            background: "linear-gradient(135deg,#7c3aed,#6366f1)", color: "white",
+            border: "none", borderRadius: 8, padding: "0.55rem 1.25rem",
+            fontWeight: 600, fontSize: "0.85rem", cursor: "pointer",
+          }}
         >
-          Back to My Collections
+          ← Back to My Collections
         </button>
       </div>
     );
@@ -180,23 +200,26 @@ export default function CollectionDetail() {
             style={{
               ...card,
               marginBottom: "1rem",
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.65rem",
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "0.75rem",
             }}
           >
             {[
-              { icon: "📄", label: `${col.files} Files` },
-              { icon: "📊", label: "1,248 Total Queries" },
-              { icon: "🪙", label: "2.48 MON Total Earnings" },
-              { icon: "✅", label: "99.9% Uptime" },
-            ].map(({ icon, label }) => (
+              { value: `${col.files}`, label: "Files", color: "var(--blue)" },
+              { value: "1,248", label: "Queries", color: "var(--accent)" },
+              { value: "2.48 MON", label: "Earnings", color: "var(--green)" },
+              { value: "99.9%", label: "Uptime", color: "var(--yellow)" },
+            ].map(({ value, label, color }) => (
               <div
                 key={label}
-                style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "0.84rem", color: "var(--text-2)" }}
+                style={{
+                  background: "var(--surface-2)", borderRadius: 8,
+                  padding: "0.6rem 0.75rem", textAlign: "center",
+                }}
               >
-                <span style={{ fontSize: "1rem" }}>{icon}</span>
-                <span>{label}</span>
+                <div style={{ fontSize: "1rem", fontWeight: 800, color, marginBottom: 2 }}>{value}</div>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-3)", fontWeight: 500, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
               </div>
             ))}
           </div>

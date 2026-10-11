@@ -282,13 +282,25 @@ export default function Marketplace() {
                 background: "var(--surface)",
                 border: "1px solid var(--border)",
                 borderRadius: "var(--radius)",
-                padding: "3rem",
+                padding: "4rem 2rem",
                 textAlign: "center",
-                color: "var(--text-3)",
-                fontSize: "0.9rem",
+                boxShadow: "var(--shadow)",
               }}
             >
-              No collections match your filters. Try adjusting the category or search term.
+              <div style={{
+                width: 56, height: 56, borderRadius: "50%",
+                background: "var(--surface-3)", border: "1px solid var(--border)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                margin: "0 auto 1rem",
+              }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="1.5">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+              </div>
+              <div style={{ fontSize: "1rem", fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>No collections found</div>
+              <div style={{ fontSize: "0.84rem", color: "var(--text-2)", maxWidth: 300, margin: "0 auto" }}>
+                Try a different search term, category, or clear your filters to browse all collections.
+              </div>
             </div>
           )}
         </div>
@@ -317,6 +329,7 @@ function CollectionCard({ col, navigate, primaryBtn, ghostBtn }: CardProps) {
 
   return (
     <div
+      className="card-hover"
       style={{
         background: "var(--surface)",
         border: `1px solid ${hovered ? "var(--accent-bdr)" : "var(--border)"}`,
@@ -346,15 +359,17 @@ function CollectionCard({ col, navigate, primaryBtn, ghostBtn }: CardProps) {
               position: "absolute",
               top: 10,
               right: 10,
-              background: "#1d4ed8",
-              color: "#fff",
+              background: "rgba(251,191,36,0.2)",
+              color: "#d97706",
+              border: "1px solid rgba(217,119,6,0.4)",
               borderRadius: 20,
               padding: "3px 10px",
-              fontSize: "0.7rem",
+              fontSize: "0.68rem",
               fontWeight: 700,
+              backdropFilter: "blur(6px)",
             }}
           >
-            Verified
+            ✦ Verified
           </span>
         )}
       </div>
