@@ -55,52 +55,53 @@ export default function Analytics() {
     <div style={{ padding: "2rem", color: "var(--text)", maxWidth: 1100, margin: "0 auto" }}>
       {/* Header */}
       <div style={{ marginBottom: "1.5rem" }}>
-        <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: 0 }}>Analytics & Insights</h1>
-        <p style={{ color: "var(--text-2)", marginTop: 6, fontSize: "0.9rem" }}>
+        <p style={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 6 }}>Performance Metrics</p>
+        <h1 style={{ fontSize: "1.75rem", fontWeight: 800, margin: 0, letterSpacing: "-0.02em" }}>Analytics &amp; Insights</h1>
+        <p style={{ color: "var(--text-3)", marginTop: 6, fontSize: "0.875rem" }}>
           Track performance, understand your audience, and optimise growth.
         </p>
       </div>
 
       {/* Stats row */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "1rem", marginBottom: "1.5rem" }}>
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--blue-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <div style={{ ...cardStyle, borderLeft: "3px solid var(--blue)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 9, background: "var(--blue-bg)", border: "1px solid rgba(37,99,235,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
             </div>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-2)", fontWeight: 600 }}>Total Queries In</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Total Queries</span>
           </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: 700 }}>{DASHBOARD_STATS.totalQueries.toLocaleString()}</div>
+          <div style={{ fontSize: "1.7rem", fontWeight: 800, letterSpacing: "-0.02em" }}>{DASHBOARD_STATS.totalQueries.toLocaleString()}</div>
         </div>
 
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--green-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+        <div style={{ ...cardStyle, borderLeft: "3px solid var(--green)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 9, background: "var(--green-bg)", border: "1px solid rgba(22,163,74,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
             </div>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-2)", fontWeight: 600 }}>Total Earnings</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Total Earnings</span>
           </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: 700 }}>{DASHBOARD_STATS.totalEarnings}</div>
+          <div style={{ fontSize: "1.7rem", fontWeight: 800, letterSpacing: "-0.02em", color: "var(--green)" }}>{DASHBOARD_STATS.totalEarnings}</div>
         </div>
 
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--accent-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        <div style={{ ...cardStyle, borderLeft: "3px solid var(--accent)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 9, background: "var(--accent-bg)", border: "1px solid var(--accent-bdr)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
             </div>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-2)", fontWeight: 600 }}>Unique Users</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Unique Users</span>
           </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: 700 }}>328</div>
+          <div style={{ fontSize: "1.7rem", fontWeight: 800, letterSpacing: "-0.02em" }}>328</div>
         </div>
 
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 8, background: "var(--green-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+        <div style={{ ...cardStyle, borderLeft: "3px solid #10b981" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 9, background: "var(--green-bg)", border: "1px solid rgba(22,163,74,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-2)", fontWeight: 600 }}>Uptime / Retention</span>
+            <span style={{ fontSize: "0.72rem", color: "var(--text-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Uptime</span>
           </div>
-          <div style={{ fontSize: "1.6rem", fontWeight: 700 }}>{DASHBOARD_STATS.uptime}</div>
+          <div style={{ fontSize: "1.7rem", fontWeight: 800, letterSpacing: "-0.02em", color: "#10b981" }}>{DASHBOARD_STATS.uptime}</div>
         </div>
       </div>
 
@@ -167,16 +168,20 @@ export default function Analytics() {
               <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>Top Queries</span>
               <a href="#" style={{ fontSize: "0.75rem", color: "var(--accent)", textDecoration: "none" }}>More →</a>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
               {TOP_QUERIES.map((q, i) => (
                 <div key={i}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontSize: "0.7rem", color: "var(--text-3)", minWidth: 14, fontWeight: 600 }}>#{i + 1}</span>
-                    <span style={{ fontSize: "0.78rem", color: "var(--text)", flex: 1, lineHeight: 1.3 }}>{q.text}</span>
-                    <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-2)" }}>{q.count}</span>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
+                    <span style={{
+                      fontSize: "0.65rem", color: "var(--accent)", minWidth: 20, fontWeight: 800,
+                      background: "var(--accent-bg)", border: "1px solid var(--accent-bdr)",
+                      borderRadius: 4, padding: "1px 4px", textAlign: "center", flexShrink: 0, marginTop: 1,
+                    }}>#{i + 1}</span>
+                    <span style={{ fontSize: "0.78rem", color: "var(--text)", flex: 1, lineHeight: 1.4 }}>{q.text}</span>
+                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--accent)", flexShrink: 0 }}>{q.count}</span>
                   </div>
-                  <div style={{ height: 4, borderRadius: 2, background: "var(--surface-3)", marginLeft: 22 }}>
-                    <div style={{ height: "100%", borderRadius: 2, background: "var(--accent)", width: `${(q.count / maxQueryCount) * 100}%` }} />
+                  <div style={{ height: 5, borderRadius: 3, background: "var(--surface-3)", marginLeft: 28 }}>
+                    <div style={{ height: "100%", borderRadius: 3, background: "linear-gradient(90deg,#7c3aed,#6366f1)", width: `${(q.count / maxQueryCount) * 100}%`, transition: "width 0.3s ease" }} />
                   </div>
                 </div>
               ))}
@@ -257,18 +262,18 @@ export default function Analytics() {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "1rem" }}>
-            <div style={cardStyle}>
-              <div style={labelStyle}>Total Earnings</div>
-              <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--green)" }}>{totalEarnings.toFixed(3)} MON</div>
+            <div style={{ ...cardStyle, borderLeft: "3px solid var(--green)" }}>
+              <div style={{ ...labelStyle, textTransform: "uppercase" as const, letterSpacing: "0.05em", fontSize: "0.68rem" }}>Total Earnings</div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--green)", letterSpacing: "-0.02em" }}>{totalEarnings.toFixed(3)} MON</div>
             </div>
-            <div style={cardStyle}>
-              <div style={labelStyle}>Daily Average</div>
-              <div style={{ fontSize: "1.4rem", fontWeight: 700 }}>{avgEarnings.toFixed(3)} MON</div>
+            <div style={{ ...cardStyle, borderLeft: "3px solid var(--blue)" }}>
+              <div style={{ ...labelStyle, textTransform: "uppercase" as const, letterSpacing: "0.05em", fontSize: "0.68rem" }}>Daily Average</div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--blue)", letterSpacing: "-0.02em" }}>{avgEarnings.toFixed(3)} MON</div>
             </div>
-            <div style={cardStyle}>
-              <div style={labelStyle}>Best Day</div>
-              <div style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--accent)" }}>{bestDay.earnings.toFixed(3)} MON</div>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-2)", marginTop: 2 }}>{bestDay.date}</div>
+            <div style={{ ...cardStyle, borderLeft: "3px solid var(--accent)", background: "var(--accent-bg)" }}>
+              <div style={{ ...labelStyle, textTransform: "uppercase" as const, letterSpacing: "0.05em", fontSize: "0.68rem" }}>Best Day</div>
+              <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--accent)", letterSpacing: "-0.02em" }}>{bestDay.earnings.toFixed(3)} MON</div>
+              <div style={{ fontSize: "0.73rem", color: "var(--text-2)", marginTop: 4 }}>📅 {bestDay.date}</div>
             </div>
           </div>
         </div>
