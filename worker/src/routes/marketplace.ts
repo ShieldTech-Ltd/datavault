@@ -1,3 +1,4 @@
+import { collectionMetadata } from './collection-metadata';
 import type { Env } from "../lib/types";
 import { getCollectionRow } from "../lib/d1";
 import { getOnChainCollection } from "../lib/policy";
@@ -13,6 +14,7 @@ interface ListedCollection {
   created_at: number;
   confirmed_tx: string | null;
   paid_queries: number;
+  description?: string; category?: string; visibility?: string;
 }
 
 function json(value: unknown, status = 200): Response {
@@ -31,6 +33,7 @@ async function verifiedCollection(row: ListedCollection, env: Env) {
   if (policy.owner.toLowerCase() !== row.owner_address.toLowerCase())
     return null;
   return {
+    description: row.description ?? '', category: row.category ?? 'General', visibility: row.visibility ?? 'public',
     collectionId: row.collection_id,
     name: row.collection_name,
     ownerAddress: row.owner_address,
@@ -85,14 +88,15 @@ export async function handleListCollections(
   const searchClause = search
     ? "AND LOWER(c.collection_name) LIKE ? ESCAPE '\\'"
     : "";
-  const sql = `SELECT c.collection_id, c.collection_name, c.owner_address, c.created_at, c.confirmed_tx,
+  const sql = `SELECT c.collection_id, c.collection_name, c.owner_address, c.created_at, c.confirmed_tx, m.description, m.category, m.visibility,
             COALESCE(q.paid_queries, 0) AS paid_queries
        FROM collections c
+       LEFT JOIN collection_metadata m ON m.chain_id = c.chain_id AND m.contract_address = c.contract_address AND m.collection_id = c.collection_id
        LEFT JOIN (
          SELECT collection_id, COUNT(*) AS paid_queries FROM queries
           WHERE outcome = 'settled' AND chain_id = ? AND LOWER(contract_address) = ? GROUP BY collection_id
        ) q ON q.collection_id = c.collection_id
-      WHERE c.status = 'confirmed' AND c.chain_id = ? AND c.contract_address = ? ${searchClause}
+      WHERE c.status = 'confirmed' AND c.chain_id = ? AND c.contract_address = ? AND NOT EXISTS (SELECT 1 FROM collection_metadata m WHERE m.chain_id = c.chain_id AND m.contract_address = c.contract_address AND m.collection_id = c.collection_id AND m.visibility = 'unlisted') ${searchClause}
       ORDER BY c.created_at DESC, c.collection_id DESC
       LIMIT ? OFFSET ?`;
   const escapedSearch = search.toLowerCase().replace(/[\\%_]/g, "\\$&");
@@ -159,6 +163,7 @@ export async function handleCollectionDetail(
     .first<{ paid_queries: number }>();
   const collection = await verifiedCollection(
     {
+      ...(await collectionMetadata(row.collection_id, env)),
       collection_id: row.collection_id,
       collection_name: row.collection_name,
       owner_address: row.owner_address,
@@ -188,9 +193,10 @@ export async function handleOwnerCollections(
     return json({ error: "Monad collection state is unavailable." }, 503);
   }
   const result = await env.DB.prepare(
-    `SELECT c.collection_id, c.collection_name, c.owner_address, c.created_at, c.confirmed_tx,
+    `SELECT c.collection_id, c.collection_name, c.owner_address, c.created_at, c.confirmed_tx, m.description, m.category, m.visibility,
             COALESCE(q.paid_queries, 0) AS paid_queries
        FROM collections c
+       LEFT JOIN collection_metadata m ON m.chain_id = c.chain_id AND m.contract_address = c.contract_address AND m.collection_id = c.collection_id
        LEFT JOIN (
          SELECT collection_id, COUNT(*) AS paid_queries FROM queries
           WHERE outcome = 'settled' AND chain_id = ? AND LOWER(contract_address) = ? GROUP BY collection_id

@@ -1,3 +1,4 @@
+import { handleCollectionMetadata } from './routes/collection-metadata';
 import { handleAccountRoute } from "./routes/account";
 import type { Env } from "./lib/types";
 import {
@@ -97,6 +98,8 @@ export default {
           /^\/api\/collections\/[^/]+$/.test(path)
         ) {
           res = await handleCollectionDetail(env, path.split("/")[3]);
+        } else if (method === "PATCH" && /^\/api\/collections\/[^/]+\/metadata$/.test(path)) {
+          res = await handleCollectionMetadata(request, env, path.split("/")[3]);
         } else if (method === "POST" && path === "/api/collections") {
           res = await handleRegisterCollection(request, env);
         } else if (
