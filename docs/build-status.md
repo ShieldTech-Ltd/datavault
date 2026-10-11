@@ -1,6 +1,6 @@
 # DataVault build status
 
-Updated 9 October 2026. This is source and local verification evidence, not a deployment claim. PR #51 is merged. The dashboard candidate in PR #52 is open at `f9966d2bef2cb7c0cc3b2e57322d9eba9bcde2c3`; its eight CI/Security checks passed. SaaS changes use separate stacked feature branches based on that candidate, without merging or changing PR #52.
+Updated 10 October 2026. This is source and local verification evidence, not a deployment claim. PR #51 is merged. The dashboard candidate in PR #52 is open at `f9966d2bef2cb7c0cc3b2e57322d9eba9bcde2c3`; its eight CI/Security checks passed. SaaS changes use separate stacked feature branches based on that candidate, without merging or changing PR #52.
 
 ## Current production dashboard and SaaS work
 
@@ -21,8 +21,9 @@ The SaaS roadmap is in [the implementation plan](superpowers/plans/2026-10-09-sa
 | Selected public GitHub file imports | PR #61, `87333d1` (feature `0ebc779`), independently reviewed and locally accepted through private preview, confirmed publication, cancellation and wallet isolation; all eight remote CI/Security checks passed |
 | Read-only private GitHub App connections | PR #62, `6d73f60` (feature `012ebb0`), independently reviewed and locally accepted; all eight remote CI/Security checks passed; live provider setup remains pending |
 | Selected approved website imports | PR #63, `dd8f0cb` (feature `4e2d27d`), independently reviewed and locally accepted through actual public fetch, preview, registration staging, recovery, cancellation and wallet/mobile isolation; all eight remote CI/Security checks passed |
-| Selected Notion page imports and shared connector lifecycle | Feature `e63feee`, independently reviewed and locally accepted for bounded selected-page tests, populated migration and provider-disabled browser/export/mobile checks; hosted checks and live consent remain pending |
-| PDF/DOCX imports; billing | Subsequent implementation tasks; not available yet |
+| Selected Notion page imports and shared connector lifecycle | PR #64, `fb4c3c2` (feature `e63feee`), independently reviewed and locally accepted for bounded selected-page tests, populated migration and provider-disabled browser/export/mobile checks; all eight remote CI/Security checks passed; live consent remains pending |
+| Local PDF/DOCX selectable-text extraction and 2 MiB text uploads | Feature `8b96451`, independently reviewed after PDF worker bootstrap fix; parser/worker integration and affected tests pass; actual browser uploads, exact-head CI and hosted CPU/memory gates remain pending |
+| Billing | Next implementation task; not available yet |
 
 See [account acceptance](evidence/saas-account-local-acceptance.md) and [collection acceptance](evidence/saas-collection-local-acceptance.md). The feature PRs are drafts stacked on the unmerged dashboard baseline. See [revision acceptance](evidence/saas-revisions-local-acceptance.md) for immutable history, original answer recovery and interruption tests. A pending deletion request does not delete data. Local payment rehearsal passed all 19 checks after the account phase using the model stub.
 

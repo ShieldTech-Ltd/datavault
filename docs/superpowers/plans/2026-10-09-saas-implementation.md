@@ -188,13 +188,15 @@ Ship one importer per PR: selected GitHub files, selected website pages, selecte
 Progress: selected public GitHub imports are locally accepted at `0ebc779`, including preview, signed publication, cancellation and wallet isolation. See [evidence](../../evidence/saas-github-imports-local-acceptance.md). Remaining adapters keep phase-wide checkboxes open. Import admission is one in-flight job and 20 jobs per rolling day per account across enabled providers.
 
 Private GitHub implementation is locally accepted at `012ebb0`, including encrypted credentials, pending wallet confirmation, refresh/disconnect fences and truthful cleanup uncertainty. [Evidence](../../evidence/saas-github-auth-local-acceptance.md) separates mocked-provider and disabled-browser checks from pending live App setup and consent. Remaining adapters keep the phase-wide gates open.
+
+PDF/DOCX extraction and 2 MiB text upload implementation is independently reviewed at `8b96451`, including a fixed PDF.js worker bootstrap collision and actual worker-entry integration regression. [Document evidence](../../evidence/saas-document-imports-local-acceptance.md) keeps actual browser uploads/CSP, fresh Linux CI and hosted resource acceptance open. Billing implementation may proceed independently; final release acceptance still requires those gates.
 **Create:** provider adapters under `worker/src/imports/`, import-job routes/queue consumer/tests, source/job migrations and import wizard.
 **Modify:** upload tabs, private R2 ingestion and Worker bindings.
 
 - [ ] Preview extracted content and attribution before publishing; require rights/provider consent. Importing content does not certify permission.
 - [x] Use narrow GitHub/Notion authorization, selected content, protected OAuth state, server-side tokens and disconnect support. Notion is locally accepted at `e63feee`; actual provider configuration and consent remain live gates. See [evidence](../../evidence/saas-notion-imports-local-acceptance.md).
 - [x] For website fetches, allow HTTPS only; reject private/local/reserved targets after DNS resolution and every redirect. Cap pages, bytes and duration. Locally accepted at `4e2d27d`; exact operator-approved hosts required, DNS checks do not pin connections. See [website evidence](../../evidence/saas-website-imports-local-acceptance.md).
-- [ ] Validate file signatures/MIME and decompressed size. Reject malformed/encrypted unsupported files, never execute embedded content, and defer OCR to its own feature.
+- [x] Validate file signatures/MIME and decompressed size. Reject malformed/encrypted unsupported files, never execute embedded content, and defer OCR to its own feature. Implemented and tested at `8b96451`; actual browser/CSP acceptance remains open.
 - [ ] Normalize to immutable Markdown registration; jobs are idempotent/retryable/cancellable and temporary assets have a retention policy.
 - [ ] Test provider failures, duplicate queue delivery, redirected internal targets, hostile/oversized files and interrupted jobs.
 

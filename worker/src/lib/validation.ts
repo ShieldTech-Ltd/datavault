@@ -1,6 +1,7 @@
+import { MAX_TEXT_BYTES, MULTIPART_OVERHEAD_BYTES } from '../../../shared/document-text';
 // Concrete limits documented in docs/api-contract.md
 export const LIMITS = {
-  MAX_UPLOAD_BYTES:  512_000,   // 500 KB per collection file
+  MAX_UPLOAD_BYTES: MAX_TEXT_BYTES,
   MAX_QUESTION_LEN:  500,       // characters
   MAX_PRICE_WEI:     BigInt("10000000000000000000"), // 10 MON
   MIN_PRICE_WEI:     BigInt(1),
@@ -47,7 +48,7 @@ export function checkContentLength(req: Request): Response | null {
   // Multipart boundaries and form fields add overhead beyond the file limit.
   // The router independently enforces the same envelope allowance.
   const multipart = req.headers.get("content-type")?.startsWith("multipart/form-data");
-  const maxBytes = LIMITS.MAX_UPLOAD_BYTES + (multipart ? 16 * 1024 : 0);
+  const maxBytes = LIMITS.MAX_UPLOAD_BYTES + (multipart ? MULTIPART_OVERHEAD_BYTES : 0);
   if (cl !== null && parseInt(cl, 10) > maxBytes) {
     return error413();
   }

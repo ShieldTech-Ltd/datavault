@@ -1,7 +1,8 @@
 import type { Env } from "./types";
+import { MAX_TEXT_BYTES, MULTIPART_OVERHEAD_BYTES } from '../../../shared/document-text';
 
 const MAX_JSON_REQUEST_BYTES = 8 * 1024;
-const MAX_MULTIPART_REQUEST_BYTES = 512_000 + 16 * 1024;
+const MAX_MULTIPART_REQUEST_BYTES = MAX_TEXT_BYTES + MULTIPART_OVERHEAD_BYTES;
 
 const BASE_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",

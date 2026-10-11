@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import React from "react";
 import renderer, { act } from "react-test-renderer";
-import { File } from "node:buffer";
 import { createServer } from "vite";
+import { keccak256, toBytes } from 'viem';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 const owner = "0x" + "11".repeat(20),
   other = "0x" + "22".repeat(20),
   contract = "0x" + "ab".repeat(20),
@@ -59,7 +62,7 @@ for (const scenario of [
       const walletClient = {
         getAddresses: async () => [selected],
         getChainId: async () => chain,
-        signMessage: async () => "signature",
+        signMessage: async ({message}) => { assert.ok(message.includes(keccak256(toBytes('revised evidence')))); return "signature"; },
         sendTransaction: async () => {
           sends++;
           called.resolve();
@@ -90,6 +93,7 @@ for (const scenario of [
       const originalFetch = globalThis.fetch;
       globalThis.fetch = async (url, options) => {
         if (url === "/api/collections") {
+          assert.equal(await options.body.get('file').text(), 'revised evidence');
           uploads++;
           return new Response(
             JSON.stringify({ collectionId, txCalldata: "0x1234" })
@@ -105,8 +109,12 @@ for (const scenario of [
         }
         throw Error("Unexpected request " + url);
       };
+      const cacheDir = mkdtempSync(join(tmpdir(), 'dv-registration-'));
       const vite = await createServer({
-        server: { middlewareMode: true },
+        cacheDir,
+        envDir: cacheDir,
+        optimizeDeps: { noDiscovery: true },
+        server: { middlewareMode: true, hmr: false },
         appType: "custom",
         logLevel: "silent",
         define: { "import.meta.env.VITE_CHAIN_ID": JSON.stringify("10143") },
@@ -148,18 +156,13 @@ for (const scenario of [
           component = renderer.create(element());
         });
         await act(async () => {
-          component.root
-            .findAllByType("input")
-            .find((i) => i.props.type === "file")
-            .props.onChange({
-              target: {
-                files: [
-                  new File(["revised evidence"], "Revision.md", {
-                    type: "text/markdown",
-                  }),
-                ],
-              },
-            });
+          component.root.findAllByType("button").find(b => b.props.children === "Text").props.onClick();
+        });
+        await act(async () => {
+          component.root.findAllByType("input").find(i => i.props.maxLength === 80).props.onChange({ target: { value: "Revision" } });
+        });
+        await act(async () => {
+          component.root.findByType("textarea").props.onChange({ target: { value: "revised evidence" } });
           component.root
             .findAllByType("input")
             .find((i) => i.props.type === "checkbox")
@@ -261,6 +264,7 @@ for (const scenario of [
       } finally {
         await act(async () => component?.unmount());
         await vite.close();
+        rmSync(cacheDir, { recursive: true, force: true });
         globalThis.fetch = originalFetch;
         delete globalThis.__registrationTest;
         delete globalThis.localStorage;
