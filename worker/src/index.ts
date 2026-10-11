@@ -1,3 +1,4 @@
+import {handleBillingWebhook} from './routes/billing';
 import {handleNotionCallback} from './lib/notion-connector';
 import {handleGithubCallback} from './lib/github-connector';
 import { handleDeveloperCollections } from './lib/developer-keys';
@@ -94,7 +95,9 @@ export default {
         }
         let res: Response;
 
-        if(method==='GET'&&path==='/api/connectors/notion/callback'){
+        if(method==='POST'&&path==='/api/billing/webhook'){
+          res=await handleBillingWebhook(request,env);
+        } else if(method==='GET'&&path==='/api/connectors/notion/callback'){
           res=await handleNotionCallback(request,env);
         } else if(method==='GET'&&path==='/api/connectors/github/callback'){
           res=await handleGithubCallback(request,env);

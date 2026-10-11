@@ -53,7 +53,7 @@ export async function boundedApiRequest(request: Request): Promise<Request | Res
   // The retired upload route never parses a body and must consistently return 410.
   if (/^\/api\/collections\/[^/]+\/upload$/.test(path)) return request;
   const maxBytes = path === "/api/collections"
-    ? MAX_MULTIPART_REQUEST_BYTES : MAX_JSON_REQUEST_BYTES;
+    ? MAX_MULTIPART_REQUEST_BYTES : path === '/api/billing/webhook' ? 64 * 1024 : MAX_JSON_REQUEST_BYTES;
   const declared = request.headers.get("Content-Length");
   if (declared && (!/^\d+$/.test(declared) || Number(declared) > maxBytes)) {
     return new Response("Request body too large", { status: 413 });

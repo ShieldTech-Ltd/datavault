@@ -6,11 +6,10 @@ import { createServer } from "vite";
 
 test("production deep links open the paid query and owner workspaces", async () => {
   const vite = await createServer({
-    optimizeDeps: { noDiscovery: true },
+    optimizeDeps: { noDiscovery: true, include: [] },
     server: { middlewareMode: true },
     appType: "custom",
     logLevel: "silent",
-    optimizeDeps: { noDiscovery: true, include: [] },
   });
   try {
     const { default: App } = await vite.ssrLoadModule("/src/App.tsx");

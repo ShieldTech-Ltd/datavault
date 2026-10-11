@@ -1,5 +1,10 @@
 export interface NotificationWork { chainId: number; contractAddress: string; recipient: string }
 export interface Env {
+  BILLING_MODE?: string;
+  BILLING_LIMITS?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_PRICE_ID?: string;
   NOTION_CLIENT_ID?: string;
   NOTION_CLIENT_SECRET?: string;
   WEBSITE_IMPORT_HOSTS?: string;

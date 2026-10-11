@@ -1,4 +1,5 @@
 import { BrowserRouter, MemoryRouter, Navigate, Route, Routes, useLocation } from 'react-router';
+import Billing from './production/Billing';
 import { useWallet } from './lib/wallet';
 import { CONTRACT_ADDRESS } from './lib/contract';
 import { monadTestnet } from './lib/network';
@@ -21,6 +22,7 @@ export default function App() {
     <Route path="earnings" element={<EarningsPage />} /><Route path="transactions" element={<TransactionsPage />} />
     <Route path="analytics" element={<AnalyticsPage />} /><Route path="api-access" element={<ApiPage />} />
     <Route path="settings" element={<SettingsPage />} />
+    <Route path="settings/billing" element={<Billing />} />
     <Route path="settings/email-verify" element={<EmailConfirmation />} /><Route path="settings/email-unsubscribe" element={<EmailConfirmation unsubscribe />} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Route></Routes></WorkspaceProvider></AccountProvider>;

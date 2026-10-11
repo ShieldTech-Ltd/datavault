@@ -1,3 +1,4 @@
+import {accountQuotaSql} from "./entitlements";
 import {
   notionConfigured,
   notionConnectionMetadata,
@@ -583,7 +584,7 @@ export async function handleImports(
     const jobId = randomToken();
     try {
       const inserted = await env.DB.prepare(
-        "INSERT INTO github_import_jobs(id,account_id,repository,ref,paths,status,idempotency_key,created_at,expires_at,connection_id,credential_version,provider) SELECT ?,?,?,?,?,'queued',?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM github_import_jobs WHERE account_id=? AND created_at>?)<20 AND NOT EXISTS(SELECT 1 FROM github_import_jobs WHERE account_id=? AND status IN ('queued','running'))",
+        `INSERT INTO github_import_jobs(id,account_id,repository,ref,paths,status,idempotency_key,created_at,expires_at,connection_id,credential_version,provider) SELECT ?,?,?,?,?,'queued',?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM github_import_jobs WHERE account_id=? AND created_at>?)<${accountQuotaSql(env,"importsPerDay",account.account_id)} AND NOT EXISTS(SELECT 1 FROM github_import_jobs WHERE account_id=? AND status IN ('queued','running'))`,
       )
         .bind(
           jobId,
@@ -604,12 +605,12 @@ export async function handleImports(
         .run();
       if (inserted.meta.changes !== 1)
         return json(
-          { error: "Maximum one inflight import and 20 jobs per rolling day." },
+          { error: "Maximum one inflight import. Daily import limit reached or another job is running." },
           429,
         );
     } catch {
       return json(
-        { error: "Maximum one inflight import and 20 jobs per rolling day." },
+        { error: "Maximum one inflight import. Daily import limit reached or another job is running." },
         429,
       );
     }

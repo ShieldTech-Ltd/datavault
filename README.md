@@ -201,6 +201,33 @@ For a local paid-flow integration rehearsal using a Hardhat chain, Wrangler D1/R
 
 ---
 
+## Optional test billing
+
+Subscriptions are disabled by default. Wallet query payments, owner payouts, paid answer recovery and refunds remain independent. This adapter accepts Stripe **test mode only**. It does not enable live charges or choose commercial prices or higher limits.
+
+Apply migration `0023_billing.sql` after all migrations through `0022`. Configure the following privately for the deployment, without committing `.dev.vars` or provider secrets:
+
+| Setting | Required value |
+| --- | --- |
+| `BILLING_MODE` | `test` |
+| `STRIPE_SECRET_KEY` | The deployment's private `sk_test_...` key |
+| `STRIPE_WEBHOOK_SECRET` | Its endpoint's private `whsec_...` signing secret |
+| `STRIPE_PRICE_ID` | An operator-approved, active, recurring, licensed test price |
+| `PUBLIC_ORIGIN` | The exact trusted HTTPS origin, without a path or trailing slash |
+| `BILLING_LIMITS` | JSON with exactly `activeKeys`, `ownedWorkspaces`, `workspaceMembers`, `importsPerDay`, `savedQuestions`, and `uploadBytes` |
+
+Caps must be finite integers at least the existing free caps: 5 active keys, 5 owned workspaces, 50 members per workspace, 20 import jobs per rolling day, 50 active saved questions, and 2,097,152 upload bytes. Engineering ceilings are 100 keys, 100 owned workspaces, 500 seats, 200 daily imports, 1,000 saved questions, and exactly 2,097,152 upload bytes. These ceilings are validation boundaries, not promised paid-plan limits. Imports always permit only one inflight job. Cumulative storage billing is unavailable because exact persisted byte accounting is not implemented. No higher caps or price are supplied by default.
+
+Configure a Stripe test webhook for `POST /api/billing/webhook` at the trusted origin, using the SDK API version `2026-09-30.endive`. Subscribe to `customer.subscription.*`, `invoice.*` and `checkout.session.*` activity. Configure the test customer portal in Stripe. Checkout and portal return only to `/settings/billing`. A checkout return remains pending until authoritative server verification. Missing or invalid configuration leaves Billing unavailable with no sample invoices.
+
+Only a single current subscription with the configured price, status `active` or `trialing`, and an unexpired verified item period grants configured caps. Scheduled cancellation preserves caps through that verified period. `past_due`, `unpaid`, cancellation, ambiguity, expiry, provider failure or stale evidence downgrade new usage to free without deleting existing records. Evidence is valid for at most 15 minutes; visiting Billing refreshes stale evidence from Stripe. Quota checks evaluate the current configuration and evidence atomically with inserts. Workspaces inherit their creator's billing limits for seats, retain that creator mapping, and do not transfer billing when another Owner joins. Invoices and the portal belong only to the creator's personal account.
+
+The official Stripe 23 SDK uses an 8-second deadline, a 512 KiB response limit, fixed `api.stripe.com` requests with rejected redirects, and async WebCrypto signature verification. Webhooks verify the raw body within a 64 KiB request cap and a 300-second timestamp window before parsing. Durable event deduplication and exclusive customer leases fence authoritative reconciliation. Errors returned to clients contain no provider secrets or provider error bodies.
+
+Run the billing regressions with `npx vitest run src/test/billing.test.ts src/test/billing-migration.test.ts --maxWorkers=2 --minWorkers=1 --testTimeout=20000 --hookTimeout=20000` from `worker`, and the isolated workerd SDK smoke with `node --test test/billing-workerd.mjs`. These fixtures do not use credentials or charge accounts. Actual test-mode hosted checkout, portal, invoices and webhook delivery remain a private provider-configuration acceptance gate.
+
+Provider references: [official Stripe SDK](https://github.com/stripe/stripe-node), [webhook signatures](https://docs.stripe.com/webhooks), [subscription events](https://docs.stripe.com/billing/subscriptions/webhooks), [hosted Checkout](https://docs.stripe.com/api/checkout/sessions/create), [customer portal](https://docs.stripe.com/customer-management), and [currency minor units and special cases](https://docs.stripe.com/currencies).
+
 ## Ownership
 
 **Tanvir:** Solidity contracts, core Worker API, R2 and D1 payment state machine, and AI model integration.  

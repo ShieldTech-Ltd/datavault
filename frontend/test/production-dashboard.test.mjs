@@ -17,13 +17,22 @@ test('dashboard deep links expose real task states instead of sample business re
       ['/collections', 'Your collections'], ['/marketplace', 'Knowledge marketplace'],
       ['/earnings', 'Owner earnings'], ['/transactions', 'Your paid requests'],
       ['/analytics', 'Recorded analytics'], ['/api-access', 'Developer API keys'],
-      ['/settings', 'Workspace settings'], ['/collections/0x' + 'ab'.repeat(32), 'Collection details'],
+      ['/settings', 'Workspace settings'], ['/settings/billing', 'Billing'], ['/collections/0x' + 'ab'.repeat(32), 'Collection details'],
     ];
     for (const [pathname, heading] of routes) {
       globalThis.window = { location: { pathname, search: '' } };
       const html = renderToString(React.createElement(WalletProvider, null, React.createElement(App)));
       assert.ok(html.includes(heading), `${pathname} does not open its production view`);
       assert.doesNotMatch(html, /Generate API Key|Upgrade Now|Payout of 0\.88|Cybersecurity Notes|648 queries/);
+      if (pathname === '/settings') {
+        assert.match(html, /This workspace uses the light dashboard theme/);
+        assert.match(html, /View subscription status, account limits and invoices in/);
+      }
+      if (pathname === '/settings/billing') {
+        assert.match(html, /Sign in with your wallet to view subscription availability, limits and invoices/);
+        assert.match(html, /Wallet query payments remain separate/);
+        assert.doesNotMatch(html, /Subscriptions are unavailable until the operator configures a provider|Subscription plans are unavailable/);
+      }
     }
   } finally { delete globalThis.window; await vite.close(); }
 });

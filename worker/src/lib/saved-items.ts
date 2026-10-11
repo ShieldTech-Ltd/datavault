@@ -1,5 +1,6 @@
 import type { Env } from './types';
 import type { AccountRow } from './account-session';
+import {accountQuotaSql} from './entitlements';
 const RETENTION = 30 * 86_400_000;
 const json=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
 export async function savedItems(env:Env,account:AccountRow,kind:'bookmarks'|'saved-questions',limit:number|null=50,cursor=Number.MAX_SAFE_INTEGER) {
@@ -37,9 +38,9 @@ export async function handleSavedItems(request:Request,env:Env,account:AccountRo
     else {
       // The count and insert are one SQLite statement, so concurrent saves cannot exceed the cap.
       const inserted=await env.DB.prepare(`INSERT INTO account_saved_questions(account_id,collection_id,question,created_at,expires_at)
-        SELECT ?,?,?,?,? WHERE (SELECT COUNT(*) FROM account_saved_questions WHERE account_id=? AND expires_at>?)<50`)
+        SELECT ?,?,?,?,? WHERE (SELECT COUNT(*) FROM account_saved_questions WHERE account_id=? AND expires_at>?)<${accountQuotaSql(env,'savedQuestions',account.account_id)}`)
         .bind(account.account_id,collection,input.question,now,now+RETENTION,account.account_id,now).run();
-      if(inserted.meta.changes!==1)return json({error:'Saved question limit is 50 active questions. Delete an item first.'},409);
+      if(inserted.meta.changes!==1)return json({error:'Active saved question limit reached. Delete an item first or review billing.'},409);
     }
     return json({saved:true,retentionDays:kind==='saved-questions'?30:null},201);
   }
