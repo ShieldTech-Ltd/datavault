@@ -32,6 +32,7 @@ test("API Access deep link serves the app while API calls reach the Worker", asy
     const api = await fetch(`${origin}/api/demo`);
     assert.deepEqual(await api.json(), { path: "/api/demo" });
   } finally {
+    await vite?.waitForRequestsIdle();
     await vite?.close();
     upstream.closeAllConnections();
     await new Promise(resolve => upstream.close(resolve));

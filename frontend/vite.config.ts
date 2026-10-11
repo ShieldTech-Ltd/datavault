@@ -21,6 +21,14 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: "dist",
       emptyOutDir: true,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            "react-vendor": ["react", "react-dom"],
+            viem: ["viem"],
+          },
+        },
+      },
     },
     plugins: [
       react(),
