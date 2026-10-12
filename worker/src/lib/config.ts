@@ -23,11 +23,12 @@ export function paidServiceConfigured(env: Env): boolean {
   if (!isValidAddress(env.CONTRACT_ADDRESS) ||
       !settlementKeyConfigured(env.SETTLEMENT_PRIVATE_KEY) ||
       typeof env.MODEL_API_KEY !== "string" || !env.MODEL_API_KEY.trim()) return false;
-  if (env.MODEL_PROVIDER !== "openai" && env.MODEL_PROVIDER !== "kimi") return false;
+  if (!["openai", "kimi", "anthropic"].includes(env.MODEL_PROVIDER)) return false;
+  if (env.MODEL_PROVIDER === "anthropic" && !env.MODEL_NAME?.trim()) return false;
   if (env.MODEL_PROVIDER === "kimi" &&
       (!env.MODEL_API_BASE || !env.MODEL_NAME?.trim())) return false;
   try {
-    modelApiBase(env.MODEL_API_BASE);
+    modelApiBase(env.MODEL_API_BASE, env.MODEL_PROVIDER);
   } catch {
     return false;
   }

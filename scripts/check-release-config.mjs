@@ -56,8 +56,11 @@ if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{1
   errors.push("the selected Wrangler config needs the real D1 database_id");
 }
 const modelProvider = setting("MODEL_PROVIDER");
-if (!["openai", "kimi"].includes(modelProvider)) {
-  errors.push("MODEL_PROVIDER must use a supported OpenAI-compatible transport");
+if (!["openai", "kimi", "anthropic"].includes(modelProvider)) {
+  errors.push("MODEL_PROVIDER must use a supported model transport");
+}
+if (modelProvider === "anthropic" && !setting("MODEL_NAME").trim()) {
+  errors.push("anthropic requires an explicit MODEL_NAME setting");
 }
 const modelBase = setting("MODEL_API_BASE");
 if (modelProvider === "kimi" && (!modelBase || !setting("MODEL_NAME"))) {

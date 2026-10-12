@@ -32,5 +32,7 @@ describe("settlement key release guard", () => {
     expect(paidServiceConfigured({ ...env, MODEL_PROVIDER: "kimi" } as never)).toBe(false);
     expect(paidServiceConfigured({ ...env, MODEL_PROVIDER: "kimi", MODEL_API_BASE: "https://model.example/v1", MODEL_NAME: "test-model" } as never)).toBe(true);
     expect(paidServiceConfigured({ ...env, MODEL_PROVIDER: "unknown" } as never)).toBe(false);
+    expect(paidServiceConfigured({ ...env, MODEL_PROVIDER: "anthropic", MODEL_NAME: "" } as never)).toBe(false);
+    expect(paidServiceConfigured({ ...env, MODEL_PROVIDER: "anthropic", MODEL_NAME: "fixture-claude-model" } as never)).toBe(true);
   });
 });

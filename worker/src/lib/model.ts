@@ -19,6 +19,12 @@ export interface ModelResponse {
 const MODEL_TIMEOUT_MS = 25_000;
 const MAX_MODEL_RESPONSE_BYTES = 64 * 1024;
 
+interface ProviderResponse {
+  choices?: Array<{ message?: { content?: string } }>;
+  content?: Array<{ type?: string; text?: string }>;
+  stop_reason?: string;
+}
+
 // Max tokens to send as context (prevents runaway costs and injection vectors)
 const MAX_CONTEXT_TOKENS_APPROX = 6_000; // ~4 chars/token
 
@@ -65,8 +71,10 @@ export async function callModel(
   if (passages.length === 0) throw new Error("No passages provided to model");
   if (passages.length !== passageIds.length) throw new Error("passages and passageIds length mismatch");
 
-  const apiBase = modelApiBase(env.MODEL_API_BASE);
-  const model   = env.MODEL_NAME   ?? "gpt-4o-mini";
+  const anthropic = env.MODEL_PROVIDER === "anthropic";
+  const apiBase = modelApiBase(env.MODEL_API_BASE, env.MODEL_PROVIDER);
+  if (anthropic && !env.MODEL_NAME?.trim()) throw new Error("Claude requires an explicit model name.");
+  const model = env.MODEL_NAME ?? "gpt-4o-mini";
 
   // Build context, truncating total if needed
   const includedPassages = passages.map((text, i) => ({ id: passageIds[i], text }));
@@ -89,15 +97,21 @@ export async function callModel(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), MODEL_TIMEOUT_MS);
 
-  let data: { choices?: Array<{ message?: { content?: string } }> };
+  let data: ProviderResponse;
   try {
-    const res = await fetch(`${apiBase}/chat/completions`, {
+    const res = await fetch(`${apiBase}/${anthropic ? "messages" : "chat/completions"}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${env.MODEL_API_KEY}`,
+        ...(anthropic ? {
+          "x-api-key": env.MODEL_API_KEY,
+          "anthropic-version": "2023-06-01",
+        } : { Authorization: `Bearer ${env.MODEL_API_KEY}` }),
       },
-      body: JSON.stringify({ model, messages, max_tokens: 1024, temperature: 0.2 }),
+      body: JSON.stringify(anthropic ? {
+        model, system: messages[0].content, messages: [messages[1]], max_tokens: 1024,
+      } : { model, messages, max_tokens: 1024, temperature: 0.2 }),
+      redirect: "error",
       signal: controller.signal,
     });
     if (res.status === 429) throw new Error("Model API rate limit exceeded. Please retry shortly.");
@@ -111,7 +125,14 @@ export async function callModel(
     clearTimeout(timer);
   }
 
-  const answer = data.choices?.[0]?.message?.content?.trim() ?? "";
+  if (anthropic && data.stop_reason !== "end_turn") {
+    throw new Error("Model returned an incomplete response. Response cannot be settled.");
+  }
+  const answer = anthropic
+    ? (Array.isArray(data.content) ? data.content
+      .filter((block) => block?.type === "text" && typeof block.text === "string")
+      .map((block) => block.text).join("\n").trim() : "")
+    : data.choices?.[0]?.message?.content?.trim() ?? "";
 
   if (!answer) {
     throw new Error("Model returned an empty response.");
@@ -173,7 +194,7 @@ export async function callModel(
   };
 }
 
-async function readBoundedModelResponse(res: Response): Promise<{ choices?: Array<{ message?: { content?: string } }> }> {
+async function readBoundedModelResponse(res: Response): Promise<ProviderResponse> {
   const declaredLength = Number(res.headers.get("Content-Length"));
   if (declaredLength > MAX_MODEL_RESPONSE_BYTES) throw new Error("Model API response is too large.");
   if (!res.body) throw new Error("Model API returned an empty body.");
