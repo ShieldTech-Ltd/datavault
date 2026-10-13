@@ -114,8 +114,12 @@ export async function callModel(
       redirect: "error",
       signal: controller.signal,
     });
-    if (res.status === 429) throw new Error("Model API rate limit exceeded. Please retry shortly.");
-    if (!res.ok) throw new Error(`Model API returned ${res.status}. Please retry.`);
+    if (!res.ok) {
+      // Log transport diagnostics only, never credentials, source content or answers.
+      console.error("model_provider_http_error", { provider: env.MODEL_PROVIDER, status: res.status });
+      if (res.status === 429) throw new Error("Model API rate limit exceeded. Please retry shortly.");
+      throw new Error(`Model API returned ${res.status}. Please retry.`);
+    }
     data = await readBoundedModelResponse(res);
   } catch (err: unknown) {
     if (err instanceof Error && err.message.startsWith("Model API")) throw err;
