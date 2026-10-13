@@ -25,9 +25,9 @@ const HISTORY_KEY = `datavault_requests:${CHAIN_ID}:${
 }`;
 const LEGACY_HISTORY_KEY = "datavault_requests";
 const SAMPLE_QUESTIONS = [
-  "What information should a freelancer include on an invoice?",
-  "Why might a sole trader use a separate business bank account?",
-  "What records should a freelancer keep for business expenses?",
+  "What key information is covered in this collection?",
+  "What practical steps does this collection recommend?",
+  "What limitations or cautions does this collection mention?",
 ];
 
 type Step =
