@@ -15,7 +15,7 @@ const configuredChainId = Number(import.meta.env.VITE_CHAIN_ID) || 10143;
 const configuredName = configuredChainId === 31337 ? "Local test chain" : "Monad Testnet";
 
 export const monadTestnet: EvmNetwork = {
-  blockExplorerUrls: ["https://testnet.monadexplorer.com"],
+  blockExplorerUrls: ["https://testnet.monadscan.com"],
   chainId: configuredChainId,
   chainName: configuredName,
   iconUrls: [],
