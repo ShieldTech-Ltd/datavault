@@ -111,7 +111,9 @@ export async function callModel(
       body: JSON.stringify(anthropic ? {
         model, system: messages[0].content, messages: [messages[1]], max_tokens: 1024,
       } : { model, messages, max_tokens: 1024, temperature: 0.2 }),
-      redirect: "error",
+      // Workers supports manual redirects across the deployed runtime versions.
+      // Reject their non-2xx response below without forwarding credentials.
+      redirect: "manual",
       signal: controller.signal,
     });
     if (!res.ok) {
@@ -124,6 +126,12 @@ export async function callModel(
   } catch (err: unknown) {
     if (err instanceof Error && err.message.startsWith("Model API")) throw err;
     const msg = err instanceof Error ? err.message : String(err);
+    const category = /redirect/i.test(msg) ? "redirect_mode"
+      : /header|ByteString|character/i.test(msg) ? "request_header"
+      : /abort/i.test(msg) ? "timeout"
+      : /DNS|resolve|TLS|SSL|connect/i.test(msg) ? "network"
+      : "transport";
+    console.error("model_provider_transport_error", { provider: env.MODEL_PROVIDER, category });
     throw new Error(`Model API request failed: ${msg}`);
   } finally {
     clearTimeout(timer);

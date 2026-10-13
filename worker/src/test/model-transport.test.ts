@@ -3,6 +3,20 @@ import { callModel } from "../lib/model";
 import type { Env } from "../lib/types";
 
 describe("model credential transport", () => {
+  it("rejects provider redirects without forwarding credentials", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchSpy = vi.fn(async () => new Response(null, {
+      status: 302, headers: { Location: "https://other.example/messages" },
+    }));
+    globalThis.fetch = fetchSpy as typeof fetch;
+    try {
+      await expect(callModel("Question?", ["Source"], ["chunk-0"], {
+        MODEL_PROVIDER: "anthropic", MODEL_NAME: "fixture-claude-model", MODEL_API_KEY: "test-key",
+      } as Env)).rejects.toThrow(/returned 302/);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect((fetchSpy.mock.calls as unknown as Array<[string, RequestInit]>)[0][1].redirect).toBe("manual");
+    } finally { globalThis.fetch = originalFetch; }
+  });
   it("uses Claude Messages with a separate system prompt and validates the answer", async () => {
     const originalFetch = globalThis.fetch;
     const fetchSpy = vi.fn(async () => new Response(JSON.stringify({
@@ -20,7 +34,7 @@ describe("model credential transport", () => {
       expect(url).toBe("https://api.anthropic.com/v1/messages");
       expect(init.headers).toMatchObject({ "x-api-key": "private-test-key", "anthropic-version": "2023-06-01" });
       expect(init.headers).not.toHaveProperty("Authorization");
-      expect(init.redirect).toBe("error");
+      expect(init.redirect).toBe("manual");
       const body = JSON.parse(String(init.body));
       expect(body.system).toContain("ONLY the source passages");
       expect(body.messages).toHaveLength(1);
