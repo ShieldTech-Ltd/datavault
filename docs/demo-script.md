@@ -1,5 +1,7 @@
 # DataVault live demo script
 
+This is the target sequence for a future full wallet-flow recording. The [submitted technical video](https://drive.google.com/file/d/19YTD4yBQxM2qUid9Z4YmGXgBuTA5Y8sa/view?usp=sharing) is a public evidence walkthrough of real screens and transactions; it does not contain a fresh buyer wallet approval or the buyer-only answer.
+
 Target a technical video under three minutes. Record the actual deployed app and Monad transactions. Keep the public sample collection active; use a separate collection for the pause sequence. Trim waiting time only with a visible time-cut label. Do not replace a failed live action with mock footage.
 
 | Time | Screen and action | Evidence to capture |

@@ -178,6 +178,3 @@ button:disabled { opacity: 0.55; cursor: not-allowed; transform: none !important
   .card-hover, button, input, textarea, select { transition: none !important; }
   .card-hover:hover, button:active { transform: none !important; }
 }
-
-/* ── Dynamic widget overrides ────────────────────────────────── */
-[data-testid="dynamic-widget-card"] { box-shadow: none !important; }

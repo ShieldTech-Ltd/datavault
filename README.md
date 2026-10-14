@@ -1,18 +1,51 @@
-# DataVault Query License
+<p align="center">
+  <img src="frontend/public/assets/light/brand.png" alt="DataVault logo" width="88">
+</p>
 
-Paid, controlled AI access to private knowledge collections.
+<h1 align="center">DataVault</h1>
 
-An owner uploads a private Markdown document, sets a per-query price, and registers policy on Monad testnet. A buyer signs a Monad transaction placing payment in escrow. The Cloudflare Worker verifies payment and current policy, retrieves relevant passages from private R2 storage, calls a real AI model, records a cited answer, settles escrow to the owner, and returns the answer after settlement confirmation. The owner can pause access at any time.
+<p align="center"><strong>Paid, controlled AI access to private knowledge collections on Monad.</strong></p>
 
-**Hackathon:** Monad Metropolis  
-**Track:** Trust, Identity and AI Infrastructure  
-**Deadline:** 14 October 2026 at 04:59 GMT+1
+<p align="center">
+  <a href="https://datavault.tamimtarafder12.workers.dev/">Live product</a> ·
+  <a href="docs/demo-quickstart.md">Try it on testnet</a> ·
+  <a href="https://drive.google.com/file/d/19YTD4yBQxM2qUid9Z4YmGXgBuTA5Y8sa/view?usp=sharing">Demo video</a> ·
+  <a href="https://drive.google.com/file/d/1DuaVk97ce_5kSlH4zKF4TmkIPlC5JiRP/view?usp=sharing">Pitch video</a>
+</p>
 
-## Frontend dashboard preview
+<p align="center"><em>Monad Metropolis · Trust, Identity &amp; AI Infrastructure · Public testnet beta</em></p>
 
-The routed dashboard uses sample collections, earnings, transactions, API keys, and settings. Its actions simulate the interface and do not create uploads, payments, payouts, or credentials. Preview query history stays in memory and does not read or modify wallet recovery records.
+![DataVault site illustration showing documents, AI processing, onchain verification and owner earnings](frontend/public/assets/light/hero.png)
 
-Use `/query` for the existing Monad testnet paid-query, answer recovery, reconciliation, and refund flow. Use `/manage` for signed collection registration, confirmation, and policy updates. These flows require the configured Worker, contract, and an EVM wallet. `/preview/query` shows the simulated query interface. The current wallet implementation uses an injected EVM provider.
+An owner publishes a private knowledge collection, sets a per-question price, and registers its access policy on Monad testnet. A buyer puts test MON in escrow before asking. DataVault verifies that payment and the current policy, retrieves selected passages from private R2 storage, generates a cited answer with a real model, and releases the answer after onchain settlement pays the owner. Owners can pause future access; buyers can recover a completed answer or refund an unsettled escrow after its timeout.
+
+| Publish | Ask | Verify | Control |
+| --- | --- | --- | --- |
+| Upload a collection and register its price and policy on Monad. | Review the current price and approve an escrow transaction. | Receive a cited answer after settlement and inspect its public receipt. | Pause future access or refund an unsettled payment after ten minutes. |
+
+## Product screenshots
+
+These are captures of the public deployment on 14 October 2026. Collection counts and settlement totals can change.
+
+**Browse confirmed collections and their current price**
+
+![DataVault marketplace with two active knowledge collections priced at 0.001 test MON per question](docs/assets/readme/marketplace.webp)
+
+| Buyer workspace | Recorded settlements |
+| --- | --- |
+| <img src="docs/assets/readme/query.webp" alt="DataVault query workspace with a confirmed sample collection and suggested questions" width="620"> | <img src="docs/assets/readme/analytics.webp" alt="DataVault public analytics with confirmed collections, settled queries and recorded revenue" width="620"> |
+
+The screenshots show public or pre-payment states. Private source passages and buyer-only answers are not displayed as public proof.
+
+## Verify a real paid request
+
+The [public analytics](https://datavault.tamimtarafder12.workers.dev/analytics) links settlements to receipts and Monad transactions. One recorded request has a [public receipt](https://datavault.tamimtarafder12.workers.dev/api/queries/0xa68eb38f26e874622823b39da95adff329c684efa86149eaaeee350e71653f9e/receipt), [escrow opening transaction](https://testnet.monadscan.com/tx/0x69130f4f3054a20b656eb09ad765f777d308244bdf95de9ea8f9ba5369477663), and [owner payout transaction](https://testnet.monadscan.com/tx/0x862c17a568db323517108f4058fca06a813e45248ff43ead11578af180a7523c). The deployed contract is [0x304aca9375fbd2f645e6c2d0318effa407766430](https://testnet.monadscan.com/address/0x304aca9375fbd2f645e6c2d0318effa407766430).
+
+The receipt exposes an answer digest and citation identifiers, not the private question, answer, or source text. Judges can run their own paid query using the [quickstart](docs/demo-quickstart.md).
+
+## Live product and local preview
+
+The live app uses an injected EVM wallet and Worker-backed data. The buyer route at `/query` handles paid queries, answer recovery, reconciliation and refunds. The owner route at `/manage` handles signed registration and policy updates. The local-only `/preview/query` route is a simulated interface for UI review and is excluded from the production build.
 
 ---
 
@@ -31,7 +64,7 @@ Use `/query` for the existing Monad testnet paid-query, answer recovery, reconci
 ```
 contracts/          Solidity contract and Hardhat tests
   DataVault.sol     registerCollection, updatePolicy, openQuery, settleQuery, refundExpired
-  test/             20 unit tests (all passing)
+  test/             Hardhat contract tests
 frontend/           React + Vite + TypeScript UI
   src/
     lib/            Injected wallet context, Monad network, viem contract client
@@ -43,7 +76,7 @@ worker/             Cloudflare Worker API
     test/           Worker unit and route tests
   migrations/       D1 SQL schema
 scripts/            Hardhat deploy script
-demo/               Team-authored UK Practical Guide (sample knowledge collection)
+demo/               Team-authored sample knowledge document
 docs/               Architecture, API contract, testing guide, failure matrix, receipt format
 shared/             Shared ABI constant
 ```
@@ -52,11 +85,11 @@ shared/             Shared ABI constant
 
 ## Prerequisites
 
-- Node.js 18+ (v25 works with a Hardhat warning)
+- Node.js 22.13+ (required by the frontend package)
 - npm 9+
 - Cloudflare account with Workers, R2, and D1 enabled
 - Injected EVM wallet or wallet browser with Monad testnet and test MON
-- AI model API key (OpenAI or Kimi)
+- AI model API key (Anthropic, OpenAI, or Kimi)
 
 ---
 
@@ -162,7 +195,7 @@ npm run typecheck:worker
 ## Tests
 
 ```sh
-# Smart contract tests (20 Hardhat tests)
+# Smart contract tests
 npm run test:contracts
 
 # Worker unit tests (no live chain or model calls)
@@ -195,9 +228,9 @@ For a local paid-flow integration rehearsal using a Hardhat chain, Wrangler D1/R
 | `MONAD_RPC_URL` | Monad RPC endpoint |
 | `SETTLEMENT_PRIVATE_KEY` | Key used by Worker to call settleQuery |
 | `MODEL_API_KEY` | AI model provider key |
-| `MODEL_PROVIDER` | `openai` or `kimi`; both use an OpenAI-compatible chat-completions endpoint |
-| `MODEL_API_BASE` | HTTPS API base URL (default: OpenAI); required for `kimi` |
-| `MODEL_NAME` | Model name (default: gpt-4o-mini); required for `kimi` |
+| `MODEL_PROVIDER` | `anthropic` (Claude Messages API), `openai`, or `kimi` |
+| `MODEL_API_BASE` | HTTPS API base URL (provider default for Anthropic or OpenAI; required for `kimi`) |
+| `MODEL_NAME` | Explicit model name for Anthropic or Kimi; OpenAI defaults to gpt-4o-mini |
 
 ---
 
@@ -237,8 +270,12 @@ Provider references: [official Stripe SDK](https://github.com/stripe/stripe-node
 
 ## Current release and submission status
 
-The source implements owner and buyer flows, plus a marketplace dashboard backed by verified collection metadata and recorded settlement data, and signed buyer request-history sync for answer recovery across devices. A public deployment and live paid-query evidence have not yet been recorded. Use [the deployment runbook](docs/deployment.md) for the current release gates, [the security controls](docs/security.md) for credential and CI requirements, and [the API contract](docs/api-contract.md) for the buyer authorization protocol. The sample collection appears in the guided buyer view only after an actual owner registration has been confirmed and `DEMO_COLLECTION_ID` is configured. Content replacement is disabled until it can advance on-chain policy version.
+DataVault is deployed at the [public testnet site](https://datavault.tamimtarafder12.workers.dev/). Public analytics and Monad transactions record paid queries and owner settlement. The Metropolis entry showed **Ready for judging** on 14 October 2026, last saved at 01:33 UTC. The deployed Claude and onboarding changes were merged into `master` through [PR #68](https://github.com/ShieldTech-Ltd/datavault/pull/68). A source merge, CI result, and deployment are separate gates; the linked receipts and live product provide the public runtime evidence.
 
-The repository is licensed under [MIT](LICENSE). External libraries include Hardhat and viem for contract development and chain access, React and Vite for the browser app, and Cloudflare Workers, R2, D1, and Wrangler for hosting and storage. Their package names and versions are recorded in the root, frontend, and worker package manifests and lockfiles. The team-authored sample guide is in `demo/`, links to official guidance, and still needs human review and user feedback before public use. Any separately sourced assets or code must be attributed here before submission.
+The submitted technical video walks through real public screens and transaction evidence. It does not show a fresh buyer wallet approval or the buyer-only answer. Judges can test that flow with their own funded Monad testnet wallet using the [quickstart](docs/demo-quickstart.md). Owner pause requires the owner's wallet, which is not shared.
+
+The source implements owner and buyer flows, marketplace data backed by verified collection metadata and recorded settlements, and signed buyer request-history sync for recovery across devices. Use [the deployment runbook](docs/deployment.md), [security controls](docs/security.md), and [API contract](docs/api-contract.md) for operational and protocol details. Content replacement is disabled until it can advance the on-chain policy version.
+
+The repository is licensed under [MIT](LICENSE). External libraries include Hardhat and viem for contract development and chain access, React and Vite for the browser app, and Cloudflare Workers, R2, D1, and Wrangler for hosting and storage. Their package names and versions are recorded in the root, frontend, and worker package manifests and lockfiles. The team-authored sample guide is in `demo/` and links to official guidance. The [light dashboard artwork](frontend/public/assets/light/README.md) records its visual source. Any separately sourced assets or code should be attributed here.
 
 AI coding tools were used to help write and revise parts of this project, including the demo readiness changes. Contributors remain responsible for reviewing, testing, and verifying the submitted code and claims. A hash records content integrity within this service. It does not establish copyright ownership, prevent external AI systems from using content, or erase answers already delivered.

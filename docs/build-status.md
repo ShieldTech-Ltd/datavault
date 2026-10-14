@@ -1,6 +1,6 @@
 # DataVault build status
 
-Updated 10 October 2026. This is source and local verification evidence, not a deployment claim. PR #51 is merged. The dashboard candidate in PR #52 is open at `f9966d2bef2cb7c0cc3b2e57322d9eba9bcde2c3`; its eight CI/Security checks passed. SaaS changes use separate stacked feature branches based on that candidate, without merging or changing PR #52.
+Updated 10 October 2026. **Historical source and local verification snapshot.** For the later public deployment, merged PR #68, and submitted Metropolis entry, see the [README](../README.md) and [submission record](submission-checklist.md). The statements below describe their dated checks, not the current release state. PR #51 is merged. The dashboard candidate in PR #52 was open at `f9966d2bef2cb7c0cc3b2e57322d9eba9bcde2c3`; its eight CI/Security checks passed. SaaS changes used separate stacked feature branches based on that candidate.
 
 ## Current production dashboard and SaaS work
 
@@ -72,6 +72,6 @@ The earlier dated checks below remain historical evidence. They do not replace v
 - The sample guide focuses on invoices, banking, and expense records with official source links and no tax-year rates. Its linked GOV.UK and Business.gov.uk pages were checked on 9 October, and the VAT-invoice wording was corrected to match GOV.UK. Human review and actual user feedback are still required before publishing it. Do not invent results.
 - Run the clean-browser live acceptance checklist in `docs/deployment.md` before calling the demo ready.
 
-## Submission status
+## Submission status at this historical snapshot
 
 No public deployment URL, confirmed contract address, public video URL, or Metropolis portal confirmation has been recorded in this repository. Create the Metropolis project only after the deployed app and real video exist and their URLs work from a clean browser. The team should submit by 12 October, ahead of the stated 13 October 11:59 PM Eastern deadline.

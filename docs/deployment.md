@@ -1,12 +1,11 @@
 # DataVault deployment runbook
 
-This runbook prepares the public demo. It does not authorize deployment or spending funds.
-Record the final values in a private release ledger, and publish only public addresses and redacted evidence.
+This is the procedure for deploying or updating the public demo. The [current release and submission state](../README.md#current-release-and-submission-status) is recorded separately. A runbook step is not evidence that it was completed on the current deployment. Record release values in a private ledger, and publish only public addresses and redacted evidence.
 
 ## Before deployment
 
 1. Confirm current Metropolis portal requirements and that Monad testnet remains accepted.
-2. Confirm the intended source candidate. PR #51 is merged; review the production dashboard in PR #52 and any subsequent SaaS feature PRs against their exact heads. Require passing CI and Security checks before authorized integration. Record the integrated commit. Merging does not declare the public product or demo ready.
+2. Confirm the intended source candidate against the current master branch and any open feature PRs. Require passing CI and Security checks before integration, and record the exact commit. Merging does not declare the public product or demo ready.
 3. Run clean installs, contract tests, Worker tests, both typechecks, and the frontend build on the merge commit before deployment. Perform the live end-to-end gate below on the deployed candidate before recording a demo or submitting the project.
 4. Confirm a Cloudflare account with a private R2 bucket, a D1 database, and permission to deploy Workers.
 5. Confirm the public HTTPS origin and Monad testnet RPC are configured.
@@ -55,4 +54,4 @@ Retain the previous deployed commit and configuration. For a bad app deploy, res
 
 ## Submission handoff
 
-After the live checks, publish a real video of the deployed product, no longer than three minutes, using [the demo script](demo-script.md). Work through [the submission evidence checklist](submission-checklist.md). Before creating the Metropolis project, verify the public HTTPS site, video, GitHub repository, license, documentation, contract explorer, and transaction links from a clean browser. The Metropolis project and final submission require separate authorization and a portal confirmation record.
+For a new or updated demo, use [the demo script](demo-script.md) and [submission record](submission-checklist.md). Verify the public HTTPS site, video, GitHub repository, license, documentation, contract explorer, and transaction links from a clean browser. The Metropolis entry has already reached **Ready for judging**; future edits must be saved in the portal before its displayed deadline.

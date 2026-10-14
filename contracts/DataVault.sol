@@ -9,7 +9,7 @@ pragma solidity ^0.8.24;
  *
  * Operator model
  * --------------
- * The owner registers with their own wallet (e.g. Dynamic embedded wallet).
+ * The owner registers with their own EVM wallet.
  * They supply a separate operator address at registration time.
  * The operator is the Worker's settlement key: a hot wallet whose private key
  * is stored in Cloudflare Worker secrets.
@@ -18,8 +18,8 @@ pragma solidity ^0.8.24;
  * Payment always goes to the owner. The operator never receives funds.
  * The owner can replace the operator at any time via updateOperator.
  *
- * This separates user identity (owner's Dynamic wallet) from automated
- * settlement (Worker's key) without sharing private keys.
+ * This separates the owner's signing wallet from automated settlement
+ * (the Worker's key) without sharing private keys.
  *
  * State machine per request:
  *   Open -> Settled  (answer digest recorded, payment released to owner)
