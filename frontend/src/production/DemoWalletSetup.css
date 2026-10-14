@@ -1,0 +1,14 @@
+.dv-demo-setup { padding: 16px; margin: 16px 0; border: 1px solid var(--border, #e5e7eb); border-radius: 12px; background: var(--bg, #f8fafc); }
+.dv-demo-setup-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.dv-demo-setup-heading span, .dv-demo-steps span { font-size: .82rem; color: var(--text-secondary, #475569); }
+.dv-demo-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 14px 0; }
+.dv-demo-steps li { display: grid; gap: 4px; }
+.dv-demo-steps strong { font-size: .85rem; }
+.dv-demo-next, .dv-demo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.dv-demo-setup p { font-size: .85rem; line-height: 1.5; margin: 8px 0; overflow-wrap: anywhere; }
+.dv-demo-next p { flex: 1 1 220px; }
+.dv-demo-setup .dv-button { font-size: .82rem; }
+.dv-demo-collection-id { margin: 0 0 12px; font-size: .82rem; }
+.dv-demo-collection-id summary { cursor: pointer; padding: 6px 0; }
+.dv-demo-collection-id code { display: block; padding: 8px 0; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .dv-demo-steps { grid-template-columns: 1fr; gap: 10px; } .dv-demo-next .dv-button { width: 100%; } }

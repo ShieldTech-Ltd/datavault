@@ -22,7 +22,7 @@ export function DashboardPage() {
   const analytics = useResource<Analytics>('/api/marketplace/analytics');
   const { primaryWallet } = useWallet();
   return <>
-    <section className="dv-reference-hero"><img className="dv-reference-hero-art" src="/assets/light/hero.png" alt=""/><div className="dv-reference-hero-copy"><span className="dv-eyebrow">DATA OWNERSHIP FOR THE AI ERA</span><h1>Your Knowledge<br/>Has <span>Real Value</span></h1><p>Upload, protect, and monetize your knowledge collections.<br/>Get verifiable AI answers with on-chain receipts.</p><div className="dv-hero-actions"><a className="dv-button" href="#register-knowledge">Register a Collection <ArrowRight size={16}/></a><Link className="dv-button secondary" to="/marketplace">Explore Collections</Link></div></div><div className="dv-reference-hero-metrics"><State resource={analytics} retry={analytics.reload}>{data => <Metrics data={data} uptime/>}</State></div></section>
+    <section className="dv-reference-hero"><img className="dv-reference-hero-art" src="/assets/light/hero.png" alt=""/><div className="dv-reference-hero-copy"><span className="dv-eyebrow">DATA OWNERSHIP FOR THE AI ERA</span><h1>Your Knowledge<br/>Has <span>Real Value</span></h1><p>Upload, protect, and monetize your knowledge collections.<br/>Get verifiable AI answers with on-chain receipts.</p><div className="dv-hero-actions"><Link className="dv-button" to="/query?demo=1">Try a demo <ArrowRight size={16}/></Link><Link className="dv-button secondary" to="/manage">Earn from my documents</Link></div></div><div className="dv-reference-hero-metrics"><State resource={analytics} retry={analytics.reload}>{data => <Metrics data={data} uptime/>}</State></div></section>
     <div className="dv-reference-workspace">
       <section id="register-knowledge" className="dv-card dv-reference-register"><div className="dv-reference-panel-heading"><span>01</span><div><h2>Register a Knowledge Collection</h2><p>Upload your content, set a price, and earn from queries.</p></div></div><OwnerDashboard key={primaryWallet?.address ?? 'disconnected'} onChanged={() => { collections.reload(); analytics.reload(); }}/></section>
       <BuyerDashboard key={primaryWallet?.address ?? 'disconnected'} dashboard collections={collections.data?.collections} onSettled={() => { collections.reload(); analytics.reload(); }}/>
@@ -54,12 +54,13 @@ export function CollectionPageView() {
 }
 export function QueryPage() {
   const [params] = useSearchParams(); const collection = params.get('collection'); const request = params.get('request'); const { primaryWallet,correctNetwork } = useWallet();
+  const guided = !request && (params.get('demo') === '1' || !collection);
   const [saved,setSaved]=useState<{item:SavedItem;wallet:string;version:number}|null>(null);
   const selected=correctNetwork&&saved&&saved.wallet===primaryWallet?.address.toLowerCase()?saved:null;
-  return <><Heading title="Ask a collection" description="Review the live price, pay through your wallet and inspect a cited answer after settlement." />
+  return <><Heading title="Ask a collection" description={guided ? 'Try a real cited answer with free test tokens. A sample is ready for you, with no account sign-up required.' : 'Review the live price, pay through your wallet and inspect a cited answer after settlement.'} />
     {request && <div className="dv-account-gate"><ShieldCheck size={24} /><div><strong>Recover your paid request</strong><p>Select Recover linked request below for {short(request)}. Recovery uses the existing payment. Questions are not stored in this browser.</p></div></div>}
+    <div className="dv-paid-workspace"><BuyerDashboard key={`${primaryWallet?.address??'disconnected'}:${correctNetwork}`} guided={guided} selectedCollection={collection} selectedQuestion={selected?{id:selected.item.id,collectionId:selected.item.collectionId,question:selected.item.question??'',version:selected.version}:null} selectedRequest={request} /></div>
     <SavedItems kind="saved-questions" onUse={item=>setSaved(previous=>({item,wallet:primaryWallet?.address.toLowerCase()??'',version:(previous?.version??0)+1}))}/>
-    <div className="dv-paid-workspace"><BuyerDashboard key={`${primaryWallet?.address??'disconnected'}:${correctNetwork}`} selectedCollection={collection} selectedQuestion={selected?{id:selected.item.id,collectionId:selected.item.collectionId,question:selected.item.question??'',version:selected.version}:null} selectedRequest={request} /></div>
   </>;
 }
 export function ManagePage() {
