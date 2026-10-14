@@ -1,25 +1,23 @@
-# Metropolis submission evidence checklist
+# Metropolis submission record and judging checks
 
-Internal target: 12 October 2026. The participant-provided Terms v3 state a final deadline of 13 October 2026 at 11:59 PM Eastern. Recheck the authenticated portal because organizer terms may change. The [Rise In event listing](https://www.risein.com/monad/monad-metropolis-hackathon) itself displays 12 October in its deadline field and 13 October in its timeline. This checklist does not claim that the project has been submitted.
+The Metropolis portal showed **Ready for judging** on 14 October 2026, last saved at 01:33 UTC. The primary track is **Trust, Identity & AI Infrastructure**. No sponsor bounties were selected. The deadline displayed in the portal was 14 October 2026 at 04:59 GMT+1.
 
-## Required evidence
+| Entry item | Submitted value or evidence |
+| --- | --- |
+| Product | [DataVault live on Monad testnet](https://datavault.tamimtarafder12.workers.dev/) |
+| Source | [ShieldTech-Ltd/datavault](https://github.com/ShieldTech-Ltd/datavault), MIT license |
+| Demo video | [Public evidence walkthrough](https://drive.google.com/file/d/19YTD4yBQxM2qUid9Z4YmGXgBuTA5Y8sa/view?usp=sharing), under three minutes |
+| Pitch video | [Team and product pitch](https://drive.google.com/file/d/1DuaVk97ce_5kSlH4zKF4TmkIPlC5JiRP/view?usp=sharing), under two minutes |
+| Contract | [DataVault on Monad testnet](https://testnet.monadscan.com/address/0x304aca9375fbd2f645e6c2d0318effa407766430) |
+| Buyer route | [Judge quickstart](demo-quickstart.md), including test-token setup and public transaction proof |
 
-| Requirement | Proof to record | Current state |
-|---|---|---|
-| One track | Confirm Trust, Identity and AI Infrastructure in the portal; describe the reusable paid-query API and the buyer app as its reference client. | Chosen in README; portal confirmation missing. |
-| Working Monad product | Public HTTPS site, chain ID, deployed contract, registration, opening, settlement, pause, and refund transaction links. | Live evidence missing. |
-| Public source | GitHub URL, OSI-approved MIT license, README setup, architecture, stack, attribution, AI coding tool disclosure, and build-window history. | Source prepared; combined PRs and final public audit pending. |
-| Demo video | Public URL, at most three minutes, real app operation, and visible Monad interactions. | Not recorded. |
-| Documentation | Project problem, intended user, architecture, Monad purpose, setup and deployment instructions, contract address, and judge quickstart. | Draft source documentation exists; real addresses and URLs missing. |
-| Rights and safety | Permission for sample content and assets, no credentials or private user data in source or video, and honest limitations. | Sample and final artifact review pending. |
+The demo video shows real public screens and recorded transactions, but does not show a new wallet approval or the buyer-only answer. The portal's judge instructions explain how to run that flow with a funded testnet wallet. Owner pause requires the collection owner's wallet; no owner credential is shared.
 
-## Freeze and submit
+## During judging
 
-1. Confirm merged #48, #49, and #50. Review and merge PR #51 with passing CI and Security checks as source integration, and record its merge commit. The merge is not production or demo acceptance.
-2. Confirm the frontend dependency audit is clear, replace placeholder deployment configuration, verify secrets by name without exposing values, and run `npm run check:release-config`.
-3. Complete the live acceptance list in [deployment.md](deployment.md), including three paid queries, fresh-wallet onboarding, recovery, pause denial, and genuine refund. Record redacted transaction evidence and actual completion times.
-4. Record and publish the real video from [demo-script.md](demo-script.md). Run `npm run check:release-config -- --submission` with public URLs and transaction identifiers, then open every URL in a clean browser.
-5. Prepare the portal entry with the selected track, public repo, site, video, contract, Monad explanation, and known limitations. Review the final entry against the portal's current fields and terms before submitting.
-6. Record the portal confirmation and timestamp after an authorized submission. A prepared form or uploaded video is not submission proof.
+1. Keep the Worker, model allowance, settlement wallet and chain RPC operational. Check the live app and a recent public receipt.
+2. Preserve exact deployment, contract and transaction identifiers if the public deployment changes. Update the [judge quickstart](demo-quickstart.md) and README when they do.
+3. Treat source merge, CI, actual deployment, and fresh browser wallet acceptance as separate gates.
+4. Do not claim Dynamic SDK or another sponsor bounty integration: the submitted entry selected none, and the current frontend uses an injected EVM wallet with viem.
 
-The public demo must remain available during the verified judging period with funded testnet operation, model quota, manual smoke checks, and an incident owner. Do not promise uptime that the provider has not guaranteed.
+The submission page's Ready for judging state is the portal confirmation. A saved draft alone would not have been enough.
