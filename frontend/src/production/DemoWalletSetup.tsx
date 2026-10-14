@@ -5,7 +5,7 @@ import { monadTestnet } from '../lib/network';
 import { viemClient } from '../lib/contract';
 import './DemoWalletSetup.css';
 
-export default function DemoWalletSetup() {
+export default function DemoWalletSetup({ onBalance }: { onBalance?: (amount: bigint | null) => void }) {
   const { primaryWallet, hasProvider, correctNetwork, connect, switchNetwork, error } = useWallet();
   const address = primaryWallet?.address;
   const [pending, setPending] = useState(false);
@@ -13,6 +13,7 @@ export default function DemoWalletSetup() {
   const [funds, setFunds] = useState<{ address: string; amount?: bigint; error?: string } | null>(null);
   const [copyStatus, setCopyStatus] = useState('');
   const balance = correctNetwork && funds?.address === address ? funds : null;
+  useEffect(() => { onBalance?.(balance?.amount ?? null); }, [onBalance, balance?.amount, address, correctNetwork]);
   useEffect(() => {
     let active = true;
     setFunds(null);

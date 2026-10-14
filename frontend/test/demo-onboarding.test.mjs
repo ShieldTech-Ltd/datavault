@@ -12,6 +12,7 @@ test('demo setup requires explicit actions and discards a delayed balance from a
   const vite = await createServer({ cacheDir, envDir: cacheDir, optimizeDeps: { noDiscovery: true }, server: { middlewareMode: true, hmr: false }, appType: 'custom', logLevel: 'silent', define: { 'import.meta.env.VITE_CHAIN_ID': JSON.stringify('10143') } });
   const previousWindow = globalThis.window;
   const methods = [], listeners = new Map();
+  const balances = [];
   const owner = '0x' + '11'.repeat(20), buyer = '0x' + '22'.repeat(20);
   let chain = '0x1', instance, originalBalance, client, resolveOld;
   const oldBalance = new Promise(resolve => { resolveOld = resolve; });
@@ -32,7 +33,7 @@ test('demo setup requires explicit actions and discards a delayed balance from a
     client = (await vite.ssrLoadModule('/src/lib/contract.ts')).viemClient;
     originalBalance = client.getBalance;
     client.getBalance = async ({address}) => address === owner ? oldBalance : 2000000000000000000n;
-    await act(async () => { instance = renderer.create(React.createElement(WalletProvider, null, React.createElement(Setup))); });
+    await act(async () => { instance = renderer.create(React.createElement(WalletProvider, null, React.createElement(Setup, { onBalance: amount => balances.push(amount) }))); });
     assert.deepEqual(methods, ['eth_accounts', 'eth_chainId']);
     const click = async label => {
       const button = instance.root.findAllByType('button').find(node => node.children.join('') === label);
@@ -48,6 +49,7 @@ test('demo setup requires explicit actions and discards a delayed balance from a
     await act(async () => { resolveOld(0n); });
     assert.match(JSON.stringify(instance.toJSON()), /Wallet balance: 2 test MON/);
     assert.doesNotMatch(JSON.stringify(instance.toJSON()), /Wallet balance: 0 test MON/);
+    assert.equal(balances.at(-1), 2000000000000000000n);
     assert.ok(instance.root.findAllByType('a').some(node => node.props.href === 'https://faucet.monad.xyz/'));
     assert.ok(!methods.some(method => /sendTransaction|sign/i.test(method)), 'Setup must never pay or sign a query');
   } finally {

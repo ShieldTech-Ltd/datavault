@@ -166,6 +166,7 @@ export default function BuyerDashboard({
   const { primaryWallet, correctNetwork } = useWallet();
   const address = primaryWallet?.address ?? "";
   const [demo, setDemo] = useState<Demo | null>(null);
+  const [guidedBalance, setGuidedBalance] = useState<bigint | null>(null);
   const [collectionId, setCollectionId] = useState("");
   const [question, setQuestion] = useState("");
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -705,7 +706,7 @@ export default function BuyerDashboard({
             <span>{formatEther(BigInt(demo.priceWei))} test MON</span>
           </div>
         )}
-        {guided && <DemoWalletSetup />}
+        {guided && <DemoWalletSetup onBalance={setGuidedBalance} />}
         {!demo && !dashboard && (
           <p className="workspace-muted">
             The guided sample collection will appear after it is registered and
@@ -786,10 +787,10 @@ export default function BuyerDashboard({
             <button
               type="button"
               onClick={execute}
-              disabled={!primaryWallet || !correctNetwork}
+              disabled={!primaryWallet || !correctNetwork || (guided && guidedBalance !== null && guidedBalance <= BigInt(quote.priceWei))}
               className="workspace-pay-button"
             >
-              {!primaryWallet ? "Connect wallet to pay" : !correctNetwork ? "Switch network to pay" : "Sign and pay"}{" "}
+              {!primaryWallet ? "Connect wallet to pay" : !correctNetwork ? "Switch network to pay" : guided && guidedBalance !== null && guidedBalance <= BigInt(quote.priceWei) ? "Get free test MON to pay" : "Sign and pay"}{" "}
               <ArrowRight size={17} aria-hidden="true"/>
             </button>
             {guided && <p>Approve the payment transaction first. Once it confirms, a separate wallet signature authorizes your question. That signature does not make another payment.</p>}
