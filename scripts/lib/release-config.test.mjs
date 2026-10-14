@@ -53,6 +53,10 @@ test("release guard reads the same private config selected for deployment", () =
     const incompleteModel = run();
     assert.equal(incompleteModel.status, 1);
     assert.match(incompleteModel.stderr, /kimi requires explicit MODEL_API_BASE and MODEL_NAME/);
+    writeFileSync(config, readFileSync(config, "utf8").replace('MODEL_PROVIDER = "kimi"', 'MODEL_PROVIDER = "anthropic"'));
+    assert.match(run().stderr, /anthropic requires an explicit MODEL_NAME/);
+    writeFileSync(config, readFileSync(config, "utf8") + '\nMODEL_NAME = "fixture-claude-model"\n');
+    assert.equal(run().status, 0);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

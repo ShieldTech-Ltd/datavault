@@ -8,5 +8,9 @@ MODEL_API_KEY=
 MODEL_API_BASE=https://api.openai.com/v1
 MODEL_NAME=gpt-4o-mini
 
+# For Claude, set MODEL_PROVIDER=anthropic and MODEL_API_BASE=https://api.anthropic.com/v1.
+# Set MODEL_NAME to a Claude model ID available in your API account.
+# MODEL_API_KEY must be a Claude Console API key.
+
 # Set only after the sample is registered and confirmed on-chain.
 DEMO_COLLECTION_ID=

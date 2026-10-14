@@ -40,7 +40,9 @@ export function isValidQuestion(s: unknown): s is string {
 export function isValidTimestamp(ts: unknown): boolean {
   if (typeof ts !== "number" || !Number.isFinite(ts)) return false;
   const age = Date.now() - ts;
-  return age >= 0 && age <= 5 * 60 * 1000; // not in future, not older than 5 min
+  // Browser clocks may be slightly ahead of the Worker. Keep this allowance
+  // bounded while retaining the five-minute maximum age for signed requests.
+  return age >= -30 * 1000 && age <= 5 * 60 * 1000;
 }
 
 export function checkContentLength(req: Request): Response | null {

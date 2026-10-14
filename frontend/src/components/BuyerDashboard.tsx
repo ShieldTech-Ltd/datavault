@@ -7,6 +7,7 @@ import { verifyAnswerAnchor } from "@/lib/provenance";
 import type { Collection } from '../production/api';
 import { ArrowRight, ChatCircleText, ShieldCheck, Copy, ShareNetwork, CheckCircle } from '../production/icons';
 import PaymentProgress from '../production/PaymentProgress';
+import DemoWalletSetup from '../production/DemoWalletSetup';
 import { SaveQuestion, savedQuestionMayFill } from '../production/SavedItems';
 import {
   buyerHistoryMessage,
@@ -25,9 +26,9 @@ const HISTORY_KEY = `datavault_requests:${CHAIN_ID}:${
 }`;
 const LEGACY_HISTORY_KEY = "datavault_requests";
 const SAMPLE_QUESTIONS = [
-  "What information should a freelancer include on an invoice?",
-  "Why might a sole trader use a separate business bank account?",
-  "What records should a freelancer keep for business expenses?",
+  "What key information is covered in this collection?",
+  "What practical steps does this collection recommend?",
+  "What limitations or cautions does this collection mention?",
 ];
 
 type Step =
@@ -150,6 +151,7 @@ export default function BuyerDashboard({
   selectedCollection,
   selectedRequest,
   dashboard = false,
+  guided = false,
   collections,
   onSettled,
 }: {
@@ -157,12 +159,14 @@ export default function BuyerDashboard({
   selectedCollection?: string | null;
   selectedRequest?: string | null;
   dashboard?: boolean;
+  guided?: boolean;
   collections?: Collection[];
   onSettled?: () => void;
 }) {
-  const { primaryWallet } = useWallet();
+  const { primaryWallet, correctNetwork } = useWallet();
   const address = primaryWallet?.address ?? "";
   const [demo, setDemo] = useState<Demo | null>(null);
+  const [guidedBalance, setGuidedBalance] = useState<bigint | null>(null);
   const [collectionId, setCollectionId] = useState("");
   const [question, setQuestion] = useState("");
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -205,6 +209,12 @@ export default function BuyerDashboard({
   useEffect(() => {
     if (selectedCollection) changeCollection(selectedCollection);
   }, [selectedCollection]);
+  useEffect(() => {
+    if (guided && demo && !selectedCollection && !selectedRequest && !collectionId) {
+      changeCollection(demo.collectionId);
+      setQuestion(value => value || SAMPLE_QUESTIONS[0]);
+    }
+  }, [guided, demo, selectedCollection, selectedRequest, collectionId]);
   useEffect(()=>{if(selectedQuestion){if(!savedQuestionMayFill(step)){setMessage('Finish or recover the current paid request before using another saved question.');return;}changeCollection(selectedQuestion.collectionId);setQuestion(selectedQuestion.question);setAnswer(null);setCurrent(null);setRefundAt(null);setMessage('Saved question filled. Review the live quote before paying.');}},[selectedQuestion?.id,selectedQuestion?.question,selectedQuestion?.version]);
   useEffect(() => {
     if (dashboard && !collectionId && collections?.length) changeCollection(collections.find(item => item.queryAvailable)?.collectionId ?? collections[0].collectionId);
@@ -696,6 +706,7 @@ export default function BuyerDashboard({
             <span>{formatEther(BigInt(demo.priceWei))} test MON</span>
           </div>
         )}
+        {guided && <DemoWalletSetup onBalance={setGuidedBalance} />}
         {!demo && !dashboard && (
           <p className="workspace-muted">
             The guided sample collection will appear after it is registered and
@@ -720,7 +731,7 @@ export default function BuyerDashboard({
           </div>
         )}
         <form onSubmit={prepare} className="workspace-form">
-          <label htmlFor="collection-id">{dashboard ? 'Select Collection' : 'Collection ID'}</label>
+          {guided && demo && collectionId === demo.collectionId ? <details className="dv-demo-collection-id"><summary>View sample collection ID</summary><code>{collectionId}</code></details> : <><label htmlFor="collection-id">{dashboard ? 'Select Collection' : 'Collection ID'}</label>
           {dashboard && collections?.length ? <select id="collection-id" value={collectionId} disabled={busy} onChange={event => changeCollection(event.target.value)}>{collections.map(item => <option key={item.collectionId} value={item.collectionId}>{item.name}{item.active ? '' : ' (Paused)'}</option>)}</select> : <input
             id="collection-id"
             value={collectionId}
@@ -728,7 +739,7 @@ export default function BuyerDashboard({
             placeholder="Choose a collection below or paste its ID"
             required
             disabled={busy}
-          />}
+          />}</>}
           {dashboard && collections?.find(item => item.collectionId === collectionId) && <div className="dv-query-live-price"><strong>{formatEther(BigInt(collections.find(item => item.collectionId === collectionId)!.priceWei))} MON per query</strong><span>{collections.find(item => item.collectionId === collectionId)!.queryAvailable ? 'Available' : 'Unavailable'}</span></div>}
           <label htmlFor="query-question">Your question</label>
           <textarea
@@ -776,12 +787,13 @@ export default function BuyerDashboard({
             <button
               type="button"
               onClick={execute}
-              disabled={!primaryWallet}
+              disabled={!primaryWallet || !correctNetwork || (guided && guidedBalance !== null && guidedBalance <= BigInt(quote.priceWei))}
               className="workspace-pay-button"
             >
-              {primaryWallet ? "Sign and pay" : "Connect wallet to pay"}{" "}
+              {!primaryWallet ? "Connect wallet to pay" : !correctNetwork ? "Switch network to pay" : guided && guidedBalance !== null && guidedBalance <= BigInt(quote.priceWei) ? "Get free test MON to pay" : "Sign and pay"}{" "}
               <ArrowRight size={17} aria-hidden="true"/>
             </button>
+            {guided && <p>Approve the payment transaction first. Once it confirms, a separate wallet signature authorizes your question. That signature does not make another payment.</p>}
           </div>
         )}
         {step === "awaiting_wallet" && (

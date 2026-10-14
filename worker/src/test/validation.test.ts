@@ -93,8 +93,12 @@ describe("isValidTimestamp", () => {
   it("rejects a timestamp older than 5 minutes", () => {
     expect(isValidTimestamp(Date.now() - 6 * 60 * 1000)).toBe(false);
   });
-  it("rejects a future timestamp", () => {
-    expect(isValidTimestamp(Date.now() + 5000)).toBe(false);
+  it("accepts a small browser clock difference", () => {
+    expect(isValidTimestamp(Date.now() + 5000)).toBe(true);
+    expect(isValidTimestamp(Date.now() + 30000)).toBe(true);
+  });
+  it("rejects a timestamp beyond the clock allowance", () => {
+    expect(isValidTimestamp(Date.now() + 31000)).toBe(false);
   });
   it("rejects NaN", () => {
     expect(isValidTimestamp(NaN)).toBe(false);
